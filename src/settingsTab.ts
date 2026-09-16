@@ -132,13 +132,15 @@ export class ObsyncSettingsTab extends PluginSettingTab {
         }
     }
 
-    /** 标签一：已追踪插件 —— 三个主操作按钮 + 跟踪列表。 */
+    /** 标签一：已追踪插件 —— 头部栏（标题 + 说明 + 三个主操作）+ 跟踪列表。 */
     private renderTrackedTab(): void {
         const t = this.obsync.t;
 
-        // 主操作单独成卡片（.obsync-actions），与下面的列表拉开层次。
-        const actions = this.containerEl.createDiv({ cls: "obsync-actions" });
-        new Setting(actions)
+        // 标题、说明与主操作放在同一行：左侧文字、右侧按钮，中间不留空。
+        new Setting(this.containerEl)
+            .setName(t.settings.installer.tracked)
+            .setDesc(t.settings.installer.trackedDesc)
+            .setClass("obsync-section-header")
             .addButton((button) =>
                 button
                     .setButtonText(t.installer.modalTitle)

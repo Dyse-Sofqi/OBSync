@@ -40,12 +40,8 @@ export function renderTrackedPlugins(
     const t = ctx.t;
     const tracked = ctx.getTracked();
 
-    new Setting(containerEl).setName(t.settings.installer.tracked).setHeading();
-    containerEl.createEl("p", {
-        cls: "setting-item-description",
-        text: t.settings.installer.trackedDesc,
-    });
-
+    // 标题与说明由调用方（设置页的头部栏）渲染 —— 那里和三个主操作按钮在同一行，
+    // 避免出现「空一半的卡片」。
     if (tracked.length === 0) {
         containerEl.createEl("p", {
             cls: "setting-item-description obsync-empty",
@@ -94,7 +90,9 @@ function renderRow(
     // 检查更新
     setting.addExtraButton((button) =>
         button
-            .setIcon("refresh-cw")
+            // 放大镜 = 「去问远端有没有新版」，与下面两个动作的图形完全不同 ——
+            // 之前用 refresh-cw，和「重装」的圆箭头几乎分不出来。
+            .setIcon("search")
             .setTooltip(t.installer.checkOne)
             .onClick(async () => {
                 button.setDisabled(true);
@@ -122,7 +120,7 @@ function renderRow(
     );
 
     // 更新到最新
-    setting.addExtraButton((button) =>
+    setting.addExtraButton((button) => {
         button
             .setIcon("download")
             .setTooltip(t.installer.updateToLatest)
@@ -144,13 +142,19 @@ function renderRow(
                 } finally {
                     button.setDisabled(false);
                 }
-            })
-    );
+            });
+
+        // 有更新时把这个按钮标成主操作（强调色）—— ExtraButtonComponent
+        // 没有 setClass，但暴露了元素本身。
+        if (update) button.extraSettingsEl.addClass("obsync-action-primary");
+        return button;
+    });
 
     // 重装
     setting.addExtraButton((button) =>
         button
-            .setIcon("rotate-cw")
+            // 圆箭头留给「重装」独占（检查更新已换成放大镜），指代「再来一遍」。
+            .setIcon("refresh-cw")
             .setTooltip(t.installer.reinstall)
             .onClick(async () => {
                 button.setDisabled(true);
