@@ -1,7 +1,8 @@
 # OBSync 交接文档
 
 > **这是接手本项目的第一份必读文件。** 配套阅读：`docs/PLAN.md`（总体规划与阶段划分）、
-> `docs/reference-analysis.md`（两个参考项目的源码分析）、`.workbuddy-ai/memory/`（历次工作日志）。
+> `docs/reference-analysis.md`（两个参考项目的源码分析）、`.workbuddy-ai/memory/`（历次工作日志）、
+> **`docs/RELEASE.md`（发版清单 —— 要发版时照着走，别重新推导步骤）**。
 >
 > 最后更新：2026-09-16（验收复查：修掉 2 个真 bug + 补 3 处降级 + 补回一个漏做的功能，
 > 详见下方「验收复查记录」）

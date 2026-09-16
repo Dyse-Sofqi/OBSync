@@ -132,7 +132,8 @@ pnpm test:live  # 真实 API 测试，需要网络
   想跑绿就设 `OBSYNC_GITEE_TOKEN=<令牌>`。
 
 架构与踩坑记录见 [`docs/HANDOVER.md`](docs/HANDOVER.md)，
-两个参考项目的分析见 [`docs/reference-analysis.md`](docs/reference-analysis.md)。
+两个参考项目的分析见 [`docs/reference-analysis.md`](docs/reference-analysis.md)，
+发版流程见 [`docs/RELEASE.md`](docs/RELEASE.md)。
 
 ---
 
