@@ -186,6 +186,7 @@ export const zhCN = {
                 ? `检查完成：${outdated} 个可更新，${failed} 个检查失败。`
                 : `检查完成：${outdated} 个可更新。`,
         updateToLatest: "更新到最新版本",
+        updateBadge: (version: string) => `可更新 → ${version}`,
         reinstall: "重装",
         freeze: "冻结（不参与自动更新）",
         unfreeze: "取消冻结",

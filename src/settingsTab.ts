@@ -265,7 +265,10 @@ export class ObsyncSettingsTab extends PluginSettingTab {
             app: this.obsync.app,
             t,
             service: this.obsync.installer.service,
+            checker: this.obsync.installer.checker,
             getTracked: () => this.obsync.settings.installer.tracked,
+            getUpdateFor: (pluginId) =>
+                this.obsync.settings.installer.availableUpdates[pluginId],
             refresh: () => this.display(),
         });
     }
@@ -288,6 +291,9 @@ export class ObsyncSettingsTab extends PluginSettingTab {
             this.obsync.notifier.info(t.installer.checkSummary(summary.outdated, summary.failed));
         } catch (err) {
             this.obsync.notifier.reportError(err, t.installer.checkFailed);
+        } finally {
+            // 徽标常驻在列表里（availableUpdates 已由 checkAll 落盘），重绘让它可见。
+            this.display();
         }
     }
 

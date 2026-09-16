@@ -18,6 +18,12 @@
     opacity: 0.55;
 }
 
+/* 已跟踪列表里「有可用更新」的行 —— 常驻高亮,不依赖 Notice */
+.obsync-has-update .setting-item-name {
+    color: var(--text-accent);
+    font-weight: 600;
+}
+
 /* 空状态提示 */
 .obsync-empty {
     opacity: 0.7;

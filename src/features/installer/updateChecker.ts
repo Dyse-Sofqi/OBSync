@@ -27,7 +27,12 @@ export interface UpdateCheckSummary {
 export class UpdateChecker {
     constructor(private readonly service: InstallerService) {}
 
-    /** 检查所有非冻结的已跟踪插件。 */
+    /**
+     * 检查所有非冻结的已跟踪插件。
+     *
+     * 结果会写进 `installer.availableUpdates` 并落盘 —— 已跟踪列表的
+     * 常驻徽标靠它渲染（见 InstallerService.recordUpdateChecks）。
+     */
     async checkAll(tracked: TrackedPlugin[]): Promise<UpdateCheckSummary> {
         const results: UpdateCheckResult[] = [];
 
@@ -35,6 +40,8 @@ export class UpdateChecker {
             if (plugin.frozen) continue;
             results.push(await this.checkOne(plugin));
         }
+
+        await this.service.recordUpdateChecks(results);
 
         return {
             results,

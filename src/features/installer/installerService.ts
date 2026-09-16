@@ -23,7 +23,7 @@ import {
     removePluginFolder,
     writePluginFiles,
 } from "./pluginFolder";
-import type { InstallResult, InstallSource, TrackedPlugin } from "./types";
+import type { InstallResult, InstallSource, TrackedPlugin, UpdateCheckResult } from "./types";
 
 /**
  * 安装编排。
@@ -377,6 +377,9 @@ export class InstallerService {
             settings.installer.tracked.push(record);
         }
 
+        // 装上了新版本，旧的可更新徽标就该消失 —— 否则列表永远挂着过期提示。
+        delete settings.installer.availableUpdates[manifest.id];
+
         await this.deps.saveSettings();
     }
 
@@ -404,5 +407,31 @@ export class InstallerService {
         if (!latest) return undefined;
 
         return latest.tag === tracked.requestedVersion ? undefined : latest;
+    }
+
+    /**
+     * 把检查结果写进 `installer.availableUpdates` 并落盘。
+     *
+     * 有更新 → 记入（列表据此渲染常驻徽标，Notice 一闪就错过）；
+     * 无更新 → 清除旧记录；检查失败 → **不动**旧记录（过期信息好过没有）。
+     */
+    async recordUpdateChecks(results: UpdateCheckResult[]): Promise<void> {
+        const store = this.settings.installer.availableUpdates;
+        let changed = false;
+
+        for (const result of results) {
+            if (result.error !== undefined) continue;
+            if (result.hasUpdate) {
+                store[result.tracked.pluginId] = {
+                    latestVersion: result.latestVersion,
+                    checkedAt: Date.now(),
+                };
+            } else {
+                delete store[result.tracked.pluginId];
+            }
+            changed = true;
+        }
+
+        if (changed) await this.deps.saveSettings();
     }
 }

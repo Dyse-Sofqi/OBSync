@@ -27,6 +27,13 @@ export interface InstallerSettings {
      * 不必也不该把业务类型复制一份。
      */
     tracked: TrackedPlugin[];
+    /**
+     * 最近一次更新检查发现的可更新项，按 pluginId 索引。
+     *
+     * 持久化而不是只存内存：徽标要常驻在已跟踪列表里（Notice 一闪就错过），
+     * 且启动时的自动检查也能写入。插件更新成功后由 recordInstalled 清除。
+     */
+    availableUpdates: Record<string, { latestVersion: string; checkedAt: number }>;
 }
 
 export interface SyncSettings {
@@ -65,6 +72,7 @@ export const DEFAULT_SETTINGS: ObsyncSettings = {
         // 而每次探测都要花掉 Gitee 稀缺的配额。详见 features/installer/mirrorFinder.ts。
         discoverGiteeMirrors: false,
         tracked: [],
+        availableUpdates: {},
     },
     sync: {
         enabled: true,
@@ -107,7 +115,13 @@ function mergeWithDefaults<T extends Record<string, unknown>>(
         if (loadedValue === undefined) continue;
 
         if (isPlainObject(defaultValue)) {
-            result[key] = mergeWithDefaults(defaultValue, loadedValue);
+            // 空对象默认值是「映射表」（如 installer.availableUpdates）——
+            // 形状由数据决定，必须整体透传给下游校验，否则遍历 defaults 的键
+            // 会把整张表丢掉。校验仍由专门的 sanitize 函数负责。
+            result[key] =
+                Object.keys(defaultValue).length === 0
+                    ? (isPlainObject(loadedValue) ? { ...loadedValue } : { ...defaultValue })
+                    : mergeWithDefaults(defaultValue, loadedValue);
         } else if (typeof loadedValue === typeof defaultValue) {
             result[key] = loadedValue;
         }
@@ -142,6 +156,12 @@ export function normalizeSettings(loaded: unknown): ObsyncSettings {
 
     // 数组不能靠递归合并校验 —— 它会被整体替换，条目内容没人检查过。
     merged.installer.tracked = sanitizeTrackedPlugins(merged.installer.tracked);
+
+    // 可更新记录同理：逐条校验，并剪掉已不在跟踪列表里的条目。
+    merged.installer.availableUpdates = sanitizeAvailableUpdates(
+        merged.installer.availableUpdates,
+        merged.installer.tracked
+    );
 
     return merged;
 }
@@ -201,7 +221,32 @@ function sanitizeTrackedPlugins(value: unknown): TrackedPlugin[] {
     return result;
 }
 
-function clamp(value: number, min: number, max: number): number {
-    if (!Number.isFinite(value)) return min;
+/**
+ * 校验可更新记录：形状不对的丢弃，不在跟踪列表里的剪掉。
+ *
+ * 剪枝是关键 —— 跟踪列表是「哪些插件该有徽标」的唯一事实来源，
+ * 记录里残留已移除插件的条目会在重装同名 id 插件时显示过期徽标。
+ */
+function sanitizeAvailableUpdates(
+    value: unknown,
+    tracked: TrackedPlugin[]
+): Record<string, { latestVersion: string; checkedAt: number }> {
+    if (!isPlainObject(value)) return {};
+
+    const trackedIds = new Set(tracked.map((item) => item.pluginId));
+    const result: Record<string, { latestVersion: string; checkedAt: number }> = {};
+
+    for (const [pluginId, entry] of Object.entries(value)) {
+        if (!trackedIds.has(pluginId)) continue;
+        if (!isPlainObject(entry)) continue;
+        if (typeof entry.latestVersion !== "string" || !entry.latestVersion) continue;
+        if (typeof entry.checkedAt !== "number" || !Number.isFinite(entry.checkedAt)) continue;
+        result[pluginId] = { latestVersion: entry.latestVersion, checkedAt: entry.checkedAt };
+    }
+
+    return result;
+}
+
+function clamp(value: number, min: number, max: number): number {    if (!Number.isFinite(value)) return min;
     return Math.min(max, Math.max(min, Math.round(value)));
 }

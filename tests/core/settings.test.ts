@@ -75,4 +75,36 @@ describe("normalizeSettings", () => {
         const settings = normalizeSettings({ language: ["zh-cn"] });
         expect(settings.language).toBe(DEFAULT_SETTINGS.language);
     });
+
+    it("可更新记录：剪掉不在跟踪列表里的条目，丢弃形状不对的条目", () => {
+        // 跟踪列表是「谁该有徽标」的唯一事实来源 —— 残留已移除插件的
+        // 记录会在重装同名 id 插件时显示过期徽标。
+        const settings = normalizeSettings({
+            installer: {
+                tracked: [
+                    {
+                        host: "github",
+                        owner: "owner",
+                        repo: "kept",
+                        pluginId: "kept",
+                        name: "Kept",
+                        installedVersion: "1.0.0",
+                        requestedVersion: "latest",
+                        frozen: false,
+                        channel: "release",
+                        installedAt: 0,
+                    },
+                ],
+                availableUpdates: {
+                    kept: { latestVersion: "v2.0.0", checkedAt: 42 },
+                    removed: { latestVersion: "v3.0.0", checkedAt: 42 },
+                    malformed: { latestVersion: 123, checkedAt: "yesterday" },
+                },
+            },
+        });
+
+        expect(settings.installer.availableUpdates).toEqual({
+            kept: { latestVersion: "v2.0.0", checkedAt: 42 },
+        });
+    });
 });

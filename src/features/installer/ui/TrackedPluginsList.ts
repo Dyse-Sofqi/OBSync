@@ -3,8 +3,8 @@ import type { LocaleStrings } from "../../../core/i18n";
 import { repoWebUrl } from "../../../host/repoRef";
 import type { RepoRef } from "../../../host/types";
 import type { InstallerService } from "../installerService";
+import type { UpdateChecker } from "../updateChecker";
 import type { TrackedPlugin } from "../types";
-import { isNewerVersion } from "../versions";
 
 /**
  * 设置页里的「已跟踪插件」列表。
@@ -12,13 +12,19 @@ import { isNewerVersion } from "../versions";
  * 每一行是一个插件，右侧是该插件可执行的操作。刻意不做批量操作按钮之外
  * 的复杂交互 —— 用户在这里最常做的三件事是「看有没有更新」「重装」
  * 「删掉」，把它们放在一眼能看到的位置就够了。
+ *
+ * 有更新的行常驻高亮徽标（数据来自 `installer.availableUpdates`，
+ * 由更新检查写入）—— Notice 一闪就错过，列表才是用户回得来的地方。
  */
 
 export interface TrackedPluginsContext {
     app: App;
     t: LocaleStrings;
     service: InstallerService;
+    checker: UpdateChecker;
     getTracked(): TrackedPlugin[];
+    /** 该插件当前记录的可更新信息（无则 undefined）。 */
+    getUpdateFor(pluginId: string): { latestVersion: string; checkedAt: number } | undefined;
     /** 重新渲染设置页（列表变化后调用）。 */
     refresh(): void;
 }
@@ -60,14 +66,19 @@ function renderRow(
 ): void {
     const t = ctx.t;
     const hostName = plugin.host === "gitee" ? t.host.gitee : t.host.github;
+    const update = ctx.getUpdateFor(plugin.pluginId);
 
     const setting = new Setting(containerEl)
         .setName(plugin.name)
         .setDesc(
             `${hostName} · ${plugin.owner}/${plugin.repo} · ` +
                 `${t.common.version} ${plugin.installedVersion}` +
-                (plugin.frozen ? ` · ${t.installer.frozen}` : "")
+                (plugin.frozen ? ` · ${t.installer.frozen}` : "") +
+                (update ? ` · ${t.installer.updateBadge(update.latestVersion)}` : "")
         );
+
+    // 有更新的行整行高亮 —— 用户扫一眼列表就该看到哪里能更新。
+    if (update) setting.setClass("obsync-has-update");
 
     // 检查更新
     setting.addExtraButton((button) =>
@@ -77,16 +88,20 @@ function renderRow(
             .onClick(async () => {
                 button.setDisabled(true);
                 try {
-                    const latest = await ctx.service.checkForUpdate(plugin);
-                    if (!latest) {
-                        ctx.service.deps.notifier.info(t.installer.upToDate(plugin.name));
-                    } else if (isNewerVersion(latest.tag, plugin.installedVersion)) {
+                    const result = await ctx.checker.checkOne(plugin);
+                    await ctx.service.recordUpdateChecks([result]);
+                    if (result.error !== undefined) {
+                        ctx.service.deps.notifier.error(
+                            `${plugin.name}: ${result.error}`
+                        );
+                    } else if (result.hasUpdate) {
                         ctx.service.deps.notifier.info(
-                            t.installer.updateAvailable(plugin.name, latest.tag)
+                            t.installer.updateAvailable(plugin.name, result.latestVersion)
                         );
                     } else {
                         ctx.service.deps.notifier.info(t.installer.upToDate(plugin.name));
                     }
+                    ctx.refresh();
                 } catch (err) {
                     ctx.service.deps.notifier.reportError(err, t.installer.checkFailed);
                 } finally {

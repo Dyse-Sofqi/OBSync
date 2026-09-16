@@ -183,6 +183,7 @@ export const en = {
                 ? `Check finished: ${outdated} update(s) available, ${failed} check(s) failed.`
                 : `Check finished: ${outdated} update(s) available.`,
         updateToLatest: "Update to the latest version",
+        updateBadge: (version: string) => `Update available → ${version}`,
         reinstall: "Reinstall",
         freeze: "Freeze (exclude from automatic updates)",
         unfreeze: "Unfreeze",

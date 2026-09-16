@@ -147,6 +147,49 @@ describe("checkAll", () => {
         expect(summary.results[0]!.tracked.pluginId).toBe("b");
         expect(summary.outdated).toBe(1);
     });
+
+    it("检查结果写入 availableUpdates：有更新记入、无更新清除、失败保留旧记录", async () => {
+        // 徽标常驻在已跟踪列表里（Notice 一闪就错过），数据就来自这里。
+        const fake = createFakeApp();
+        const { checker, settings } = createContext(fake);
+
+        // 预置旧记录：fresh 本已无更新（应被清除）、failing 上次报过更新（检查失败应保留）
+        settings.installer.availableUpdates = {
+            fresh: { latestVersion: "v9.9.9", checkedAt: 1 },
+            failing: { latestVersion: "v9.9.9", checkedAt: 1 },
+        };
+
+        route(/repos\/owner\/updated\/releases\/latest$/, () => ({
+            status: 200,
+            text: releaseJson("v2.0.0"),
+        }));
+        route(/repos\/owner\/fresh\/releases\/latest$/, () => ({
+            status: 200,
+            text: releaseJson("v1.0.0"),
+        }));
+        route(/repos\/owner\/failing\/releases\/latest$/, () => ({
+            status: 403,
+            text: '{"message":"rate limit"}',
+            headers: { "x-ratelimit-remaining": "0" },
+        }));
+
+        await checker.checkAll([
+            makeTracked({ pluginId: "updated", repo: "updated" }),
+            makeTracked({ pluginId: "fresh", repo: "fresh", installedVersion: "1.0.0" }),
+            makeTracked({ pluginId: "failing", repo: "failing" }),
+        ]);
+
+        expect(settings.installer.availableUpdates["updated"]).toEqual({
+            latestVersion: "v2.0.0",
+            checkedAt: expect.any(Number),
+        });
+        expect(settings.installer.availableUpdates["fresh"]).toBeUndefined();
+        // 检查失败不动旧记录：过期信息好过没有
+        expect(settings.installer.availableUpdates["failing"]).toEqual({
+            latestVersion: "v9.9.9",
+            checkedAt: 1,
+        });
+    });
 });
 
 describe("updateAll", () => {
