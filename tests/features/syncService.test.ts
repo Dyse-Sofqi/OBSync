@@ -541,3 +541,23 @@ describe("initRepo 与 .gitignore", () => {
         expect(git.calls).toContain("init");
     });
 });
+
+describe("提交信息的文件数按路径去重", () => {
+    it("「改了又暂存」的文件不会被算成两个", async () => {
+        // 同一个根因的另一处表现：mapStatus 按 git status 的两位状态位分别归类，
+        // AM / MM 的文件同时进 staged 与 unstaged。不去重的话
+        // {{numFiles}} 会多算、{{files}} 会把同一个文件列两遍。
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service } = makeService(git, fake);
+        git.staged = ["a.md"];
+        git.unstaged = ["a.md"]; // 同一个文件，两个状态位都非空
+
+        await service.commitAll();
+
+        const commitCall = git.calls.find((call) => call.startsWith("commit:"));
+        expect(commitCall).toBeDefined();
+        // 模板是 "backup {{numFiles}}"，一个文件就该是 1
+        expect(commitCall).toBe("commit:backup 1");
+    });
+});

@@ -78,7 +78,15 @@ export class StatusBar {
             if (this.status.ahead !== null && this.status.ahead > 0) parts.push(`↑${this.status.ahead}`);
             if (this.status.behind !== null && this.status.behind > 0) parts.push(`↓${this.status.behind}`);
 
-            const dirty = this.status.staged.length + this.status.unstaged.length + this.status.untracked.length;
+            // 脏文件数**按路径去重**：同一个文件可能既在 staged 又在 unstaged 里
+            // （`mapStatus` 按 `git status` 的两位状态位分别归类，「改了又暂存」
+            // 的文件两个位都非空）。直接相加会把一个文件算成两个。
+            const dirty = new Set([
+                ...this.status.staged.map((change) => change.path),
+                ...this.status.unstaged.map((change) => change.path),
+                ...this.status.untracked.map((change) => change.path),
+            ]).size;
+
             if (this.status.conflicted.length > 0) {
                 parts.push(`⚠ ${this.status.conflicted.length}`);
             } else if (dirty > 0) {

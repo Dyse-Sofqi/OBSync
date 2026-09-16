@@ -73,3 +73,43 @@ describe("visibleChanges", () => {
         expect(visibleChanges(status({}))).toEqual([]);
     });
 });
+
+describe("去重：同一个文件不要出现多次", () => {
+    it("「改了又暂存」的文件（AM / MM）只显示一次", () => {
+        // mapStatus 按 git status 的两位状态位分别归类，AM/MM 的文件
+        // 两个位都非空 → 同时进 staged 与 unstaged。列表是给人看的
+        // 「有哪些文件变了」，同一个路径出现两遍会让人以为有两处改动。
+        const changes = visibleChanges(
+            status({
+                staged: [change("a.md", "added"), change("b.md", "modified")],
+                unstaged: [change("b.md", "modified")],
+            })
+        );
+
+        expect(changes.map((item) => item.path)).toEqual(["a.md", "b.md"]);
+    });
+
+    it("保留第一次出现的那个（staged 优先）", () => {
+        const changes = visibleChanges(
+            status({
+                staged: [change("a.md", "added")],
+                unstaged: [change("a.md", "modified")],
+            })
+        );
+
+        expect(changes).toHaveLength(1);
+        expect(changes[0]!.status).toBe("added");
+    });
+
+    it("去重不影响不同路径的文件", () => {
+        const changes = visibleChanges(
+            status({
+                staged: [change("a.md", "added")],
+                unstaged: [change("b.md", "modified")],
+                untracked: [change("c.md", "untracked")],
+            })
+        );
+
+        expect(changes.map((item) => item.path)).toEqual(["a.md", "b.md", "c.md"]);
+    });
+});

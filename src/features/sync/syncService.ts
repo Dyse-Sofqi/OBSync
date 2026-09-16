@@ -351,9 +351,21 @@ export class SyncService {
             return { kind: "nothing-to-commit" };
         }
 
-        const files = [...status.staged, ...status.unstaged, ...status.untracked].map(
-            (change) => change.path
-        );
+        /**
+         * 本次提交涉及的文件（去重）。
+         *
+         * **必须去重**：同一个文件可能既在 `staged` 又在 `unstaged` 里 ——
+         * `mapStatus` 是按 `git status` 的两位状态位分别归类的，
+         * 而「改了又暂存」（`AM` / `MM`）的文件两个位都非空，于是被放进两个数组。
+         * 不去重的话 `{{numFiles}}` 会多算、`{{files}}` 会把同一个文件列两遍。
+         */
+        const files = [
+            ...new Set(
+                [...status.staged, ...status.unstaged, ...status.untracked].map(
+                    (change) => change.path
+                )
+            ),
+        ];
 
         await this.git.stage([]);
         const message = renderCommitMessage(this.deps.getCommitTemplate(), { files });

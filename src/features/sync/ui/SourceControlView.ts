@@ -162,18 +162,30 @@ export class SourceControlView extends ItemView {
 /**
  * 变更列表里该显示的文件。
  *
- * **必须把冲突文件滤掉。** 它们在 `git status` 里是 `UU`，于是 `mapStatus`
- * 会把它**同时**归进 `staged`（index 位非空）与 `unstaged`（worktree 位非空）。
- * 不滤的话同一个冲突文件会在列表里出现三次：staged 一次、unstaged 一次、
- * 外加下面单独渲染的 conflicted 那一行。
+ * 两处过滤，都是为了**同一个文件不要出现多次**：
+ *
+ * 1. **冲突文件滤掉。** 它们在 `git status` 里是 `UU`，于是 `mapStatus`
+ *    会把它同时归进 `staged` 与 `unstaged`。不滤的话同一个冲突文件会出现三次：
+ *    staged 一次、unstaged 一次、外加下面单独渲染的 conflicted 那一行。
+ * 2. **按路径去重。** 「改了又暂存」的文件（`AM` / `MM`）两个状态位都非空，
+ *    同样会进两个数组。列表是给人看的「有哪些文件变了」，
+ *    同一个路径出现两遍只会让人以为有两处改动。
  *
  * 抽成独立函数是为了能直接测 —— 这类"列表里多了一项"的问题靠读代码很难发现，
  * 而视图本身要做 DOM 级测试代价太高。
  */
 export function visibleChanges(status: RepoStatus): FileChange[] {
-    return [...status.staged, ...status.unstaged, ...status.untracked].filter(
-        (change) => change.status !== "conflicted"
-    );
+    const seen = new Set<string>();
+    const result: FileChange[] = [];
+
+    for (const change of [...status.staged, ...status.unstaged, ...status.untracked]) {
+        if (change.status === "conflicted") continue;
+        if (seen.has(change.path)) continue;
+        seen.add(change.path);
+        result.push(change);
+    }
+
+    return result;
 }
 
 function markOf(status: string): string {
