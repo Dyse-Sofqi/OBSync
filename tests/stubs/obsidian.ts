@@ -37,6 +37,32 @@ export function getLanguage(): string {
     return language;
 }
 
+let apiVersion = "1.13.1";
+
+/** 测试里模拟当前 Obsidian 版本，用于校验 manifest 的 minAppVersion。 */
+export function __setApiVersion(value: string): void {
+    apiVersion = value;
+}
+
+/** 与真实实现同义：当前版本是否 ≥ 传入版本。 */
+export function requireApiVersion(version: string): boolean {
+    const parse = (input: string): number[] =>
+        input
+            .split(".")
+            .map((part) => Number.parseInt(part, 10))
+            .map((part) => (Number.isFinite(part) ? part : 0));
+
+    const current = parse(apiVersion);
+    const required = parse(version);
+
+    for (let index = 0; index < Math.max(current.length, required.length); index++) {
+        const a = current[index] ?? 0;
+        const b = required[index] ?? 0;
+        if (a !== b) return a > b;
+    }
+    return true;
+}
+
 export class Platform {
     static get isDesktopApp(): boolean {
         return true;
@@ -100,7 +126,11 @@ export function requestUrl(request: {
             status: response.status,
             headers: response.headers ?? {},
             text,
-            arrayBuffer: response.arrayBuffer ?? new ArrayBuffer(0),
+            // 真实 Obsidian 的 arrayBuffer 始终反映响应体。处理器只给文本时
+            // 必须从文本派生，否则 release 资产下载（走 arrayBuffer）会静默
+            // 变成空内容，测试就会以「manifest 不是合法 JSON」的方式误报。
+            arrayBuffer:
+                response.arrayBuffer ?? new TextEncoder().encode(text).buffer as ArrayBuffer,
             // 真实 Obsidian 的 `json` 是惰性 getter，只在访问时才解析。
             // 写成立即求值会让非 JSON 响应（比如 raw 文件）误抛异常。
             get json(): unknown {

@@ -137,20 +137,52 @@ export const en = {
         resolved: (host: string, repo: string) => `Resolved to ${repo} on ${host}`,
         versionLabel: "Version to install",
         versionLatest: "Latest release",
+        versionListFailed: "Could not fetch the version list; the latest version will be used.",
         enableAfterInstall: "Enable after installing",
         install: "Install",
         installing: "Installing…",
+        installFailed: "Install failed",
         installed: (name: string, version: string) => `Installed ${name} ${version}`,
         updated: (name: string, version: string) => `Updated ${name} to ${version}`,
         upToDate: (name: string) => `${name} is already up to date`,
         reinstalled: (name: string) => `Reinstalled ${name}`,
         removed: (name: string) => `Removed ${name}`,
+        removeFailed: "Removal failed",
         sourceRelease: "Source: release asset",
         sourceRaw: "Source: repository source file",
         mirrorFound: (repo: string) => `Found Gitee mirror ${repo}; downloading from it instead.`,
         noReleaseFallback: "This repository publishes no releases; installing from source files instead.",
         missingManifest: (repo: string) => `No valid manifest.json found in ${repo} — it may not be an Obsidian plugin repository.`,
         missingMainJs: (repo: string) => `No main.js found in ${repo}; cannot install.`,
+
+        browse: "Browse community plugins",
+        communitySearchPlaceholder: "Search by plugin name, author or description…",
+        communityLoadFailed: "Could not load the community plugin list",
+
+        checkOne: "Check for updates",
+        checkAll: "Check all for updates",
+        updateAll: "Update all plugins",
+        updatedMany: (count: number, names: string) => `Updated ${count} plugin(s): ${names}`,
+        updateFailedMany: (count: number) => `${count} plugin(s) failed to update`,
+        checkFailed: "Update check failed",
+        checking: "Checking for updates…",
+        updateAvailable: (name: string, version: string) => `${name} has a newer version: ${version}.`,
+        updatesAvailable: (count: number, names: string) =>
+            `${count} plugin(s) can be updated: ${names}`,
+        checkNone: "All plugins are up to date.",
+        checkSummary: (outdated: number, failed: number) =>
+            failed > 0
+                ? `Check finished: ${outdated} update(s) available, ${failed} check(s) failed.`
+                : `Check finished: ${outdated} update(s) available.`,
+        updateToLatest: "Update to the latest version",
+        reinstall: "Reinstall",
+        freeze: "Freeze (exclude from automatic updates)",
+        unfreeze: "Unfreeze",
+        frozen: "Frozen",
+        openRepo: "Open repository in browser",
+        remove: "Remove",
+        removeConfirm: (name: string) =>
+            `Remove ${name}?\n\nThe plugin folder will be deleted, including any custom content inside it.`,
     },
 
     sync: {

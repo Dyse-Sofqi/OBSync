@@ -138,20 +138,54 @@ export const zhCN = {
         resolved: (host: string, repo: string) => `已识别为 ${host} 上的 ${repo}`,
         versionLabel: "安装版本",
         versionLatest: "最新版本",
+        versionListFailed: "无法获取版本列表，将按最新版本安装。",
         enableAfterInstall: "安装后立即启用",
         install: "安装",
         installing: "正在安装…",
+        installFailed: "安装失败",
         installed: (name: string, version: string) => `已安装 ${name} ${version}`,
         updated: (name: string, version: string) => `已更新 ${name} 至 ${version}`,
         upToDate: (name: string) => `${name} 已是最新版本`,
         reinstalled: (name: string) => `已重装 ${name}`,
         removed: (name: string) => `已移除 ${name}`,
+        removeFailed: "移除失败",
         sourceRelease: "来源：Release 资产",
         sourceRaw: "来源：仓库源码文件",
         mirrorFound: (repo: string) => `发现 Gitee 镜像：${repo}，将改用镜像源下载。`,
         noReleaseFallback: "该仓库没有发布 Release，将直接从源码文件安装。",
-        missingManifest: (repo: string) => `${repo} 中找不到有效的 manifest.json，可能不是 Obsidian 插件仓库。`,
+        missingManifest: (repo: string) =>
+            `${repo} 中找不到有效的 manifest.json，可能不是 Obsidian 插件仓库。`,
         missingMainJs: (repo: string) => `${repo} 中找不到 main.js，无法安装。`,
+
+        browse: "浏览社区插件",
+        communitySearchPlaceholder: "搜索插件名称、作者或描述…",
+        communityLoadFailed: "无法加载社区插件列表",
+
+        checkOne: "检查更新",
+        checkAll: "检查全部更新",
+        updateAll: "更新全部插件",
+        updatedMany: (count: number, names: string) => `已更新 ${count} 个插件：${names}`,
+        updateFailedMany: (count: number) => `${count} 个插件更新失败`,
+        checkFailed: "更新检查失败",
+        checking: "正在检查更新…",
+        updateAvailable: (name: string, version: string) =>
+            `${name} 有新版本 ${version}。`,
+        updatesAvailable: (count: number, names: string) =>
+            `有 ${count} 个插件可以更新：${names}`,
+        checkNone: "所有插件都是最新版本。",
+        checkSummary: (outdated: number, failed: number) =>
+            failed > 0
+                ? `检查完成：${outdated} 个可更新，${failed} 个检查失败。`
+                : `检查完成：${outdated} 个可更新。`,
+        updateToLatest: "更新到最新版本",
+        reinstall: "重装",
+        freeze: "冻结（不参与自动更新）",
+        unfreeze: "取消冻结",
+        frozen: "已冻结",
+        openRepo: "在浏览器中打开仓库",
+        remove: "移除",
+        removeConfirm: (name: string) =>
+            `确定要移除 ${name} 吗？\n\n插件目录会被删除，其中的自定义内容也会一并丢失。`,
     },
 
     sync: {

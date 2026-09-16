@@ -12,7 +12,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { __setRequestUrlHandler } from "../stubs/obsidian";
 import { GiteeHost } from "../../src/host/giteeHost";
 import { GitHubHost } from "../../src/host/githubHost";
-import { httpJson } from "../../src/host/http";
+import { httpJson, httpRequest } from "../../src/host/http";
 import { parseRepoRef } from "../../src/host/repoRef";
 import type { Release } from "../../src/host/types";
 
@@ -144,10 +144,24 @@ describe("Gitee 真实链路", () => {
         expect(content!.length).toBeGreaterThan(100);
     }, LIVE_TIMEOUT);
 
-    it("不指定 ref 时自动解析默认分支后仍能读到文件", async () => {
+    it("不指定 ref 时用 HEAD 也能读到文件（省掉一次 API 调用）", async () => {
         const content = await new GiteeHost().readFile(REF, "README.md");
 
         expect(content).toBeTruthy();
+    }, LIVE_TIMEOUT);
+
+    it("网页 raw 通道可零 API 配额探测仓库存在性（镜像发现的可行性依据）", async () => {
+        // 镜像发现靠这条路：存在的仓库返回 manifest，不存在返回 404，
+        // 全程不消耗 /api/v5 的配额 —— 在匿名配额极低的前提下这是唯一可行的做法。
+        const existing = await httpRequest({
+            url: "https://gitee.com/mindspore/mindspore/raw/HEAD/README.md",
+        });
+        const missingRepo = await httpRequest({
+            url: "https://gitee.com/mindspore/definitely-not-a-repo-xyz/raw/HEAD/manifest.json",
+        });
+
+        expect(existing.status).toBe(200);
+        expect(missingRepo.status).toBe(404);
     }, LIVE_TIMEOUT);
 
     it("读不存在的文件返回 undefined 而不是抛错", async () => {

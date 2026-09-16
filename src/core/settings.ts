@@ -1,3 +1,4 @@
+import type { TrackedPlugin } from "../features/installer/types";
 import type { LanguageSetting } from "./i18n";
 
 /**
@@ -18,6 +19,14 @@ export interface InstallerSettings {
     autoCheckDelaySeconds: number;
     /** 安装 GitHub 插件时是否优先探测 Gitee 镜像。 */
     discoverGiteeMirrors: boolean;
+    /**
+     * 已跟踪的插件。
+     *
+     * 类型定义在 `features/installer/types.ts`（那里才是它的业务归属），
+     * 这里是 type-only 引入 —— 设置模块负责的是「持久化什么形状」，
+     * 不必也不该把业务类型复制一份。
+     */
+    tracked: TrackedPlugin[];
 }
 
 export interface SyncSettings {
@@ -49,7 +58,11 @@ export const DEFAULT_SETTINGS: ObsyncSettings = {
         enabled: true,
         autoCheckOnStartup: true,
         autoCheckDelaySeconds: 60,
-        discoverGiteeMirrors: true,
+        // 默认关闭。实测抽样 40 个社区插件，Gitee 上同 owner 同名的镜像命中 0 个 ——
+        // 这个功能服务的是「用户知道某插件有镜像」的少数场景，不是普遍优化，
+        // 而每次探测都要花掉 Gitee 稀缺的配额。详见 features/installer/mirrorFinder.ts。
+        discoverGiteeMirrors: false,
+        tracked: [],
     },
     sync: {
         enabled: true,
@@ -118,7 +131,65 @@ export function normalizeSettings(loaded: unknown): ObsyncSettings {
     merged.sync.autoPushMinutes = clamp(merged.sync.autoPushMinutes, 0, 24 * 60);
     merged.sync.autoPullMinutes = clamp(merged.sync.autoPullMinutes, 0, 24 * 60);
 
+    // 数组不能靠递归合并校验 —— 它会被整体替换，条目内容没人检查过。
+    merged.installer.tracked = sanitizeTrackedPlugins(merged.installer.tracked);
+
     return merged;
+}
+
+const VALID_HOSTS = new Set(["github", "gitee"]);
+const VALID_CHANNELS = new Set(["release", "raw"]);
+
+/**
+ * 校验已跟踪插件列表，丢弃结构不完整的条目。
+ *
+ * 这里的取舍是「宁可少一个条目，也不要一个半坏的条目」：
+ * 一个缺 `pluginId` 的记录会让卸载功能删错目录，风险远大于重新添加一次。
+ */
+function sanitizeTrackedPlugins(value: unknown): TrackedPlugin[] {
+    if (!Array.isArray(value)) return [];
+
+    const result: TrackedPlugin[] = [];
+    const seen = new Set<string>();
+
+    for (const entry of value) {
+        if (!isPlainObject(entry)) continue;
+
+        const { host, owner, repo, pluginId, name } = entry;
+        if (typeof host !== "string" || !VALID_HOSTS.has(host)) continue;
+        if (typeof owner !== "string" || !owner) continue;
+        if (typeof repo !== "string" || !repo) continue;
+        if (typeof pluginId !== "string" || !pluginId) continue;
+
+        // 同一个插件 id 只保留第一条 —— 重复记录会让更新检查跑两遍。
+        if (seen.has(pluginId)) continue;
+        seen.add(pluginId);
+
+        const channel = typeof entry.channel === "string" && VALID_CHANNELS.has(entry.channel)
+            ? (entry.channel as TrackedPlugin["channel"])
+            : "release";
+
+        result.push({
+            host: host as TrackedPlugin["host"],
+            owner,
+            repo,
+            pluginId,
+            name: typeof name === "string" && name ? name : pluginId,
+            installedVersion: typeof entry.installedVersion === "string" ? entry.installedVersion : "",
+            requestedVersion:
+                typeof entry.requestedVersion === "string" && entry.requestedVersion
+                    ? entry.requestedVersion
+                    : "latest",
+            frozen: entry.frozen === true,
+            channel,
+            installedAt:
+                typeof entry.installedAt === "number" && Number.isFinite(entry.installedAt)
+                    ? entry.installedAt
+                    : 0,
+        });
+    }
+
+    return result;
 }
 
 function clamp(value: number, min: number, max: number): number {

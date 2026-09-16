@@ -97,14 +97,6 @@ export class GiteeHost implements IRepoHost {
     readonly apiBaseUrl = API_BASE;
     readonly tokenInQuery = true;
 
-    /**
-     * 默认分支缓存。
-     *
-     * 网页 raw 通道必须在 URL 里写出 ref，而调用方常常不知道默认分支是什么，
-     * 所以需要先查一次仓库元信息。同一个仓库在一次会话里查一次就够。
-     */
-    private readonly defaultBranchCache = new Map<string, string>();
-
     private baseHeaders(): Record<string, string> {
         return {
             Accept: "application/json",
@@ -175,22 +167,6 @@ export class GiteeHost implements IRepoHost {
             // 不处理的话用户会看到带 .git 的链接。
             webUrl: (res.data.html_url ?? repoWebUrl(ref)).replace(/\.git$/, ""),
         };
-    }
-
-    /** 查一次默认分支并缓存。失败返回 undefined，由调用方决定怎么降级。 */
-    private async resolveDefaultBranch(ref: RepoRef, token?: string): Promise<string | undefined> {
-        const id = formatRepoId(ref);
-        const cached = this.defaultBranchCache.get(id);
-        if (cached) return cached;
-
-        try {
-            const meta = await this.getRepoMeta(ref, token);
-            this.defaultBranchCache.set(id, meta.defaultBranch);
-            return meta.defaultBranch;
-        } catch {
-            // 拿不到默认分支不是致命错误 —— 上层会把它当成"文件读不到"处理。
-            return undefined;
-        }
     }
 
     async listReleases(ref: RepoRef, options: ListReleasesOptions = {}): Promise<Release[]> {
@@ -300,15 +276,19 @@ export class GiteeHost implements IRepoHost {
     /**
      * 读取文件内容。
      *
-     * 这里有一条**实测出来的**关键约束：Gitee 的 API raw 端点
-     * （`/v5/repos/{o}/{r}/raw/{path}`）对匿名请求一律返回 401
-     * （响应体："登录失效，无权限访问该资源"），**即使是公开仓库**。
-     * 所以匿名访问只能走网页 raw 通道：
+     * 这里有两条**实测出来的**关键约束：
      *
-     *     https://gitee.com/{owner}/{repo}/raw/{ref}/{path}
-     *     → 302 → raw.giteeusercontent.com/...
+     * 1. API raw 端点（`/v5/repos/{o}/{r}/raw/{path}`）对匿名请求一律返回 401
+     *    （响应体："登录失效，无权限访问该资源"），**即使是公开仓库**。
+     *    所以匿名访问只能走网页 raw 通道：
      *
-     * 网页通道必须在 URL 里写出 ref，因此不知道默认分支时要先查一次元信息。
+     *        https://gitee.com/{owner}/{repo}/raw/{ref}/{path}
+     *        → 302 → raw.giteeusercontent.com/...
+     *
+     * 2. 网页通道接受 `HEAD` 作为「默认分支」的写法（实测 200）。
+     *    这一点很重要：Gitee 的匿名 API 配额极低（实测连续请求后会直接
+     *    403 Rate Limit Exceeded，且一分钟内不恢复），所以能省一次 API 调用就省一次 ——
+     *    不必先查 `getRepoMeta` 拿默认分支。
      */
     async readFile(
         ref: RepoRef,
@@ -336,11 +316,9 @@ export class GiteeHost implements IRepoHost {
             }
         }
 
-        const branch = refName ?? (await this.resolveDefaultBranch(ref, token));
-        if (!branch) return undefined;
-
+        const refSegment = encodePathSegments(refName ?? "HEAD");
         const res = await httpRequest({
-            url: `https://gitee.com/${id}/raw/${encodePathSegments(branch)}/${encodedPath}`,
+            url: `https://gitee.com/${id}/raw/${refSegment}/${encodedPath}`,
         });
         if (res.status === 404) return undefined;
         if (res.status !== 200) {

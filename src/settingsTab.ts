@@ -1,5 +1,6 @@
 import { PluginSettingTab, Setting, type App } from "obsidian";
 import { LANGUAGE_OPTIONS, type LanguageSetting } from "./core/i18n";
+import { renderTrackedPlugins } from "./features/installer/ui/TrackedPluginsList";
 import type ObsyncPlugin from "./main";
 import { getHost } from "./host/hostRegistry";
 import type { HostKind } from "./host/types";
@@ -236,6 +237,51 @@ export class ObsyncSettingsTab extends PluginSettingTab {
                     await this.commit();
                 })
             );
+
+        // 主要操作放在设置页顶部一眼能看到的位置。
+        new Setting(this.containerEl)
+            .addButton((button) =>
+                button
+                    .setButtonText(t.installer.modalTitle)
+                    .setCta()
+                    .onClick(() => this.obsync.installer.openAddRepoModal())
+            )
+            .addButton((button) =>
+                button.setButtonText(t.installer.checkAll).onClick(async () => {
+                    button.setDisabled(true);
+                    await this.checkAllUpdates();
+                    button.setDisabled(false);
+                })
+            );
+
+        renderTrackedPlugins(this.containerEl, {
+            app: this.obsync.app,
+            t,
+            service: this.obsync.installer.service,
+            getTracked: () => this.obsync.settings.installer.tracked,
+            refresh: () => this.display(),
+        });
+    }
+
+    private async checkAllUpdates(): Promise<void> {
+        const t = this.obsync.t;
+        const tracked = this.obsync.settings.installer.tracked;
+
+        if (tracked.length === 0) {
+            this.obsync.notifier.info(t.settings.installer.trackedEmpty);
+            return;
+        }
+
+        try {
+            const summary = await this.obsync.installer.checker.checkAll(tracked);
+            if (summary.outdated === 0 && summary.failed === 0) {
+                this.obsync.notifier.success(t.installer.checkNone);
+                return;
+            }
+            this.obsync.notifier.info(t.installer.checkSummary(summary.outdated, summary.failed));
+        } catch (err) {
+            this.obsync.notifier.reportError(err, t.installer.checkFailed);
+        }
     }
 
     private renderSync(): void {

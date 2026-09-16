@@ -206,34 +206,17 @@ describe("GiteeHost.readFile", () => {
         expect(calls[0]!.url).not.toContain("/api/v5/");
     });
 
-    it("未指定 ref 时先查默认分支，再走网页通道", async () => {
-        useResponses((request) =>
-            request.url.includes("/api/v5/repos/owner/repo")
-                ? { status: 200, text: JSON.stringify({ default_branch: "master" }) }
-                : { status: 200, text: "// main.js" }
-        );
+    it("未指定 ref 时用 HEAD 作为默认分支，不再多花一次 API 调用", async () => {
+        // Gitee 的匿名 API 配额极低（实测会直接 403 限流且一分钟内不恢复），
+        // 网页 raw 通道又接受 HEAD，所以没必要先查一次 repo meta 拿默认分支。
+        useResponses(() => ({ status: 200, text: "// main.js" }));
 
         const content = await new GiteeHost().readFile(REF, "main.js");
 
         expect(content).toBe("// main.js");
-        expect(calls).toHaveLength(2);
-        expect(calls[0]!.url).toBe("https://gitee.com/api/v5/repos/owner/repo");
-        expect(calls[1]!.url).toBe("https://gitee.com/owner/repo/raw/master/main.js");
-    });
-
-    it("默认分支只查一次，后续读取复用缓存", async () => {
-        useResponses((request) =>
-            request.url.includes("/api/v5/repos/owner/repo")
-                ? { status: 200, text: JSON.stringify({ default_branch: "master" }) }
-                : { status: 200, text: "x" }
-        );
-
-        const host = new GiteeHost();
-        await host.readFile(REF, "manifest.json");
-        await host.readFile(REF, "main.js");
-
-        const metaCalls = calls.filter((c) => c.url === "https://gitee.com/api/v5/repos/owner/repo");
-        expect(metaCalls).toHaveLength(1);
+        expect(calls).toHaveLength(1);
+        expect(calls[0]!.url).toBe("https://gitee.com/owner/repo/raw/HEAD/main.js");
+        expect(calls[0]!.url).not.toContain("/api/v5/");
     });
 
     it("有令牌时走 API 通道（私有仓库唯一可行路径）", async () => {
@@ -276,7 +259,7 @@ describe("GiteeHost.readFile", () => {
         ).resolves.toBeUndefined();
     });
 
-    it("拿不到默认分支时返回 undefined 而不是抛错", async () => {
+    it("文件不存在时返回 undefined 而不是抛错", async () => {
         useResponses(() => ({ status: 404, text: '{"message":"Not Found"}' }));
 
         await expect(new GiteeHost().readFile(REF, "manifest.json")).resolves.toBeUndefined();
