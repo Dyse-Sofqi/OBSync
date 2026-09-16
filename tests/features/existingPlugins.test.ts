@@ -108,6 +108,78 @@ describe("resolveBindCandidates", () => {
         ]);
         expect(unresolved.map((plugin) => plugin.pluginId)).toEqual(["offline-plugin"]);
     });
+
+    it("目录名 ≠ manifest id 时按 id 查索引（实测本机 5 个插件如此）", async () => {
+        // 回归用例：早先用目录名查索引，「明明上了官方市场」的插件被误判成未识别。
+        const fake = createFakeApp({
+            ...seedPlugin("MDRazor", {
+                "manifest.json": JSON.stringify({
+                    id: "md-razor",
+                    name: "MDRazor",
+                    version: "0.1.0",
+                    minAppVersion: "1.5.0",
+                }),
+            }),
+        });
+        __setRequestUrlHandler(async (request) => {
+            if (request.url.endsWith("community-plugins.json")) {
+                return {
+                    status: 200,
+                    text: JSON.stringify([
+                        { id: "md-razor", name: "MDRazor", author: "", description: "", repo: "dyse-sofqi/MDRazor" },
+                    ]),
+                };
+            }
+            return { status: 404, text: "not found" };
+        });
+        const index = new CommunityPluginIndex();
+
+        const { bindable, unresolved } = await resolveBindCandidates(fake.app, index);
+
+        expect(unresolved).toHaveLength(0);
+        expect(bindable).toEqual([
+            {
+                pluginId: "md-razor",
+                name: "MDRazor",
+                version: "0.1.0",
+                repo: { host: "github", owner: "dyse-sofqi", repo: "MDRazor" },
+            },
+        ]);
+    });
+
+    it("同一 manifest id 出现在多个目录时只保留一个，且排除 OBSync 自身", async () => {
+        const fake = createFakeApp({
+            // 旧 id 的重复安装（实测有这种：obsidian-regex-replace/ 与 regex-replace/）
+            ...seedPlugin("obsidian-regex-replace", {
+                "manifest.json": JSON.stringify({
+                    id: "regex-replace",
+                    name: "Regex Find/Replace",
+                    version: "1.0.0",
+                    minAppVersion: "1.5.0",
+                }),
+            }),
+            ...seedPlugin("regex-replace", {
+                "manifest.json": JSON.stringify({
+                    id: "regex-replace",
+                    name: "Regex Find/Replace",
+                    version: "2.0.0",
+                    minAppVersion: "1.5.0",
+                }),
+            }),
+            ...seedPlugin("obsync", {
+                "manifest.json": JSON.stringify({
+                    id: "obsync",
+                    name: "OBSync",
+                    version: "0.1.0",
+                    minAppVersion: "1.5.0",
+                }),
+            }),
+        });
+
+        const installed = await listInstalledPlugins(fake.app);
+
+        expect(installed.map((plugin) => plugin.pluginId)).toEqual(["regex-replace"]);
+    });
 });
 
 describe("InstallerService.bindExisting", () => {

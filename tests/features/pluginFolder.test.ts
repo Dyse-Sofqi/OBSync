@@ -95,6 +95,62 @@ describe("writePluginFiles", () => {
     });
 });
 
+describe("目录名 ≠ manifest id（手动解压/别的安装器造成的错位）", () => {
+    /** 目录叫 MDRazor，manifest id 是 md-razor —— 实测本机就有这种插件。 */
+    const RAZOR_MANIFEST = JSON.stringify({
+        id: "md-razor",
+        name: "MDRazor",
+        version: "1.0.0",
+        minAppVersion: "1.5.0",
+    });
+
+    it("按 id 读写到真实目录，不新建同名 id 的第二份安装", async () => {
+        fake = createFakeApp(
+            seedPlugin("MDRazor", {
+                "manifest.json": RAZOR_MANIFEST,
+                "main.js": "// old razor main",
+            })
+        );
+
+        // 身份用 id 就能找到目录名不同的那份安装
+        expect(await isPluginInstalled(fake.app, "md-razor")).toBe(true);
+        expect((await readInstalledManifest(fake.app, "md-razor"))?.name).toBe("MDRazor");
+
+        const backup = await createBackup(fake.app, "md-razor");
+        const files = new Map<PluginFileName, string>([
+            ["manifest.json", RAZOR_MANIFEST],
+            ["main.js", "// new razor main"],
+        ]);
+        await writePluginFiles(fake.app, "md-razor", files, backup);
+
+        // 写进了 MDRazor/，且没有多出 md-razor/ 目录
+        expect(readPluginFile(fake, "MDRazor", "main.js")).toBe("// new razor main");
+        expect(fake.folders.has(".obsidian/plugins/md-razor")).toBe(false);
+    });
+
+    it("删除按 id 删掉真实目录", async () => {
+        fake = createFakeApp(
+            seedPlugin("MDRazor", { "manifest.json": RAZOR_MANIFEST, "main.js": "// x" })
+        );
+
+        await removePluginFolder(fake.app, "md-razor");
+
+        expect(readPluginFile(fake, "MDRazor", "manifest.json")).toBeUndefined();
+    });
+
+    it("全新安装（目录还不存在）落在 plugins/{id}", async () => {
+        const backup = await createBackup(fake.app, "brand-new");
+        const files = new Map<PluginFileName, string>([
+            ["manifest.json", RAZOR_MANIFEST],
+            ["main.js", "// fresh"],
+        ]);
+
+        await writePluginFiles(fake.app, "brand-new", files, backup);
+
+        expect(readPluginFile(fake, "brand-new", "main.js")).toBe("// fresh");
+    });
+});
+
 describe("失败回滚（参考项目 BRAT 没有这个能力）", () => {
     it("更新已有插件写到一半失败时，还原到安装前的内容", async () => {
         fake = createFakeApp(

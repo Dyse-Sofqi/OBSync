@@ -3,7 +3,7 @@ import { logger } from "../../core/logger";
 import { tryParseRepoRef } from "../../host/repoRef";
 import type { HostKind, RepoRef } from "../../host/types";
 import type { CommunityPluginIndex } from "./communityPlugins";
-import { readInstalledManifest } from "./pluginFolder";
+import { readManifestInFolder } from "./pluginFolder";
 import type { PluginManifest } from "./types";
 
 /**
@@ -14,8 +14,15 @@ import type { PluginManifest } from "./types";
  * Obsidian 的 manifest 规范里**没有** repo 字段（只有 author/authorUrl，
  * 后者常常只是作者主页）。但官方社区索引（`community-plugins.json`）
  * 提供了 `插件 id → owner/repo` 的权威映射 —— 从官方商店装的插件都能对上；
- * 不在官方商店里的（大量中文/Gitee 插件）识别不了，只能靠用户手动添加，
- * 这是数据源的边界，不是实现的疏漏。
+ * 不在官方商店里的（PKMer 等中文渠道分发、或自建的插件）识别不了，
+ * 只能靠用户手动添加，这是数据源的边界，不是实现的疏漏。
+ *
+ * ## 身份一律用 manifest id，不用目录名
+ *
+ * 目录名不保证等于 id（实测本机 32 个插件里 5 个错位：`MDRazor/` → `md-razor`、
+ * `obsidian-commander/` → `cmdr`）。早先版本拿目录名当 id 查索引，
+ * 导致这些「明明上了官方市场」的插件被误判成来源未识别 —— 这是踩过的坑，
+ * 查索引、查启用状态、写跟踪记录都必须用 manifest.id。
  *
  * ## 为什么扫文件系统而不是 `app.plugins.manifests`
  *
@@ -23,8 +30,12 @@ import type { PluginManifest } from "./types";
  * 拷进去一个插件还没重启）。以磁盘为准，顺带能发现「装了但损坏」的目录。
  */
 
+/** OBSync 自己的插件 id —— 不该出现在绑定列表里（跟踪自己毫无意义）。 */
+const OWN_PLUGIN_ID = "obsync";
+
 /** 库里已安装的一个插件（以磁盘上的 manifest 为准）。 */
 export interface ExistingPlugin {
+    /** manifest 里的 id（插件身份，不是目录名）。 */
     pluginId: string;
     manifest: PluginManifest;
     enabled: boolean;
@@ -39,7 +50,12 @@ export interface BindCandidate {
     repo: RepoRef;
 }
 
-/** 扫描库中已安装的插件目录。目录里没有合法 manifest 的会被跳过并记日志。 */
+/**
+ * 扫描库中已安装的插件目录。
+ *
+ * 目录里没有合法 manifest 的会被跳过并记日志；同一个 manifest id 出现在
+ * 多个目录时只保留第一个（重复安装，Obsidian 自己也只能加载一份）。
+ */
 export async function listInstalledPlugins(app: App): Promise<ExistingPlugin[]> {
     const pluginsRoot = normalizePath(`${app.vault.configDir}/plugins`);
 
@@ -54,17 +70,30 @@ export async function listInstalledPlugins(app: App): Promise<ExistingPlugin[]> 
     }
 
     const result: ExistingPlugin[] = [];
+    const seen = new Set<string>();
+
     for (const folder of folders) {
-        const pluginId = folder.slice(folder.lastIndexOf("/") + 1);
-        const manifest = await readInstalledManifest(app, pluginId);
+        // 直接从目录读 manifest（不按目录名去解析 id —— 那会再扫一遍目录）。
+        const manifest = await readManifestInFolder(app, folder);
         if (!manifest) {
             logger.debug(`skipping ${folder}: no valid manifest.json`);
             continue;
         }
+        if (manifest.id === OWN_PLUGIN_ID) continue;
+
+        if (seen.has(manifest.id)) {
+            logger.debug(
+                `skipping duplicate install of ${manifest.id} at ${folder} ` +
+                    `(already seen elsewhere)`
+            );
+            continue;
+        }
+        seen.add(manifest.id);
+
         result.push({
-            pluginId,
+            pluginId: manifest.id,
             manifest,
-            enabled: isPluginIdEnabled(app, pluginId),
+            enabled: isPluginIdEnabled(app, manifest.id),
         });
     }
 

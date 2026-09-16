@@ -30,13 +30,67 @@ function pluginManager(app: App): InternalPluginManager | undefined {
     return (app as unknown as { plugins?: InternalPluginManager }).plugins;
 }
 
-/** 插件目录的 vault 相对路径。 */
-export function getPluginFolder(app: App, pluginId: string): string {
+/** 插件目录的默认位置（目录名 = 插件 id，也是 Obsidian 自己的约定）。 */
+function defaultPluginFolder(app: App, pluginId: string): string {
     return normalizePath(`${app.vault.configDir}/plugins/${pluginId}`);
 }
 
-function filePath(app: App, pluginId: string, file: PluginFileName): string {
-    return normalizePath(`${getPluginFolder(app, pluginId)}/${file}`);
+/**
+ * 解析插件在磁盘上的**真实目录**。
+ *
+ * 目录名**不保证等于** manifest id：手动解压 release、或别的安装器用仓库名建目录，
+ * 都会造成错位 —— 实测本机 32 个插件里有 5 个（`MDRazor/` → id `md-razor`、
+ * `obsidian-commander/` → id `cmdr` 等）。踩过的坑：拿目录名当 id 去查官方索引
+ * 会让这些插件「明明上了市场却识别不出来」；而写文件时若按 id 建目录，
+ * 会造出同 id 的第二份安装。
+ *
+ * 因此：**目录名只用于定位文件，插件身份一律以 manifest id 为准**。
+ * 找不到匹配目录时返回默认位置 —— 全新安装的落点。
+ */
+export async function resolvePluginFolder(app: App, pluginId: string): Promise<string> {
+    const pluginsRoot = normalizePath(`${app.vault.configDir}/plugins`);
+
+    try {
+        const listing = await app.vault.adapter.list(pluginsRoot);
+        for (const folder of listing.folders) {
+            const name = folder.slice(folder.lastIndexOf("/") + 1);
+            // 快路径：目录名就是 id（绝大多数插件走这条，省一次 manifest 读取）。
+            if (name === pluginId) return folder;
+
+            const manifest = await readManifestAtPath(app, `${folder}/manifest.json`);
+            if (manifest?.id === pluginId) return folder;
+        }
+    } catch (err) {
+        // 插件根目录还不存在（全新库）—— 不是错误。
+        logger.debug("could not scan plugin folders", err);
+    }
+
+    return defaultPluginFolder(app, pluginId);
+}
+
+/** 读取指定路径的 manifest，失败返回 undefined。 */
+async function readManifestAtPath(
+    app: App,
+    path: string
+): Promise<PluginManifest | undefined> {
+    try {
+        if (!(await app.vault.adapter.exists(path))) return undefined;
+        return parseManifest(await app.vault.adapter.read(path), path);
+    } catch {
+        return undefined;
+    }
+}
+
+/** 读取某个插件目录里的 manifest（已知目录时用，避免再扫一遍目录）。 */
+export async function readManifestInFolder(
+    app: App,
+    folder: string
+): Promise<PluginManifest | undefined> {
+    return readManifestAtPath(app, filePathIn(folder, "manifest.json"));
+}
+
+function filePathIn(folder: string, file: PluginFileName): string {
+    return normalizePath(`${folder}/${file}`);
 }
 
 /** 读取已安装插件的 manifest。未安装或损坏时返回 undefined。 */
@@ -44,19 +98,14 @@ export async function readInstalledManifest(
     app: App,
     pluginId: string
 ): Promise<PluginManifest | undefined> {
-    const path = filePath(app, pluginId, "manifest.json");
-    try {
-        if (!(await app.vault.adapter.exists(path))) return undefined;
-        return parseManifest(await app.vault.adapter.read(path), pluginId);
-    } catch (err) {
-        logger.warn(`could not read installed manifest for ${pluginId}`, err);
-        return undefined;
-    }
+    const folder = await resolvePluginFolder(app, pluginId);
+    return readManifestAtPath(app, filePathIn(folder, "manifest.json"));
 }
 
 /** 判断插件是否已安装（以 manifest.json 是否存在为准）。 */
 export async function isPluginInstalled(app: App, pluginId: string): Promise<boolean> {
-    return app.vault.adapter.exists(filePath(app, pluginId, "manifest.json"));
+    const folder = await resolvePluginFolder(app, pluginId);
+    return app.vault.adapter.exists(filePathIn(folder, "manifest.json"));
 }
 
 /** 写入前的快照。`null` 表示该文件原本不存在。 */
@@ -68,7 +117,7 @@ export interface PluginFolderBackup {
 
 /** 把插件目录的现有内容读进内存。 */
 export async function createBackup(app: App, pluginId: string): Promise<PluginFolderBackup> {
-    const folder = getPluginFolder(app, pluginId);
+    const folder = await resolvePluginFolder(app, pluginId);
     const backup: PluginFolderBackup = {
         pluginId,
         folderExisted: await app.vault.adapter.exists(folder),
@@ -76,7 +125,7 @@ export async function createBackup(app: App, pluginId: string): Promise<PluginFo
     };
 
     for (const file of PLUGIN_FILES) {
-        const path = filePath(app, pluginId, file);
+        const path = filePathIn(folder, file);
         try {
             backup.files.set(
                 file,
@@ -94,7 +143,7 @@ export async function createBackup(app: App, pluginId: string): Promise<PluginFo
 
 /** 用快照还原插件目录。 */
 export async function restoreBackup(app: App, backup: PluginFolderBackup): Promise<void> {
-    const folder = getPluginFolder(app, backup.pluginId);
+    const folder = await resolvePluginFolder(app, backup.pluginId);
 
     // 如果安装前插件根本不存在，还原就是把它整个删掉。
     if (!backup.folderExisted) {
@@ -107,7 +156,7 @@ export async function restoreBackup(app: App, backup: PluginFolderBackup): Promi
     }
 
     for (const [file, content] of backup.files) {
-        const path = filePath(app, backup.pluginId, file);
+        const path = filePathIn(folder, file);
         if (content === null) {
             // 原本不存在的文件，还原时也不该存在。
             if (await app.vault.adapter.exists(path)) {
@@ -121,6 +170,9 @@ export async function restoreBackup(app: App, backup: PluginFolderBackup): Promi
 
 /**
  * 写入插件文件。
+ *
+ * 写入**已存在**插件的真实目录（目录名可能是仓库名而非 id，见 resolvePluginFolder）；
+ * 全新安装则落在 `plugins/{id}`。
  *
  * @param files 文件内容。`main.js` 与 `manifest.json` 必须存在。
  * @throws 缺必需文件时抛错（不写任何东西）；写入过程出错时先还原再抛错。
@@ -137,7 +189,7 @@ export async function writePluginFiles(
         }
     }
 
-    const folder = getPluginFolder(app, pluginId);
+    const folder = await resolvePluginFolder(app, pluginId);
     const written: string[] = [];
 
     try {
@@ -146,7 +198,7 @@ export async function writePluginFiles(
         }
 
         for (const [file, content] of files) {
-            const path = filePath(app, pluginId, file);
+            const path = filePathIn(folder, file);
             await app.vault.adapter.write(path, content);
             written.push(path);
         }
@@ -168,9 +220,9 @@ export async function writePluginFiles(
     logger.debug(`wrote ${written.length} file(s) for ${pluginId}`);
 }
 
-/** 删除整个插件目录。 */
+/** 删除插件目录（解析后的真实目录，不只按 id 猜）。 */
 export async function removePluginFolder(app: App, pluginId: string): Promise<void> {
-    const folder = getPluginFolder(app, pluginId);
+    const folder = await resolvePluginFolder(app, pluginId);
     if (!(await app.vault.adapter.exists(folder))) return;
     await app.vault.adapter.rmdir(folder, true);
 }
@@ -191,7 +243,9 @@ export async function enablePlugin(app: App, pluginId: string): Promise<void> {
         throw new ObsyncError("当前 Obsidian 版本不支持通过插件启用其他插件。");
     }
 
-    await manager.loadManifest?.(getPluginFolder(app, pluginId));
+    // loadManifest 要的是**目录**，enablePluginAndSave 要的是**插件 id** ——
+    // 两者在目录名 ≠ id 的插件上不是同一个字符串。
+    await manager.loadManifest?.(await resolvePluginFolder(app, pluginId));
     await manager.enablePluginAndSave(pluginId);
 }
 
