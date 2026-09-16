@@ -6,6 +6,7 @@ import {
     getHeader,
     httpJson,
     httpRequest,
+    setHttpDebugLogger,
 } from "../../src/host/http";
 import { NetworkError } from "../../src/host/errors";
 
@@ -226,5 +227,77 @@ describe("encodePathSegments", () => {
 
     it("丢掉空段与前导斜杠", () => {
         expect(encodePathSegments("/a//b/")).toBe("a/b");
+    });
+});
+
+describe("错误消息与日志里的凭据", () => {
+    /**
+     * 这一组守的是**令牌不出门**。
+     *
+     * Gitee 的鉴权只能放查询串（见 `IRepoHost.applyAuth`），所以带令牌的地址
+     * 会一路流到 `http.ts` 的错误消息里。而那条消息有两个出口：
+     * `Notifier.describeError` 把它弹到**屏幕上**，`logger.error` 把它写进控制台 ——
+     * 而用户在 issue 里贴的正是后者。等于 `core/secretStore` 那套白做。
+     *
+     * 所以这里既断言「没有令牌」，也断言「地址本身还在」：整段删掉虽然安全，
+     * 但排查时就不知道请求打的是哪个地址了。
+     */
+    const TOKEN = "ghp_THIS_MUST_NOT_LEAK_0000";
+    const TOKENIZED = `https://gitee.com/api/v5/repos/o/r?access_token=${TOKEN}`;
+
+    it("传输层失败：消息里没有令牌，但地址与参数名还在", async () => {
+        respondWith([{ throws: "fetch failed" }]);
+
+        const err = await httpRequest({ url: TOKENIZED, retries: 0 }).catch((e) => e);
+
+        expect(err).toBeInstanceOf(NetworkError);
+        const message = (err as Error).message;
+        expect(message).not.toContain(TOKEN);
+        expect(message).toContain("access_token=***");
+        expect(message).toContain("https://gitee.com/api/v5/repos/o/r");
+    });
+
+    it("超时的消息里也没有令牌", async () => {
+        __setRequestUrlHandler(() => new Promise(() => {}));
+
+        const err = await httpRequest({
+            url: TOKENIZED,
+            retries: 0,
+            timeoutMs: 30,
+        }).catch((e) => e);
+
+        const message = (err as Error).message;
+        expect(message).toContain("timed out after 30ms");
+        expect(message).not.toContain(TOKEN);
+    });
+
+    it("**脱敏只作用于消息 —— 实际请求仍然带真令牌**", async () => {
+        // 缺这条的话，最容易犯的错是「把地址里的令牌删掉再发出去」——
+        // 那会从「日志泄漏」变成「Gitee 全部 401」，而且症状完全不指向这里。
+        respondWith([{ status: 200, text: "{}" }]);
+
+        await httpRequest({ url: TOKENIZED, retries: 0 });
+
+        expect(requests).toHaveLength(1);
+        expect(requests[0]!.url).toBe(TOKENIZED);
+    });
+
+    it("调试日志里也没有令牌", async () => {
+        // 「输出调试日志」恰恰是用户排查问题时打开的开关 ——
+        // 那时候日志里的令牌会直接进 issue。
+        const lines: string[] = [];
+        setHttpDebugLogger((line) => lines.push(line));
+        try {
+            respondWith([{ throws: "fetch failed" }]);
+            await httpRequest({ url: TOKENIZED, retries: 0 }).catch(() => undefined);
+
+            respondWith([{ status: 200, text: "{}" }]);
+            await httpRequest({ url: TOKENIZED, retries: 0 });
+        } finally {
+            setHttpDebugLogger(undefined);
+        }
+
+        expect(lines.length).toBeGreaterThan(0);
+        expect(lines.join("\n")).not.toContain(TOKEN);
     });
 });

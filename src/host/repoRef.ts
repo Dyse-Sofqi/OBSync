@@ -1,4 +1,5 @@
 import { ParseError, UnsupportedHostError } from "./errors";
+import { redactUrl } from "./redact";
 import type { HostKind, RepoId, RepoRef } from "./types";
 
 /**
@@ -43,12 +44,27 @@ function looksLikeDomain(segment: string): boolean {
     return /\.(?:com|cn|org|net|io|dev|app|co|me|xyz|top|cc)$/i.test(lower);
 }
 
+/**
+ * 错误消息里回显地址前先去掉凭据。
+ *
+ * 用户粘进来的可能是 Gitee 界面自己给的「带令牌的克隆地址」
+ * （`https://oauth2:TOKEN@gitee.com/owner/repo.git`），甚至整条
+ * `git clone ...` 命令。这些输入一旦进了 `ParseError` / `UnsupportedHostError`，
+ * 就会被 `Notifier` **原样弹在屏幕上**（`unsupportedHost` / `parseFailed`
+ * 文案都是直接回显用户输入的），令牌于是随着一张截图出去。
+ *
+ * 解析本身不受影响：带 scheme 的分支走 `new URL().hostname`，本来就不含 userinfo。
+ */
+function redactForMessage(input: string): string {
+    return redactUrl(input);
+}
+
 function resolveHost(domain: string, input: string): HostKind {
     const known = HOST_BY_DOMAIN[domain.toLowerCase()];
     if (known) return known;
     throw new UnsupportedHostError(
-        `Unsupported host "${domain}" for repository "${input}".`,
-        input
+        `Unsupported host "${domain}" for repository "${redactForMessage(input)}".`,
+        redactForMessage(input)
     );
 }
 
@@ -76,7 +92,10 @@ function splitHostAndPath(
         try {
             url = new URL(input);
         } catch (cause) {
-            throw new ParseError(`Malformed repository URL: "${input}".`, { cause });
+            throw new ParseError(
+                `Malformed repository URL: "${redactForMessage(input)}".`,
+                { cause }
+            );
         }
         return { host: resolveHost(url.hostname, input), path: url.pathname };
     }
@@ -104,13 +123,15 @@ function splitOwnerRepo(path: string, original: string): [string, string] {
     const segments = path.split("/").filter((segment) => segment.length > 0);
     if (segments.length < 2) {
         throw new ParseError(
-            `Repository "${original}" is incomplete — expected owner/repo.`
+            `Repository "${redactForMessage(original)}" is incomplete — expected owner/repo.`
         );
     }
     const owner = segments[0]!;
     const repo = segments[1]!;
     if (!SEGMENT_RE.test(owner) || !SEGMENT_RE.test(repo)) {
-        throw new ParseError(`Repository "${original}" contains invalid characters.`);
+        throw new ParseError(
+            `Repository "${redactForMessage(original)}" contains invalid characters.`
+        );
     }
     return [owner, repo];
 }

@@ -114,6 +114,73 @@ describe("parseRepoRef", () => {
         expect(() => parseRepoRef("own er/repo")).toThrow(ParseError);
     });
 
+    /**
+     * 用户从 Gitee 界面复制的「带令牌的克隆地址」就是这个样子，
+     * 而从教程里复制时常常连 `git clone` 一起粘进来。
+     *
+     * 这些错误消息会被 `Notifier` **原样弹在屏幕上**（`parseFailed` /
+     * `unsupportedHost` 两条文案都是直接回显用户输入的），
+     * 所以回显前必须去掉凭据 —— 否则用户截一张图就把令牌送出去了。
+     */
+    describe("回显用户输入时不带凭据", () => {
+        const CLONE_URL = "https://oauth2:ghp_MUST_NOT_LEAK@gitee.com/owner/repo.git";
+
+        it("不支持的平台：UnsupportedHostError 的 input 已脱敏", () => {
+            const err = (() => {
+                try {
+                    parseRepoRef(CLONE_URL.replace("gitee.com", "gitlab.com"));
+                    return undefined;
+                } catch (e) {
+                    return e as UnsupportedHostError;
+                }
+            })();
+
+            expect(err).toBeInstanceOf(UnsupportedHostError);
+            // input 是给用户看的那一份（i18n 文案直接内插它）
+            expect(err!.input).not.toContain("ghp_MUST_NOT_LEAK");
+            expect(err!.input).toContain("oauth2:***@gitlab.com");
+            expect(err!.message).not.toContain("ghp_MUST_NOT_LEAK");
+        });
+
+        it("地址残缺时 ParseError 的消息也不带令牌", () => {
+            // 少了 repo 段：`https://oauth2:TOKEN@gitee.com/owner`
+            const err = (() => {
+                try {
+                    parseRepoRef(CLONE_URL.replace("/owner/repo.git", "/owner"));
+                    return undefined;
+                } catch (e) {
+                    return e as ParseError;
+                }
+            })();
+
+            expect(err).toBeInstanceOf(ParseError);
+            expect(err!.message).not.toContain("ghp_MUST_NOT_LEAK");
+        });
+
+        it("把整条 git clone 命令粘进来时，ParseError 里也不带令牌", () => {
+            // 这条走的是「认不出格式」的分支：整串都被当成 owner/repo 简写，
+            // 于是原样回显 —— 正是最容易漏掉凭据的一条路径。
+            const err = (() => {
+                try {
+                    parseRepoRef(`git clone ${CLONE_URL}`);
+                    return undefined;
+                } catch (e) {
+                    return e as ParseError;
+                }
+            })();
+
+            expect(err).toBeInstanceOf(ParseError);
+            expect(err!.message).not.toContain("ghp_MUST_NOT_LEAK");
+            expect(err!.message).toContain("oauth2:***@gitee.com");
+        });
+
+        it("正常地址的报错不受影响（不误改）", () => {
+            expect(() => parseRepoRef("https://github.com/owner")).toThrow(
+                /Repository "https:\/\/github\.com\/owner" is incomplete/
+            );
+        });
+    });
+
     it("tryParseRepoRef 不抛异常", () => {
         expect(tryParseRepoRef("garbage")).toBeUndefined();
         expect(tryParseRepoRef("owner/repo")?.owner).toBe("owner");

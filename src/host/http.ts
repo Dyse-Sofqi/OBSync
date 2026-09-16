@@ -1,5 +1,6 @@
 import { requestUrl } from "obsidian";
 import { NetworkError } from "./errors";
+import { redactUrl } from "./redact";
 
 /**
  * 对 Obsidian `requestUrl` 的薄封装。
@@ -97,6 +98,16 @@ export async function httpRequest(options: HttpRequestOptions): Promise<HttpResp
     let lastError: unknown;
 
     /**
+     * 日志与错误消息里一律用它，**不用 `options.url`**。
+     *
+     * 实际请求照旧发 `options.url`（Gitee 必须把令牌放查询串）。区别只在
+     * 呈现给人和写进日志的那一份 —— 否则 Gitee 每次请求失败，令牌都会
+     * 出现在屏幕上的错误提示里（Notifier 会把 NetworkError 的消息原样弹出来）
+     * 和控制台输出里，而后者正是用户报 issue 时要贴的东西。
+     */
+    const displayUrl = redactUrl(options.url);
+
+    /**
      * 实际发出去的请求次数。
      *
      * **不能用 `retries + 1` 反推** —— 传输层失败会立刻 `break`（见下面的说明），
@@ -109,7 +120,7 @@ export async function httpRequest(options: HttpRequestOptions): Promise<HttpResp
     for (let attempt = 0; attempt <= retries; attempt++) {
         if (attempt > 0) {
             const delay = RETRY_BASE_DELAY_MS * 3 ** (attempt - 1);
-            debugLogger?.(`[http] retry ${attempt}/${retries} after ${delay}ms — ${options.url}`);
+            debugLogger?.(`[http] retry ${attempt}/${retries} after ${delay}ms — ${displayUrl}`);
             await sleep(delay);
         }
 
@@ -125,7 +136,7 @@ export async function httpRequest(options: HttpRequestOptions): Promise<HttpResp
                     throw: false,
                 }),
                 timeoutMs,
-                options.url
+                displayUrl
             );
 
             const normalized: HttpResponse = {
@@ -137,12 +148,12 @@ export async function httpRequest(options: HttpRequestOptions): Promise<HttpResp
 
             if (isRetryableStatus(response.status) && attempt < retries) {
                 lastError = new NetworkError(
-                    `HTTP ${response.status} from ${options.url}.`
+                    `HTTP ${response.status} from ${displayUrl}.`
                 );
                 continue;
             }
 
-            debugLogger?.(`[http] ${response.status} ${options.method ?? "GET"} ${options.url}`);
+            debugLogger?.(`[http] ${response.status} ${options.method ?? "GET"} ${displayUrl}`);
             return normalized;
         } catch (err) {
             // **传输层失败不重试。**
@@ -157,14 +168,16 @@ export async function httpRequest(options: HttpRequestOptions): Promise<HttpResp
             // 值得重试的是**服务端临时故障**（5xx / 408），那些会很快返回状态码，
             // 见上面的 `isRetryableStatus` 分支。
             lastError = err;
-            debugLogger?.(`[http] attempt ${attempt} failed — ${options.url}: ${String(err)}`);
+            debugLogger?.(`[http] attempt ${attempt} failed — ${displayUrl}: ${String(err)}`);
             break;
         }
     }
 
-    const detail = lastError instanceof Error ? lastError.message : String(lastError);
+    // `detail` 也过一遍脱敏：底层错误（Electron 的 net 层等）有时会把请求地址
+    // 带进自己的消息里，而那个地址同样是带令牌的那一份。
+    const detail = redactUrl(lastError instanceof Error ? lastError.message : String(lastError));
     throw new NetworkError(
-        `Request to ${options.url} failed after ${attemptsMade} attempt(s): ${detail}`,
+        `Request to ${displayUrl} failed after ${attemptsMade} attempt(s): ${detail}`,
         { cause: lastError }
     );
 }
