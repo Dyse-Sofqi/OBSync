@@ -316,9 +316,16 @@ export const zhCN = {
         editRemoteLabel: "远端仓库地址",
         editRemotePlaceholder: "https://github.com/owner/repo.git",
         editRemoteSaved: (url: string) => `远端已设置为 ${url}`,
-        editRemoteInvalid: "这看起来不是一个 git 远端地址。请填写 URL、git@host:path 或本地路径。",
-        editRemoteNotGithubOrGitee:
-            "可以保存并使用 —— 同步是纯 git 操作。但该平台不是 GitHub 或 Gitee，所以不会自动注入访问令牌，「在远端打开」也用不了（私有仓库需要系统凭据助手）。",
+        // 按类型码取文案（与 diagnoseDetail 同一套约定），判定见 classifyRemoteUrl。
+        editRemoteHint: {
+            invalid: "这看起来不是一个 git 远端地址。请填写 URL、git@host:path 或本地路径。",
+            credentials:
+                "这个地址里带着账号和令牌，保存后它们会以明文写进库里的 .git/config —— " +
+                "`git remote -v` 能直接看到，备份或同步整个库时也会一起带走。" +
+                "建议把地址改成不带凭据的形式，令牌填到上面「访问令牌」里（走系统密钥库，不落盘）。",
+            notGithubOrGitee:
+                "可以保存并使用 —— 同步是纯 git 操作。但该平台不是 GitHub 或 Gitee，所以不会自动注入访问令牌，「在远端打开」也用不了（私有仓库需要系统凭据助手）。",
+        },
         // ── .gitignore ──
         gitignoreCreated: "已创建 .gitignore（排除了 Obsidian 的工作区状态文件，避免多设备冲突）。",
         cmdEditGitignore: "OBSync：编辑 .gitignore",

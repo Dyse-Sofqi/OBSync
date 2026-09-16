@@ -501,6 +501,62 @@ describe("diagnose（同步配置诊断）", () => {
         expect(git.calls.some((call) => call.startsWith("commit:"))).toBe(false);
         expect(git.calls).not.toContain("push");
     });
+
+    /**
+     * 报告里的 `detail` 会被设置页**渲染出来**，所以它是「令牌会不会上屏」的
+     * 最后一个关口 —— 而 `add()` 是这个报告唯一的写入点，脱敏放在那里。
+     *
+     * 触发路径很现实：库的远端**本来就**写着带令牌的地址
+     * （用户从前用别的方式配的），或他在「编辑远端地址」里明知代价还是粘了进来
+     * （弹窗会警告，但刻意不拦）。
+     */
+    const TOKEN = "ghp_MUST_NOT_LEAK_0000";
+
+    it("远端地址自带凭据时，报告里的地址已脱敏但地址本身还在", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service } = makeService(git, fake);
+        git.remoteUrl = `https://oauth2:${TOKEN}@gitee.com/owner/repo.git`;
+
+        const report = await service.diagnose();
+
+        // 整份报告都不该出现令牌 —— 逐条扫，而不是只看 remote 那条。
+        // 漏了后面新加的检查条目正是这类改动最容易留下的洞。
+        for (const check of report.checks) {
+            expect(check.detail ?? "").not.toContain(TOKEN);
+        }
+
+        const detail = report.checks.find((c) => c.id === "remote")?.detail ?? "";
+        // 地址本身要留着 —— 报告的作用就是让用户核对自己配了什么
+        expect(detail).toContain("gitee.com/owner/repo.git");
+        expect(detail).toContain("oauth2:***@");
+    });
+
+    it("平台认不出时，skipped 那条里的地址也脱敏（另一条分支）", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service } = makeService(git, fake);
+        git.remoteUrl = `https://oauth2:${TOKEN}@gitlab.com/owner/repo.git`;
+
+        const report = await service.diagnose();
+        const detail = report.checks.find((c) => c.id === "platform")?.detail ?? "";
+
+        expect(detail).not.toContain(TOKEN);
+        expect(detail).toContain("gitlab.com");
+    });
+
+    it("查询串里的令牌同样处理（不只是 userinfo）", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service } = makeService(git, fake);
+        git.remoteUrl = `https://gitee.com/owner/repo.git?access_token=${TOKEN}`;
+
+        const report = await service.diagnose();
+
+        for (const check of report.checks) {
+            expect(check.detail ?? "").not.toContain(TOKEN);
+        }
+    });
 });
 
 describe("initRepo 与 .gitignore", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { redactUrl } from "../../src/host/redact";
+import { containsCredentials, redactUrl } from "../../src/host/redact";
 
 /**
  * 凭据脱敏。
@@ -121,6 +121,64 @@ describe("redactUrl：URL 里的 userinfo", () => {
     it("普通地址（无 userinfo）不受影响", () => {
         const url = "https://api.github.com/repos/o/r/releases/latest";
         expect(redactUrl(url)).toBe(url);
+    });
+
+    /**
+     * SSH 系地址的 userinfo 是**登录名**，不是凭据。
+     *
+     * 这条是写「编辑远端地址」的凭据警告时踩到的：第一版把「没有冒号的 userinfo」
+     * 一律当令牌，于是每个正常的 SSH 远端都被警告「你的令牌会被明文写进 .git/config」。
+     * 而项目自己的输入提示写的就是 `git@host:path` —— 警告会变成纯噪音。
+     */
+    it("ssh://git@host 的 `git` 是登录名，原样保留", () => {
+        const url = "ssh://git@github.com/o/r.git";
+        expect(redactUrl(url)).toBe(url);
+        expect(redactUrl("git+ssh://git@internal.corp/git/notes.git")).toBe(
+            "git+ssh://git@internal.corp/git/notes.git"
+        );
+        expect(redactUrl("sftp://deploy@sftp.example.com/notes")).toBe(
+            "sftp://deploy@sftp.example.com/notes"
+        );
+    });
+
+    it("ssh 地址里带冒号的那段确实是密码，仍然脱", () => {
+        expect(redactUrl("ssh://user:hunter2@host/notes.git")).toBe(
+            "ssh://user:***@host/notes.git"
+        );
+    });
+
+    it("http 系里没有冒号的 userinfo 仍按令牌处理（令牌当用户名是真实用法）", () => {
+        for (const scheme of ["https://", "http://"]) {
+            expect(redactUrl(`${scheme}ghp_token@github.com/o/r.git`)).toBe(
+                `${scheme}***@github.com/o/r.git`
+            );
+        }
+    });
+});
+
+/**
+ * `containsCredentials` 是「该不该警告用户」的判据。
+ *
+ * 它**刻意由 `redactUrl` 的结果导出**，所以这里除了正确性，还要钉住这层关系：
+ * 两者一旦分叉，就会出现「警告了却脱不干净」或「脱干净了却不警告」这种
+ * 自相矛盾的状态。用一条 `it.each` 同时断言两件事。
+ */
+describe("containsCredentials（是否该警告用户）", () => {
+    it.each([
+        ["https://oauth2:tok@gitee.com/o/r.git", true],
+        ["https://tok@github.com/o/r.git", true],
+        ["https://gitee.com/o/r.git?access_token=tok", true],
+        ["ssh://user:pass@host/notes.git", true],
+        ["https://github.com/owner/repo.git", false],
+        ["git@gitee.com:owner/repo.git", false],
+        ["ssh://git@github.com/o/r.git", false],
+        ["https://gitee.com/o/r.git?direction=desc&page=2", false],
+        ["D:/repos/notes", false],
+        ["", false],
+    ])("%s → %s", (input, expected) => {
+        expect(containsCredentials(input)).toBe(expected);
+        // 判据与脱敏必须一致：说要警告，就必须真的能脱掉东西
+        expect(redactUrl(input) !== input).toBe(expected);
     });
 });
 

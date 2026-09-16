@@ -19,6 +19,7 @@ import {
 import { EditRemoteModal } from "./features/sync/ui/EditRemoteModal";
 import { SourceControlView, SYNC_VIEW_TYPE } from "./features/sync/ui/SourceControlView";
 import { setHttpDebugLogger } from "./host/http";
+import { redactUrl } from "./host/redact";
 import { ObsyncSettingsTab } from "./settingsTab";
 
 /**
@@ -468,7 +469,9 @@ export default class ObsyncPlugin extends Plugin {
                     if (url) {
                         await this.sync!.git.setRemoteUrl(url);
                     }
-                    this.notifier.success(this.t.sync.editRemoteSaved(url || "—"));
+                    // 回显前脱敏：用户完全可能填一个带令牌的地址
+                    // （弹窗会警告，但选择权留给他），而这条提示会**弹在屏幕上**。
+                    this.notifier.success(this.t.sync.editRemoteSaved(redactUrl(url) || "—"));
                     await this.sync!.service.refresh();
                 } catch (err) {
                     await this.runSyncAction(() => Promise.reject(err));

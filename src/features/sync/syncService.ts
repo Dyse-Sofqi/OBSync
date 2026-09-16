@@ -7,6 +7,7 @@ import type { GitManager } from "./gitManager";
 import { ConflictError, describeSyncError } from "./errors";
 import type { SecretStore } from "../../core/secretStore";
 import { parseGitRemoteUrl } from "../../host/repoRef";
+import { redactUrl } from "../../host/redact";
 import type {
     DiagnosticCheck,
     DiagnosticsReport,
@@ -271,12 +272,25 @@ export class SyncService {
      */
     async diagnose(): Promise<DiagnosticsReport> {
         const checks: DiagnosticCheck[] = [];
+        /**
+         * `detail` 会被设置页**渲染出来**，所以在这里统一脱敏 ——
+         * 这是「原始数据」变成「给人看的报告」的唯一收口点。
+         *
+         * 为什么不能只在 `remote` 那条上做：这个报告里凡是带 `detail` 的条目
+         * 都可能夹带地址（git 的报错、平台的失败原因），逐条去记该脱哪些必然漏。
+         * 在收口点做一次，将来新加的检查也自动受保护。
+         *
+         * 现实触发路径：库的远端本来就写着带令牌的地址
+         * （用户以前用别的方式配的，或在「编辑远端地址」里粘的），
+         * 那这条检查就会把令牌显示在设置页上。
+         */
         const add = (
             id: DiagnosticCheck["id"],
             status: DiagnosticCheck["status"],
             detail?: string
         ): void => {
-            checks.push(detail === undefined ? { id, status } : { id, status, detail });
+            const safe = detail === undefined ? undefined : redactUrl(detail);
+            checks.push(safe === undefined ? { id, status } : { id, status, detail: safe });
         };
 
         // 1) git 可执行文件。这一步失败的话后面全都做不了，直接停。

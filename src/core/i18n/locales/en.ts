@@ -311,10 +311,14 @@ export const en = {
         editRemoteLabel: "Remote repository URL",
         editRemotePlaceholder: "https://github.com/owner/repo.git",
         editRemoteSaved: (url: string) => `Remote set to ${url}`,
-        editRemoteInvalid:
-            "That does not look like a git remote. Use a URL, git@host:path, or a local path.",
-        editRemoteNotGithubOrGitee:
-            "You can save and use this — syncing is plain git. But since the host is not GitHub or Gitee, no access token will be injected and \"Open on remote\" will not work (private repositories then rely on the OS credential helper).",
+        editRemoteHint: {
+            invalid:
+                "That does not look like a git remote. Use a URL, git@host:path, or a local path.",
+            credentials:
+                "This URL carries a username and a token. Saving it writes them in plain text to the vault's .git/config — visible to `git remote -v`, and carried along by any backup or sync of the vault. Prefer a URL without credentials and put the token in the \"Access token\" field above (it is kept in the OS secret storage, not on disk).",
+            notGithubOrGitee:
+                "You can save and use this — syncing is plain git. But since the host is not GitHub or Gitee, no access token will be injected and \"Open on remote\" will not work (private repositories then rely on the OS credential helper).",
+        },
         // ── .gitignore ──
         gitignoreCreated:
             "Created a .gitignore (it excludes Obsidian's workspace state files, which would otherwise cause conflicts between devices).",

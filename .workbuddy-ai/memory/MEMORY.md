@@ -144,6 +144,37 @@ pnpm verify:mobile  # 构建 + 用真实产物验证「移动端能加载」
   用户名那条就是照「两个平台都只校令牌不校用户名」的假设写的，结果是错的 ——
   而单测永远发现不了（我们构造出的 Basic 头本身合法，不合法的是对端接不接受）。
 
+### 凭据不能从消息/日志漏出去（新增网络代码前必读）
+- **任何写进错误消息或日志的 URL 都要过 `host/redact.ts` 的 `redactUrl()`**。
+  Gitee 的令牌只能放查询串（`?access_token=`），而 `Notifier` 会把
+  `NetworkError.message` **原样弹在屏幕上**、`logger` 又写进控制台 ——
+  后者正是用户报 issue 时贴的东西。`secretStore` 绕开 `data.json` 的功夫
+  会被这条路全部抵消（2026-09-16 修）。
+- **回显用户输入的错误也要脱敏**：`parseFailed` / `unsupportedHost` 两条 i18n
+  文案直接内插 `input`，而用户会粘 `https://oauth2:TOKEN@gitee.com/…`
+  甚至整条 `git clone …`。
+- **「给人看的字符串」的每个收口点都要做一次**，不要逐条去记哪些变量敏感。
+  已有三处：`httpRequest` 的所有 URL 出口、`repoRef` 的错误回显、
+  `SyncService.diagnose` 的 `add()`（报告的 `detail` 会渲染在设置页上）。
+- 脱敏的失败方式有两种，**两种都要测**：漏脱（令牌泄漏）与**过脱**
+  （把非凭据参数、或消息里地址后面的说明文字一起吃掉 → 日志看不出超时还是失败）。
+  只测「敏感内容不出现」的话，最省事的实现（整段删掉）也能让测试变绿；
+  同时要有一条「**脱敏不能影响实际请求**」的守卫。
+- **别用 `new URL()` → `toString()` 做脱敏**：会规范化 URL（补斜杠、重排参数），
+  日志里的地址就和实际发出去的不是同一个；畸形输入上还会抛错。定点正则替换即可。
+- **SSH 地址的 `git@` 是登录名，不是令牌**。无冒号的 userinfo 判成凭据是错的
+  （会让每个正常 SSH 远端都收到「你的令牌会被明文写入」的警告），
+  所以 `redactUserInfo` 按 scheme 区分，白名单见 `USERNAME_ONLY_SCHEMES`。
+  但 `https://TOKEN@github.com` 是**真实用法**（平台接受令牌当用户名），仍要脱。
+- `containsCredentials()` **由 `redactUrl` 的结果导出**（`redactUrl(x) !== x`），
+  刻意只留一个事实来源 —— 否则会出现「警告了却脱不干净」的自相矛盾状态。
+- **git 自己的报错会剥掉 userinfo**（实测：`fatal: Authentication failed for
+  'https://gitee.com/o/r.git/'`，令牌不在里面），所以 git stderr 这条路是干净的；
+  但 **`git remote -v` 会显示明文**，`.git/config` 里也是明文 ——
+  这正是 `auth.ts` 选择 `http.extraheader` 的理由，别改回把令牌写进 remote URL。
+- git 层的令牌走 `http.extraheader`（`-c` 参数），不落盘也不进错误消息 ——
+  这条路径是对的（simple-git 的报错取 stderr 而不是命令行），别改成写进 remote URL。
+
 ### 代码风格
 - 注释用中文，写**为什么**而不是**做了什么**。
 - 不复刻参考项目的兼容包袱（如 BRAT 的设置页新旧双渲染、obsidian-git 的树形视图）。

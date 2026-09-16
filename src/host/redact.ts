@@ -59,6 +59,20 @@ const SECRET_WORDS = new Set([
 /** 自由文本里也可能嵌着 `scheme://user:pass@host`，所以不加 `^` 锚点。 */
 const USERINFO_RE = /([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)([^/?#\s@]*@)/g;
 
+/**
+ * 这些协议的 userinfo **只有用户名**，不可能是凭据。
+ *
+ * SSH 系地址里的 `git@` 就是登录名，这个位置没有「把令牌当用户名」的用法 ——
+ * 而它又极其常见（本项目的输入提示自己就写着 `git@host:path`）。
+ * 不排除它的话，每一个正常的 SSH 远端都会被判成「地址里有令牌」，
+ * 提示变成噪音，真正该被看见的那条也就没人看了。
+ *
+ * 反过来，`https://TOKEN@github.com/...` 是确实存在的用法
+ * （GitHub / Gitee 都接受「令牌当用户名」），所以 http 系**必须**算凭据。
+ * 白名单之外一律按凭据处理 —— 宁可多脱一点。
+ */
+const USERNAME_ONLY_SCHEMES = /^(?:git\+ssh|ssh|sftp):\/\/$/i;
+
 function isSecretName(name: string): boolean {
     let decoded = name;
     try {
@@ -77,13 +91,19 @@ function isSecretName(name: string): boolean {
  * userinfo 里只脱密码部分，保留用户名 —— 用户名不敏感，而且排查
  * 「凭据用户名不被平台接受」那类问题时它正是关键信息。
  *
- * 没有冒号时整段都当凭据（`https://ghp_xxx@github.com` 这种形式里
- * 那一段就是令牌本身）。
+ * 没有冒号时分两种情况：
+ *
+ * - **`https://TOKEN@github.com/...`** —— 这一段就是令牌本身，整段脱掉；
+ * - **`ssh://git@host/...`** —— `git` 只是登录名，原样保留。
+ *
+ * 第二种曾是漏掉的（判成「地址里有凭据」），症状是正常的 SSH 远端被
+ * 「编辑远端地址」弹窗警告「你的令牌会被明文写进 .git/config」。
+ * 详见 `USERNAME_ONLY_SCHEMES`。
  */
-function redactUserInfo(userinfo: string): string {
+function redactUserInfo(scheme: string, userinfo: string): string {
     const colon = userinfo.lastIndexOf(":");
-    if (colon === -1) return REDACTED;
-    return `${userinfo.slice(0, colon)}:${REDACTED}`;
+    if (colon !== -1) return `${userinfo.slice(0, colon)}:${REDACTED}`;
+    return USERNAME_ONLY_SCHEMES.test(scheme) ? userinfo : REDACTED;
 }
 
 /**
@@ -120,7 +140,7 @@ export function redactUrl(text: string): string {
         .replace(
             USERINFO_RE,
             (_match, scheme: string, userinfo: string) =>
-                `${scheme}${redactUserInfo(userinfo.slice(0, -1))}@`
+                `${scheme}${redactUserInfo(scheme, userinfo.slice(0, -1))}@`
         )
         .replace(
             SECRET_PARAM_RE,
@@ -129,4 +149,21 @@ export function redactUrl(text: string): string {
                     ? match
                     : `${separator}${name}=${REDACTED}`
         );
+}
+
+/**
+ * 这段文本里有没有凭据 —— 即「脱敏会不会改动它」。
+ *
+ * **刻意用 `redactUrl` 的结果来判定**，而不是另写一套识别规则：
+ * 两者的判定范围一旦分叉，就会出现「警告了却脱不干净」或
+ * 「脱干净了却不警告」这种自相矛盾的状态。这里只有一个事实来源。
+ *
+ * 用途是「编辑远端地址」时的提醒：项目刻意不把令牌写进 remote URL
+ * （见 `features/sync/auth.ts` 的方案取舍 —— 会落进 `.git/config`、
+ * `git remote -v` 一眼可见、还会随配置文件泄漏），
+ * 所以用户粘一个带令牌的地址进来时该拦住他，而不是默默照写。
+ */
+export function containsCredentials(text: string): boolean {
+    if (!text) return false;
+    return redactUrl(text) !== text;
 }
