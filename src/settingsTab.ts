@@ -364,8 +364,23 @@ export class ObsyncSettingsTab extends PluginSettingTab {
             );
 
         new Setting(this.containerEl)
-            .setName("git 可执行文件路径")
-            .setDesc("留空则使用系统 PATH 中的 git。Windows 上 git 未加入 PATH 时需要填写。")
+            .setName(t.settings.sync.strategy)
+            .setDesc(t.settings.sync.strategyDesc)
+            .addDropdown((dropdown) => {
+                dropdown
+                    .addOption("merge", t.settings.sync.strategyMerge)
+                    .addOption("rebase", t.settings.sync.strategyRebase)
+                    .addOption("reset", t.settings.sync.strategyReset);
+                dropdown.setValue(settings.syncStrategy);
+                dropdown.onChange(async (value) => {
+                    settings.syncStrategy = value as typeof settings.syncStrategy;
+                    await this.commit();
+                });
+            });
+
+        new Setting(this.containerEl)
+            .setName(t.settings.sync.gitPath)
+            .setDesc(t.settings.sync.gitPathDesc)
             .addText((text) =>
                 text
                     .setPlaceholder("C:\\Program Files\\Git\\cmd\\git.exe")

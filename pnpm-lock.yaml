@@ -12,7 +12,7 @@ importers:
         specifier: ^7.7.2
         version: 7.8.5
       simple-git:
-        specifier: ^3.30.0
+        specifier: ^3.36.0
         version: 3.36.0
     devDependencies:
       '@types/node':

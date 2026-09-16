@@ -36,6 +36,8 @@ export interface SyncSettings {
     autoPushMinutes: number;
     autoPullMinutes: number;
     commitMessage: string;
+    /** 拉取整合策略：merge（默认）/ rebase / reset（本地以远端为准）。 */
+    syncStrategy: "merge" | "rebase" | "reset";
     /** git 可执行文件路径。空表示用 PATH 里的 git。 */
     gitPath: string;
 }
@@ -70,6 +72,9 @@ export const DEFAULT_SETTINGS: ObsyncSettings = {
         autoPushMinutes: 0,
         autoPullMinutes: 0,
         commitMessage: "vault backup: {{date}}",
+        // merge 是 git 的默认行为，对普通用户最不容易丢数据；
+        // rebase/reset 交给明确知道自己要什么的用户。
+        syncStrategy: "merge",
         gitPath: "",
     },
 };
@@ -130,6 +135,10 @@ export function normalizeSettings(loaded: unknown): ObsyncSettings {
     merged.sync.autoCommitMinutes = clamp(merged.sync.autoCommitMinutes, 0, 24 * 60);
     merged.sync.autoPushMinutes = clamp(merged.sync.autoPushMinutes, 0, 24 * 60);
     merged.sync.autoPullMinutes = clamp(merged.sync.autoPullMinutes, 0, 24 * 60);
+
+    if (!["merge", "rebase", "reset"].includes(merged.sync.syncStrategy)) {
+        merged.sync.syncStrategy = "merge";
+    }
 
     // 数组不能靠递归合并校验 —— 它会被整体替换，条目内容没人检查过。
     merged.installer.tracked = sanitizeTrackedPlugins(merged.installer.tracked);

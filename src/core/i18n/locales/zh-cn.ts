@@ -125,6 +125,14 @@ export const zhCN = {
             autoPullDesc: "设为 0 表示关闭。",
             commitMessage: "提交信息模板",
             commitMessageDesc: "支持 {{date}}、{{hostname}}、{{numFiles}}、{{files}} 变量。",
+            strategy: "拉取整合策略",
+            strategyDesc:
+                "拉取时如何处理本地与远端的历史分歧。merge 保留双方并产生合并提交；rebase 把本地提交放到远端之后；reset 放弃本地提交、完全以远端为准。",
+            strategyMerge: "合并（保留双方历史）",
+            strategyRebase: "变基（历史线性）",
+            strategyReset: "重置（以远端为准，丢弃本地提交）",
+            gitPath: "git 可执行文件路径",
+            gitPathDesc: "留空使用系统 PATH 中的 git。Windows 上 git 不在 PATH 时才需要填写。",
         },
     },
 
@@ -197,8 +205,45 @@ export const zhCN = {
         notARepo: "当前仓库尚未初始化 git。",
         gitNotFound: "找不到 git 可执行文件，请在设置中指定路径。",
         nothingToCommit: "没有需要提交的更改。",
+        noRemote: "还没有配置远端仓库，请在设置中填写远端地址。",
         conflictDetected: (count: number) =>
             `检测到 ${count} 个冲突文件，已生成冲突清单，请手动处理后提交。`,
+
+        // 命令名（命令面板里显示）
+        cmdSync: "OBSync：立即同步（提交 → 拉取 → 推送）",
+        cmdCommit: "OBSync：提交全部更改",
+        cmdPush: "OBSync：推送到远端",
+        cmdPull: "OBSync：从远端拉取",
+        cmdInit: "OBSync：初始化仓库",
+        cmdAbortMerge: "OBSync：放弃当前合并（冲突恢复）",
+        cmdEditRemote: "OBSync：编辑远端地址",
+
+        // 视图 / 状态栏里的短动作名
+        actSync: "立即同步",
+        actCommit: "提交全部",
+        actPull: "拉取",
+        actPush: "推送",
+        actEditRemote: "编辑远端…",
+        branchLabel: "分支",
+
+        editRemoteTitle: "编辑远端地址",
+        editRemoteLabel: "远端仓库地址",
+        editRemotePlaceholder: "https://github.com/owner/repo.git",
+        editRemoteSaved: (url: string) => `远端已设置为 ${url}`,
+        editRemoteInvalid: "无法识别该仓库地址。支持 GitHub 与 Gitee 的 HTTPS / SSH 地址。",
+        repoInited: "git 仓库已初始化。",
+        mergeAborted: "已放弃当前合并，仓库回到拉取前的状态。",
+
+        conflictGuideFile: "OBSync 冲突指南.md",
+        conflictGuideTitle: "同步冲突指南",
+        conflictGuideIntro:
+            "本次拉取时，下列文件在本地和远端都被修改了，git 无法自动决定保留哪一边。文件里的冲突位置以 <<<<<<< 与 >>>>>>> 标出。",
+        conflictGuideFiles: "冲突文件：",
+        conflictGuideResolve:
+            "处理方式：打开每个文件，编辑冲突位置保留你想要的内容（删掉标记行），然后执行「OBSync：立即同步」，冲突解决后会正常提交并推送。",
+        conflictGuideAbort:
+            "如果想放弃本次合并、回到拉取之前的状态，执行命令「OBSync：放弃当前合并」。",
+        conflictGuideFooter: (time: string) => `此文件由 OBSync 于 ${time} 自动生成，处理后可删除。`,
     },
 };
 

@@ -3,7 +3,7 @@
 > **这是接手本项目的第一份必读文件。** 配套阅读：`docs/PLAN.md`（总体规划与阶段划分）、
 > `docs/reference-analysis.md`（两个参考项目的源码分析）、`.workbuddy-ai/memory/`（历次工作日志）。
 >
-> 最后更新：2026-09-16（阶段二完成并提交 `46170ef`）
+> 最后更新：2026-09-16（阶段三代码与单测完成，待实测项见第六节开头）
 
 ---
 
@@ -31,13 +31,15 @@
 | --- | --- | --- |
 | 一：脚手架 + core + host 抽象层 | ✅ 完成 | `002056d` |
 | 二：插件安装器（BRAT 复刻） | ✅ 完成 | `46170ef` |
-| 三：Git 同步（obsidian-git 复刻） | ⬜ **下一步** | — |
+| 三：Git 同步（obsidian-git 复刻） | 🟩 代码与单测完成 | 见 git log |
 | 四：打磨与发布 | ⬜ 未开始 | — |
 
 **验收标准速查**（详见 PLAN.md 第三节）：
 
 - 阶段二 ✅：能从 GitHub 装真插件并启用；能从 Gitee 装只有源码没有 release 的插件；更新检查能识别新版本。
-- 阶段三 ⬜：对真实 Gitee 私有仓库完成「改文件 → 自动提交 → 推送 → 另一处拉取」闭环。
+- 阶段三 🟩：本地闭环已由真实仓库单测覆盖（init/提交/拉取/推送/冲突/恢复）；
+  **剩一项待实测**：对真实 Gitee 私有仓库的 `http.extraheader` 鉴权 push/pull
+  （需要用户的令牌与真实仓库，单元测试只验证了配置构造）。
 
 ## 三、命令与环境
 
@@ -68,7 +70,16 @@ src/
 │  ├─ http.ts              # requestUrl 封装：throw:false、重试退避（400ms*3^n）、20s 超时
 │  └─ statusMapper.ts      # 状态码 → RateLimitError/AuthError/NotFoundError
 ├─ features/installer/     # 阶段二产出，见第五节
-└─ features/sync/          # ⬜ 阶段三要建的模块
+└─ features/sync/          # 阶段三产出，见第六节
+   ├─ types.ts / errors.ts # 领域类型 + 按应对方式分类的错误
+   ├─ gitManager.ts        # 抽象接口（含状态字符映射 mapStatusChar）
+   ├─ simpleGitManager.ts  # simple-git 实现（状态映射/错误收口/reset 策略）
+   ├─ auth.ts              # http.extraheader 注入（simple-git config 是字符串数组）
+   ├─ commitMessage.ts     # 模板变量 {{date}}/{{hostname}}/{{numFiles}}/{{files}}
+   ├─ syncService.ts       # 编排：串行队列 + commit→pull→push 链 + 冲突指南
+   ├─ automatics.ts        # 自动定时器（剩余时间模型，时间戳存 localStorage）
+   ├─ statusBar.ts         # 状态栏（由 service 显式驱动，不跑定时轮询）
+   └─ ui/{EditRemoteModal,SourceControlView}.ts
 ```
 
 ## 五、安装器（阶段二）实现要点
@@ -98,7 +109,71 @@ src/
 - **社区插件索引**（`communityPlugins.ts`）：GitHub 独有资源，Gitee 无等价物。
   6 小时缓存；统计文件可选；7685 条实测。
 
-## 六、实测发现（读文档看不出来，改代码前先看这里）
+## 六、同步模块（阶段三）实现要点
+
+文件都在 `src/features/sync/`。
+
+**鉴权**（`auth.ts`）：远端是 GitHub/Gitee 且 secretStore 里有令牌时，通过
+simple-git 的 `config` 选项（字符串数组，逐项 `-c key=value`）给每条命令注入
+`http.extraheader=Authorization: Basic base64(user:token)`，不落盘、不进 remote URL。
+simple-git 实例按「远端 URL + gitPath」缓存，`setRemoteUrl`/设置变更后重建。
+> ⚠ 唯一待实测项：对真实 Gitee 私有仓库 push 一次确认（PLAN.md 风险表第一条）。
+> 失败的回退方案：askpass 弹窗（obsidian-git 的做法，见其 simpleGit.ts:249）。
+
+**pull 三态**（`simpleGitManager.ts`）：先 fetch、比较本地/远端引用（照搬
+obsidian-git 验证过的形态），merge/rebase 直接整合；**reset = stash 保护（含
+未跟踪）+ `reset --hard`**。注意 obsidian-git 的 reset 用的是 update-ref +
+普通 reset，会让工作区与 HEAD 脱节、下次提交把远端改动倒推回去 —— 我们刻意
+不用那套。
+
+**冲突哲学**：不自动解决。merge/rebase 冲突 → 抛 `ConflictError` →
+syncService 在库根目录写《OBSync 冲突指南.md》（冲突文件清单 + 处理/放弃指引）
+→ **sync 链路立即停止**（继续提交会把冲突标记写进历史，继续推送会推上远端）。
+恢复出路：手动解决后「立即同步」，或「放弃当前合并」（abortMerge）。
+
+**并发**（`syncService.ts`）：所有动仓库的操作走一条 promise 串行队列；
+`isBusy` 供自动定时器判断「跳过本轮」。sync 链路：提交 → 拉取 →（拉到东西就
+再提交一次）→ 推送；推送前检查远端是否存在、ahead 是否 > 0。
+
+**自动定时器**（`automatics.ts`）：照 obsidian-git 的剩余时间模型 ——
+每次执行把时间戳写 localStorage，启动时按 `间隔 - 已流逝` 起表，
+重启不重置周期；间隔 0 = 关闭，错过不补跑。
+
+**状态栏**：由 service 在动作前后显式驱动（不跑轮询），展示
+分支 / ↑ahead ↓behind / ~脏文件数 / ⚠冲突数。
+
+**命令**：立即同步 / 提交全部 / 推送 / 拉取 / 初始化仓库 / 放弃当前合并 /
+编辑远端 / 打开源码控制视图。设置页新增：拉取整合策略（三态下拉）、gitPath。
+
+**v1 有意不做的**（obsidian-git 有，但 PLAN.md 范围外）：逐文件 hunk 级暂存、
+diff 查看、树形文件视图、squash、子模块、行作者/blame。GitManager 接口里
+分支管理原语已备好（listBranches/checkout/createBranch/deleteBranch），
+视图里有分支下拉，够用。
+
+### simple-git 的实测坑（改 sync 层前先看）
+
+1. `SimpleGitOptions.config` 是**字符串数组**（逐项 `-c`），不是对象；
+   且 `simpleGit(options)` 收 `Partial<SimpleGitOptions>`。
+2. `git.log({ max: n })` 会把 `--max=n` 原样传给 git 报错 —— 正确的键是
+   `maxCount`（映射为 `--max-count`）。
+3. **空仓库 commit 不抛错**：返回 `summary.changes === 0` 的摘要，要自己判断。
+4. HEAD 未出生（无任何提交）时 `git restore --staged` 报
+   "could not resolve HEAD"，等价做法是 `git rm --cached`（unstage 已做回退）。
+5. 无提交的仓库 `git branch` 输出为空 → `branchLocal()` 的 current/all 为空。
+6. push 不会更新裸仓库的 HEAD（clone 出来的分支取决于它）——测试环境要手动
+   `symbolic-ref HEAD refs/heads/main`。
+7. 测试机全局 `core.autocrlf=true`：检出的内容是 \r\n，测试断言要归一。
+
+### 测试策略
+
+`simpleGitManager.test.ts` 用**真实临时 git 仓库**（mkdtemp + 系统 git），
+覆盖 init/状态映射/提交/分支/克隆推送/merge/rebase/reset/冲突/abortMerge/
+push 拒绝 —— git 语义的真实性是 mock 给不了的，且不碰网络。注意全局配置
+`init.defaultBranch` 不可控，测试里统一 `checkout -b main`，提交身份用
+`addConfig` 设在仓库本地（绝不碰用户全局配置）。`syncService.test.ts` 用
+可编程假 GitManager 验证编排（顺序/冲突停止/推送前置/串行化）。
+
+## 七、实测发现（读文档看不出来，改代码前先看这里）
 
 ### 平台差异
 
@@ -135,34 +210,9 @@ src/
 15. 测试库里已装的第三方插件 `gitee-sync-plus` 不是真 git 实现（只做文件级收发），
     所以 OBSync 走真 git 是差异化，不是重复劳动。
 
-## 七、阶段三开工指引（Git 同步）
-
-按 PLAN.md 第三节的清单做。落地顺序建议（每步保持 `pnpm test` 全绿）：
-
-1. **依赖**：`pnpm add simple-git`。注意 esbuild 需要把 simple-git 打进产物
-   （阶段一构建配置已验证无 node 内置模块直连，simple-git 依赖 node 内置，
-   esbuild `platform=node` + `external: obsidian` 应该能处理，先跑通再提交）。
-2. **`sync/gitManager.ts`**：抽象接口（status / stage / commit / pull / push / fetch /
-   branch / log / diff），obsidian-git 的同名分层可以参考但接口按需收窄。
-3. **`sync/simpleGitManager.ts`**：桌面实现。**gitPath 设置**要有（Windows git 不在 PATH 时用）。
-4. **`sync/auth.ts`**：远端鉴权用 `-c http.extraheader="Authorization: Basic <b64(user:token)>"`。
-   **这是阶段三第一件要实测的事**（PLAN.md 风险表第一条）：
-   对真实 Gitee 私有仓库 push 一次确认；失败就回退 askpass 方案。
-   令牌从 `core/secretStore` 拿，绝不进 data.json。
-5. **`sync/syncService.ts`**：pull/commit/push 编排 + 三态同步策略（merge/rebase/reset）
-   + 冲突检测与引导文件。
-6. **`sync/automatics.ts`**：自动提交/同步定时器，"上次执行时间"要持久化（进 settings）。
-7. **状态栏 + 源码控制视图 + 命令**：命令清单见 PLAN.md 阶段三。
-8. **i18n**：`zh-cn.ts` 加 `sync` 段（规范源），`en.ts` 同步补齐，typecheck 会强制。
-9. **设置**：`core/settings.ts` 的 `SyncSettings` 已有骨架（enabled/autoCommitSeconds 等），
-   归一化逻辑照 installer 的样子写。
-
-测试策略：simple-git 在单测里直接对**真实临时 git 仓库**操作（`mkdtemp` + `git init`），
-比 mock 更可信；live 测试走真实远端（可用 Gitee/GitHub 各建一个测试仓库）。
-
 ## 八、交接习惯（沿用 WorkBuddy 的做法）
 
 - **边做边写文档**：本文件随代码一起更新；当日工作日志追加到
-  `.workbuddy-ai/memory/YYYY-MM-DD.md`；新的"实测发现/踩坑"一定记入第六节。
+  `.workbuddy-ai/memory/YYYY-MM-DD.md`；新的"实测发现/踩坑"一定记入第七节。
 - 提交信息用中文，说明"为什么"；阶段完成一次大提交。
 - 参考 `MEMORY.md` 里的长期约定（i18n 规范源、host 层设计原则、代码风格）。

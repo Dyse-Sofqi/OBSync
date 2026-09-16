@@ -124,6 +124,14 @@ export const en = {
             autoPullDesc: "Set to 0 to disable.",
             commitMessage: "Commit message template",
             commitMessageDesc: "Supports {{date}}, {{hostname}}, {{numFiles}} and {{files}}.",
+            strategy: "Pull integration strategy",
+            strategyDesc:
+                "How to reconcile diverged history on pull. merge keeps both sides and creates a merge commit; rebase replays local commits on top of the remote; reset discards local commits and takes the remote as-is.",
+            strategyMerge: "Merge (keep both histories)",
+            strategyRebase: "Rebase (linear history)",
+            strategyReset: "Reset (remote wins, local commits dropped)",
+            gitPath: "Git executable path",
+            gitPathDesc: "Leave empty to use git from PATH. Only needed on Windows when git is not on PATH.",
         },
     },
 
@@ -194,7 +202,42 @@ export const en = {
         notARepo: "This vault is not a git repository yet.",
         gitNotFound: "Could not find the git executable. Set its path in settings.",
         nothingToCommit: "Nothing to commit.",
+        noRemote: "No remote repository configured. Set the remote URL in settings.",
         conflictDetected: (count: number) =>
             `${count} conflicted file(s) detected. A conflict list has been written; resolve them and commit manually.`,
+
+        cmdSync: "OBSync: Sync now (commit → pull → push)",
+        cmdCommit: "OBSync: Commit all changes",
+        cmdPush: "OBSync: Push to remote",
+        cmdPull: "OBSync: Pull from remote",
+        cmdInit: "OBSync: Initialize repository",
+        cmdAbortMerge: "OBSync: Abort current merge (conflict recovery)",
+        cmdEditRemote: "OBSync: Edit remote URL",
+
+        actSync: "Sync now",
+        actCommit: "Commit all",
+        actPull: "Pull",
+        actPush: "Push",
+        actEditRemote: "Edit remote…",
+        branchLabel: "Branch",
+
+        editRemoteTitle: "Edit remote URL",
+        editRemoteLabel: "Remote repository URL",
+        editRemotePlaceholder: "https://github.com/owner/repo.git",
+        editRemoteSaved: (url: string) => `Remote set to ${url}`,
+        editRemoteInvalid: "Could not parse this repository URL. GitHub and Gitee HTTPS / SSH URLs are supported.",
+        repoInited: "Git repository initialized.",
+        mergeAborted: "Merge aborted; the repository is back to the pre-pull state.",
+
+        conflictGuideFile: "OBSync conflict guide.md",
+        conflictGuideTitle: "Sync conflict guide",
+        conflictGuideIntro:
+            "The following files were changed both locally and remotely, and git could not decide which side to keep. Conflict regions are marked with <<<<<<< and >>>>>>> inside the files.",
+        conflictGuideFiles: "Conflicted files:",
+        conflictGuideResolve:
+            "How to resolve: open each file, edit the conflicted region to keep what you want (remove the marker lines), then run \"OBSync: Sync now\" — the resolution will be committed and pushed.",
+        conflictGuideAbort:
+            "To discard this merge and return to the pre-pull state, run \"OBSync: Abort current merge\".",
+        conflictGuideFooter: (time: string) => `Generated automatically by OBSync at ${time}. Safe to delete once resolved.`,
     },
 } satisfies LocaleStrings;
