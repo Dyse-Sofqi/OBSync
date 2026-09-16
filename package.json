@@ -1,0 +1,36 @@
+{
+  "name": "obsync",
+  "version": "0.1.0",
+  "description": "Sync your vault with GitHub or Gitee, and install community plugins from both.",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "pnpm typecheck && node esbuild.config.mjs production",
+    "typecheck": "tsc --noEmit --skipLibCheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:live": "cross-env OBSYNC_LIVE=1 vitest run tests/live"
+  },
+  "keywords": [
+    "obsidian",
+    "obsidian-plugin",
+    "git",
+    "github",
+    "gitee"
+  ],
+  "author": "Dyse-Sofqi",
+  "license": "MIT",
+  "dependencies": {
+    "semver": "^7.7.2",
+    "simple-git": "^3.30.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "@types/semver": "^7.7.0",
+    "cross-env": "^7.0.3",
+    "esbuild": "^0.25.3",
+    "obsidian": "^1.13.1",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.3"
+  }
+}

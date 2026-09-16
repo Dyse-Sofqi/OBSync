@@ -1,0 +1,5 @@
+# pnpm 11 moved build-script allow-listing out of package.json into this file.
+# esbuild ships its platform binary via a postinstall script, which pnpm blocks
+# by default — without this, `node esbuild.config.mjs` fails at runtime.
+allowBuilds:
+  esbuild: true

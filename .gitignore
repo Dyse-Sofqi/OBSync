@@ -1,0 +1,19 @@
+# Build output
+main.js
+main.js.map
+
+# Dependencies
+node_modules/
+
+# Local scratch space (API probes, dumps)
+.probe/
+
+# Editor / OS
+.vscode/*
+!.vscode/settings.json
+.DS_Store
+Thumbs.db
+*.log
+
+# Test coverage
+coverage/
