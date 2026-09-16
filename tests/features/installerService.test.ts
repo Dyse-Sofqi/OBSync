@@ -212,6 +212,46 @@ describe("install —— release 通道", () => {
         expect(readPluginFile(fake, "demo", "manifest.json")).toBe(MANIFEST);
     });
 
+    it("资产通道失败后，后续文件不再试它", async () => {
+        // 这条锁的是一个**用户能感知的性能问题**：安装器是逐文件回退的，
+        // 三个文件各试一次资产、各等一次超时的话，在资产 CDN 不可达的网络下
+        // （国内常态）装一个插件要白等三倍的时间。
+        const fake = createFakeApp();
+        const { service } = createService(fake);
+
+        route(/releases\/latest$/, () => ({ status: 200, text: releaseJson([]) }));
+        route(/releases\/tags\/v2\.0\.0$/, () => ({
+            status: 200,
+            text: releaseJson([
+                { name: "manifest.json", url: "https://dl.test/manifest.json" },
+                { name: "main.js", url: "https://dl.test/main.js" },
+                { name: "styles.css", url: "https://dl.test/styles.css" },
+            ]),
+        }));
+        route(/^https:\/\/dl\.test\//, () => {
+            throw new Error("simulated CDN unreachable");
+        });
+        for (const file of ["manifest.json", "main.js", "styles.css"]) {
+            const body =
+                file === "manifest.json" ? MANIFEST : file === "main.js" ? "// main" : "/* css */";
+            route(
+                new RegExp(
+                    `raw\\.githubusercontent\\.com/owner/demo/v2\\.0\\.0/${file.replace(".", "\\.")}$`
+                ),
+                () => ({ status: 200, text: body })
+            );
+        }
+
+        const result = await service.install({ repo: "owner/demo" });
+
+        expect(result.channel).toBe("release");
+        expect(readPluginFile(fake, "demo", "main.js")).toBe("// main");
+        expect(readPluginFile(fake, "demo", "styles.css")).toBe("/* css */");
+
+        // 关键断言：资产端点只被碰一次。碰三次就意味着用户要等三次超时。
+        expect(calls.filter((url) => url.startsWith("https://dl.test/"))).toHaveLength(1);
+    });
+
     it("更新已有插件时保留冻结状态", async () => {
         const fake = createFakeApp(seedPlugin("demo", { "manifest.json": MANIFEST }));
         const { service, settings } = createService(fake);

@@ -53,12 +53,15 @@ function decode(bytes: ArrayBuffer): string {
 
 /**
  * 取单个文件。可选文件失败时返回 undefined 而不是抛错。
+ *
+ * 对返回类型是泛型的：release 通道要额外回传「资产通道是否不可达」，
+ * 源码通道只回传内容。
  */
-async function fetchOne(
-    load: () => Promise<string | undefined>,
+async function fetchOne<T>(
+    load: () => Promise<T>,
     name: PluginFileName,
     repoLabel: string
-): Promise<string | undefined> {
+): Promise<T | undefined> {
     try {
         return await load();
     } catch (err) {
@@ -66,6 +69,12 @@ async function fetchOne(
         logger.debug(`optional file ${name} unavailable for ${repoLabel}`, err);
         return undefined;
     }
+}
+
+interface FileLoadResult {
+    content: string | undefined;
+    /** 资产通道因**传输层**原因失败（不是"文件不存在"）。 */
+    assetUnreachable: boolean;
 }
 
 /**
@@ -87,24 +96,32 @@ async function loadReleaseFile(
     name: PluginFileName,
     release: Release,
     token: string | undefined,
-    repoLabel: string
-): Promise<string | undefined> {
+    repoLabel: string,
+    skipAssets: boolean
+): Promise<FileLoadResult> {
     const asset = release.assets.find((candidate) => candidate.name === name);
 
-    if (asset) {
+    if (asset && !skipAssets) {
         try {
             const bytes = await host.downloadAsset(repoRef, asset, { token, release });
-            return decode(bytes);
+            return { content: decode(bytes), assetUnreachable: false };
         } catch (err) {
             logger.warn(
                 `downloading asset ${name} for ${repoLabel} failed, ` +
                     `falling back to the source file at ${release.tag}`,
                 err
             );
+            return {
+                content: await host.readFile(repoRef, name, { token, ref: release.tag }),
+                assetUnreachable: true,
+            };
         }
     }
 
-    return await host.readFile(repoRef, name, { token, ref: release.tag });
+    return {
+        content: await host.readFile(repoRef, name, { token, ref: release.tag }),
+        assetUnreachable: false,
+    };
 }
 
 /** 从 release 资产 + 该 tag 的源码里取文件。 */
@@ -118,14 +135,26 @@ async function fetchFromRelease(
 ): Promise<Map<PluginFileName, string>> {
     const files = new Map<PluginFileName, string>();
 
+    /**
+     * 资产通道一旦因传输层原因失败，**后续文件就不再试它**。
+     *
+     * 这条很重要：三个文件各试一次资产，而每次失败都要等一个超时 ——
+     * 不记住的话，在资产 CDN 不可达的网络下（国内常态），
+     * 装一个插件要白等三次超时。记住之后只付一次。
+     */
+    let skipAssets = false;
+
     for (const name of PLUGIN_FILES) {
         onProgress?.(name);
-        const content = await fetchOne(
-            () => loadReleaseFile(host, repoRef, name, release, token, repoLabel),
+        const result = await fetchOne(
+            () =>
+                loadReleaseFile(host, repoRef, name, release, token, repoLabel, skipAssets),
             name,
             repoLabel
         );
-        if (content !== undefined) files.set(name, content);
+
+        if (result?.assetUnreachable) skipAssets = true;
+        if (result?.content !== undefined) files.set(name, result.content);
     }
 
     return files;

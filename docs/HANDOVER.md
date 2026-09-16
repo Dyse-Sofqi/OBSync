@@ -80,6 +80,7 @@
 | **意外 HTTP 状态码漏出英文技术文案** | 真缺口：`host.requestFailed` 写了没接上。500/502/422 这类状态码会落到 `ObsyncError → err.message`，中文用户看到的是 `Unexpected HTTP 500 from ...` | 新增 `HttpStatusError`（带 status + 服务端说明），`describeError` 里加翻译分支 |
 | **`statusMapper` 没有任何测试** | 测试盲区：一次变异验证打偏才发现的 —— 我把 `HttpStatusError` 换回 `ObsyncError` 后用例照样全绿，因为用例直接构造错误对象，没走映射路径 | 新增 `statusMapper.test.ts`（10 项，覆盖两个平台各自的限流表达方式） |
 | 死键清理 | 25 个未被引用的 i18n 键：4 个背后是真缺口（见上），其余是通用词汇（保留）或设计上不该存在（`plugin.commandCategory` —— Obsidian 命令 API 没有分类字段；`settings.title` —— 被 `cmdOpenSettings` 取代） | 逐个分诊处理 |
+| **资产 CDN 不可达时要白等三倍超时** | 真缺口（性能，且正好打在目标用户身上）：安装器逐文件回退，三个文件各试一次资产、各等一次超时；而 http 层还会重试 2 次 × 20 秒。合计 **约 3 分钟**才装完 —— 国内网络下这就是常态 | ① http 层**不再重试传输层失败**（确定性错误，重试只是把 20 秒变 62 秒）；② 安装器**记住资产通道失败**，后续文件直接走源码。合计降到 20 秒 |
 
 **验收标准速查**（详见 PLAN.md 第三节）：
 
@@ -252,7 +253,11 @@ simple-git 实例按「远端 URL + gitPath」缓存，`setRemoteUrl`/设置变�
 > - ✅ simple-git 的 `config` 数组 → git 命令行的 `-c`（测试：让 git 在同一次调用里读回该配置）
 > - ✅ git 把该配置变成 HTTP 的 `Authorization` 头，且**在第一个请求就带上**、
 >   不等 401 挑战（`.probe/probe_auth.mjs`：本地 HTTP 服务器实测 `/info/refs?service=git-upload-pack` 已带正确头）
-> - ❌ **Gitee 服务端是否接受「令牌当密码」的 Basic 认证** —— 仍需真实令牌与私有仓库，
+> - ✅ **Gitee 服务端确实读取并校验这个头**（`tests/live/giteeGitAuth.live.test.ts`）：
+>   带伪造凭据会被拒（401 挑战），不带凭据可匿名读公开仓库。
+>   两条同时成立才说明机制有效 —— 若 Gitee 忽略该头（当匿名请求处理），
+>   公开仓库照样能读成功，那就说明这个机制在它这里不成立。
+> - ❌ **有效的私人令牌是否被接受** —— 需要真实 Gitee 令牌，无法在此确认。
 >   这是 PLAN.md 风险表第一条，也是**目前唯一剩下的待实测项**。
 >   失败的回退方案：askpass 弹窗（obsidian-git 的做法，见其 simpleGit.ts:249）。
 
@@ -416,6 +421,14 @@ simple-git 的 config 传递（不碰网络、不需令牌）。
     `maxRetries`/`retryDelay`，否则 EBUSY。
 16. 测试库里已装的第三方插件 `gitee-sync-plus` 不是真 git 实现（只做文件级收发），
     所以 OBSync 走真 git 是差异化，不是重复劳动。
+17. **`git ls-remote` 的输出可能撑爆 Node 的 `execFile` 缓冲**。
+    默认 `maxBuffer` 是 1MB，而 `mindspore/mindspore` 实测有 **18 万个引用**，
+    会以 `stdout maxBuffer length exceeded` 失败 —— 看着像网络问题，实则不是。
+    挑测试仓库要选引用少的（`oschina/git-osc` 只有 33 个），并显式给 `maxBuffer`。
+18. **401 之后 git 会调凭据助手，而本机系统级的 `helper-selector` 在非交互环境里会干等**。
+    表现为「用例卡满 45 秒（execFile 超时）」，看起来像网络慢，实则是在等一个
+    永远不会来的输入。跑需要触发 401 的 git 命令时，加
+    `-c credential.helper=`（**空值会重置助手链**，这个语义在 git 文档里很隐晦）。
 
 ## 八、交接习惯（沿用 WorkBuddy 的做法）
 

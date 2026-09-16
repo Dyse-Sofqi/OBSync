@@ -53,9 +53,7 @@ function sleep(ms: number): Promise<void> {
  */
 function isRetryableStatus(status: number): boolean {
     return status === 408 || (status >= 500 && status <= 599);
-}
-
-function withTimeout<T>(promise: Promise<T>, ms: number, url: string): Promise<T> {
+}function withTimeout<T>(promise: Promise<T>, ms: number, url: string): Promise<T> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_, reject) => {
         timer = setTimeout(
@@ -133,8 +131,20 @@ export async function httpRequest(options: HttpRequestOptions): Promise<HttpResp
             debugLogger?.(`[http] ${response.status} ${options.method ?? "GET"} ${options.url}`);
             return normalized;
         } catch (err) {
+            // **传输层失败不重试。**
+            //
+            // 超时 / DNS 失败 / 连接被拒这类错误是确定性的：再试两次只是把
+            // 「等 20 秒」变成「等 62 秒」，而调用方的降级路径往往立刻就能成功。
+            // 实测场景：GitHub 资产 CDN（github.com → objects.githubusercontent.com）
+            // 不可达时，安装器是**逐文件**回退的（manifest.json / main.js / styles.css），
+            // 每个文件各付 62 秒 = 卡三分钟 —— 而这正是国内网络的常态。
+            // 不重试后降到 20 秒，再配合调用方的「记住资产通道失败」，总计 20 秒。
+            //
+            // 值得重试的是**服务端临时故障**（5xx / 408），那些会很快返回状态码，
+            // 见上面的 `isRetryableStatus` 分支。
             lastError = err;
             debugLogger?.(`[http] attempt ${attempt} failed — ${options.url}: ${String(err)}`);
+            break;
         }
     }
 
