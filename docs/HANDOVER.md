@@ -103,6 +103,10 @@ src/
   settings 加载时会做结构校验（`sanitizeTrackedPlugins`），坏条目直接丢弃。
 - **更新检查与执行分离**（`updateChecker.ts`）：只提示不自动装。
   冻结项（`frozen`）跳过检查与批量更新，但可以手动重装。
+  检查结果持久化在 `installer.availableUpdates`（pluginId → 新版本 + 时间），
+  已跟踪列表据此渲染**常驻徽标**（整行高亮，Notice 一闪就错过）；
+  安装/更新成功后由 `recordInstalled` 清除，normalizeSettings 会剪掉
+  已不在跟踪列表的条目。检查失败保留旧记录（过期信息好过没有）。
 - **镜像发现**（`mirrorFinder.ts`）：用两边 manifest 的 `id` 二次校验，
   同名不同项目直接放弃 —— 装错比找不到严重。默认关闭
   （实测抽样 40 个社区插件命中 0 个），且全程走 raw 通道零 API 配额。
