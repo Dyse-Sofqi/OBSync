@@ -74,6 +74,19 @@ pnpm test:live  # 真实 API 测试（OBSYNC_LIVE=1，需网络）
 选中项存在内存（`activeTab`），页内重绘或切换标签后不回弹到第一页；
 切标签不会重复触发「进入设置页自动检查」。标签文案在 `settings.tabs.*`。
 
+### 样式约定（`styles.css`）
+
+1. **只用 Obsidian 主题变量**（`var(--text-accent)` 等），并给关键颜色写兜底值，
+   这样在任意主题 / 深浅色下都不会出现读不清的文字。
+2. **设置页规则一律限定在 `.obsync-settings` 下** —— `.setting-item-*` 是 Obsidian
+   的全局类，不加作用域会污染其他插件的设置页（容器类在 `display()` 里挂上）。
+3. 状态类信息（可更新 / 已冻结 / 令牌已配置）做成名称后的徽标药丸
+   （`.obsync-badge*`），描述行只放事实信息。
+4. 自查方式（`.probe/` 下，已 gitignore）：
+   `npx esbuild styles.css --outfile=/dev/null` 验证语法；
+   用脚本比对「代码里用到的 obsync-* 类」与「styles.css 里定义的类」，
+   可发现漏样式或僵尸样式。
+
 ## 四、代码地图
 
 ```
