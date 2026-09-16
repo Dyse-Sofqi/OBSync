@@ -8,6 +8,7 @@
     "build": "pnpm check && pnpm typecheck && node esbuild.config.mjs production",
     "typecheck": "tsc --noEmit --skipLibCheck",
     "check": "node scripts/checks.mjs",
+    "verify:mobile": "pnpm build && node scripts/verify-mobile-load.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:live": "cross-env OBSYNC_LIVE=1 vitest run tests/live"

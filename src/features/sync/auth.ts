@@ -1,5 +1,6 @@
 import type { SimpleGitOptions } from "simple-git";
 import type { SecretStore } from "../../core/secretStore";
+import { getHost } from "../../host/hostRegistry";
 import { parseGitRemoteUrl } from "../../host/repoRef";
 import type { HostKind } from "../../host/types";
 
@@ -24,15 +25,25 @@ import type { HostKind } from "../../host/types";
  * > 风险提示（PLAN.md 风险表第一条）：此方案对 Gitee 私有仓库的行为
  * > 需实测确认；若失败，回退方案是 askpass 弹窗（复刻 obsidian-git）。
  *
- * ## 用户名部分
+ * ## 用户名部分（这里踩过一个坑）
  *
- * GitHub 与 Gitee 的 HTTPS git 端点都只校令牌不校用户名（文档如此），
- * 惯例是放账号名；拿不到账号时用 `git` 占位（GitHub 官方推荐的形态之一）。
+ * 曾经按「两个平台都只校令牌、不校用户名」的假设，拿不到账号名就填 `git`。
+ * 这个假设对 GitHub 成立，**对 Gitee 不成立** —— Gitee 只接受三种用户名：
+ *
+ *     remote: Username, "oauth2" or "gitee.com" is supported as username
+ *             when using access token to pull or push the repository
+ *
+ * 于是 Gitee 私有仓库的 push/pull 全部被拒，而公开仓库照常能读 ——
+ * 症状很容易被误判成「令牌不对」或「权限不足」。现在用户名由 host 层提供
+ * （`IRepoHost.gitAuthUsername`），因为这就是一个平台差异。
+ *
+ * 注意这条**无法靠 live 测试以外的办法发现**：单测只能验「我们构造了什么」，
+ * 而构造出来的东西本身是合法的 —— 不合法的是「Gitee 接不接受这个用户名」。
  */
 
 export interface RemoteCredential {
     host: HostKind;
-    /** 令牌所有者账号名；未知时为 undefined。 */
+    /** 令牌所有者账号名；未知时为 undefined（此时用 host 层的默认用户名）。 */
     account?: string;
     token: string;
 }
@@ -69,7 +80,9 @@ export function withAuth(
 ): Partial<SimpleGitOptions> {
     if (!credential) return options;
 
-    const username = credential.account ?? "git";
+    // 有账号名就用账号名（两个平台都接受），否则用 host 层声明的恒定可用值。
+    // **不要**退回硬编码的 `git` —— Gitee 会拒绝，理由见文件头的「用户名部分」。
+    const username = credential.account ?? getHost(credential.host).gitAuthUsername;
     return {
         ...options,
         config: [

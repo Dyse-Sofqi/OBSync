@@ -10,11 +10,13 @@
 
 ## 命令
 ```
-pnpm dev        # esbuild watch + 自动部署到测试库
-pnpm build      # typecheck + 生产构建 + 部署
-pnpm typecheck  # tsc --noEmit
-pnpm test       # 单元测试（不含网络）
-pnpm test:live  # 真实 API 测试（需要网络）
+pnpm dev            # esbuild watch + 自动部署到测试库
+pnpm check          # 项目自查（scripts/checks.mjs，5 项）
+pnpm build          # check + typecheck + 生产构建 + 部署
+pnpm typecheck      # tsc --noEmit
+pnpm test           # 单元测试（不含网络）
+pnpm test:live      # 真实 API 测试（需要网络）
+pnpm verify:mobile  # 构建 + 用真实产物验证「移动端能加载」
 ```
 
 部署目标：`F:/_Workspace/Plugin-Test/.obsidian/plugins/obsync`，
@@ -49,10 +51,23 @@ pnpm test:live  # 真实 API 测试（需要网络）
 - **错误类型用错比没有类型更糟**：曾把「没有上游分支」「游离 HEAD」都抛成
   `GitNotRepoError`，提示语变成「请先初始化仓库」，把用户指错方向。
 
-### 自查脚本（`.probe/`，已 gitignore）
-- `check_hardcoded_cjk.py`：扫 locale 之外的硬编码中文。当前只剩 4 处且都合理
-  （语言标签 + Gitee 限流检测词）。**新增的中文都该是可疑的。**
-- `check_css_classes.py`：比对代码用到的 `obsync-*` 类与 `styles.css` 定义的类。
+### 自查脚本（`scripts/checks.mjs`，随 `pnpm check` 跑）
+早先是 `.probe/` 里的 Python 草稿，已移植成 Node 并入仓库。五项：
+- **minAppVersion 一致性**：用 `node_modules/obsidian/obsidian.d.ts` 的 `@since`
+  比对 manifest。按**类作用域**限定，否则 `.name` / `.status` 这类同名成员会大量误报。
+- **硬编码中文**：扫 locale 之外的代码。**新增的中文都该是可疑的**。
+- **未使用的 i18n 键**：死键是信号，背后通常是漏接的本地化。
+- **CSS 类覆盖**：比对代码用到的 `obsync-*` 类与 `styles.css` 定义的类。
+- **移动端安全**：从 `main.ts` 走静态导入图，看有没有触及依赖 Node 的裸模块。
+
+两张**带理由**的豁免表在脚本里（`KNOWN_SAFE` / `ALLOWED` / `NOT_CLASS_PREFIXES`）——
+加条目必须写清为什么安全，否则它们会变成掩盖问题的地方。
+扫描器要**剥注释**再扫，否则注释里提到的类名/中文会被算成「用到了」。
+
+⚠ **不要靠 `.probe/` 存放「被文档引用的依据」**：它已 gitignore，
+别人克隆仓库后找不到。有引用价值的脚本/探针要么进 `scripts/`，要么做成测试。
+（2026-09-17 修：移动端探针 → `scripts/verify-mobile-load.mjs`，
+鉴权上网探针 → `tests/features/authHeader.test.ts`。）
 
 ### 测试
 - `tests/live/**` 默认被 `vitest.config.ts` 排除，靠 `OBSYNC_LIVE=1` 开启。
@@ -104,6 +119,16 @@ pnpm test:live  # 真实 API 测试（需要网络）
   - Gitee 的 API raw 端点对匿名请求返回 **401**，匿名读文件必须走网页 raw 通道
   - Gitee 的 `html_url` 带 `.git` 后缀
   - Gitee 的 `access_token` 走查询参数
+  - **git 的 HTTP Basic 用户名是平台差异**：Gitee 只接受 账号名 / `oauth2` /
+    `gitee.com`，填 `git` 会被**直接拒绝**（公开仓库照常能读，只有私有仓库
+    push/pull 失败 —— 极易误判成令牌问题）。落在 `IRepoHost.gitAuthUsername`：
+    Gitee → `oauth2`、GitHub → `x-access-token`。**不要退回硬编码 `git`。**
+- **平台差异的表达形式**：能用一个属性说清的（`tokenInQuery`、`gitAuthUsername`）
+  就做成接口属性；需要行为差异的做成接口方法（`applyAuth`）。不要用
+  `if (host === "gitee")` 散在上层。
+- **涉及「对端校验规则」的假设不要写成「文档如此」**：要么实测，要么明确标注未验证。
+  用户名那条就是照「两个平台都只校令牌不校用户名」的假设写的，结果是错的 ——
+  而单测永远发现不了（我们构造出的 Basic 头本身合法，不合法的是对端接不接受）。
 
 ### 代码风格
 - 注释用中文，写**为什么**而不是**做了什么**。

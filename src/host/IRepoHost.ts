@@ -50,6 +50,28 @@ export interface IRepoHost {
      */
     readonly tokenInQuery: boolean;
 
+    /**
+     * 走 git 的 HTTP Basic 认证时，`用户名:令牌` 里的用户名该填什么。
+     *
+     * **这是硬性约束，不是偏好。** Gitee 服务端只接受三种用户名，其余一律拒绝，
+     * 报错为（Gitee 官方仓库 issue I1BGZG 原文）：
+     *
+     *     remote: Username, "oauth2" or "gitee.com" is supported as username
+     *             when using access token to pull or push the repository
+     *
+     * 也就是说用 `git`（GitHub 上的常见习惯写法）当用户名，Gitee 会**直接拒绝** ——
+     * 症状是私有仓库 push/pull 全部失败，而公开仓库照常能读，
+     * 很容易被误判成「令牌不对」或「权限不足」。
+     *
+     * 两个平台都接受真实账号名，但账号名要额外做一次接口调用才知道
+     * （见 `validateToken`），而这里给的值是**恒定可用**的：
+     * Gitee 用 `oauth2`、GitHub 用 `x-access-token`（GitHub Actions 的同一约定）。
+     *
+     * 与 `tokenInQuery` 同类：这个差异**无法用统一工具函数消除**，
+     * 所以必须是接口属性。
+     */
+    readonly gitAuthUsername: string;
+
     /** 仓库元信息。安装器走 raw 回退通道时需要 `defaultBranch`。 */
     getRepoMeta(ref: RepoRef, token?: string): Promise<RepoMeta>;
 

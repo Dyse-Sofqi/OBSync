@@ -163,7 +163,7 @@ assets count: 2
   { 'browser_download_url': '.../archive/refs/tags/v0.1.0-alpha.zip', 'name': 'v0.1.0-alpha.zip' }
 ```
 
-### 3.2 必须处理的四个差异
+### 3.2 必须处理的差异（每条都有实测依据）
 
 **差异 1：releases 列表默认升序。**
 规格中 `direction` 参数说明为"可选。升序/降序。不填为升序"，`page` 默认 1，`per_page` 默认 20（最大 100）。
@@ -201,6 +201,32 @@ GET https://gitee.com/{owner}/{repo}/raw/{ref}/{path}
 **差异 5：`html_url` 带 `.git` 后缀。**
 `GET /v5/repos/{o}/{r}` 返回的 `html_url` 是 `https://gitee.com/mindspore/mindspore.git`，
 而 GitHub 返回的 `html_url` 不带后缀。直接拿去展示会显示成带 `.git` 的怪链接，需要 strip。
+
+**差异 6：git 的 HTTP Basic 认证只接受特定用户名（踩过）。**
+
+用令牌走 `http.extraheader` 时，`用户名:令牌` 里的用户名在 Gitee 上**不是随便填的**。
+Gitee 只接受三种，其余一律拒绝（Gitee 官方仓库 issue `I1BGZG` 的服务端原文）：
+
+```
+remote: Username, "oauth2" or "gitee.com" is supported as username
+        when using access token to pull or push the repository
+```
+
+也就是说 GitHub 上的常见写法 `git`（甚至任意字符串）在 Gitee 上会被**直接拒绝**。
+这条与 GitHub 的行为**不一致**：GitHub 只校验令牌、完全不看用户名。
+
+后果很隐蔽：**公开仓库照常能读**（不需要凭据），只有私有仓库的 push/pull 失败 ——
+很容易被误判成「令牌不对」「权限不足」或「网络问题」。
+
+因此两个平台各自声明一个恒定可用的用户名，落在 `IRepoHost.gitAuthUsername`：
+Gitee 用 `oauth2`、GitHub 用 `x-access-token`（GitHub Actions 的同一约定）。
+不用「真实账号名」是因为它要额外调一次 `validateToken` 才知道，
+而 `oauth2` 是恒定可用的。
+
+> 这条**只有实测能发现**：单测能证明「我们构造出了合法的 Basic 头」，
+> 而构造出来的头本身确实是合法的 —— 不合法的是「Gitee 接不接受这个用户名」。
+> 教训：涉及**对端校验规则**的假设，不要写成注释里的「文档如此」，
+> 要么实测，要么明确标注为未验证。
 
 ### 3.3 其他可用接口
 

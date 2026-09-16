@@ -28,7 +28,9 @@ describe("basicAuthHeader", () => {
         );
     });
 
-    it("账号名缺失时用 git 占位", () => {
+    it("用户名原样进 base64（本函数不做任何平台判断）", () => {
+        // 用户名该填什么由 host 层决定（见下面的 withAuth 用例），
+        // 这里只保证编码是「用户名:令牌」的直译，不掺别的逻辑。
         expect(basicAuthHeader("someone", "t")).toContain(
             Buffer.from("someone:t").toString("base64")
         );
@@ -78,8 +80,36 @@ describe("withAuth", () => {
 
         expect(result.config).toHaveLength(1);
         expect(result.config![0]).toMatch(/^http\.extraheader=Authorization: Basic /);
-        // base64("git:tok")
-        expect(result.config![0]).toContain(Buffer.from("git:tok").toString("base64"));
+        // 用户名来自 host 层（GitHub → x-access-token），不是写死的占位符
+        expect(result.config![0]).toContain(
+            Buffer.from("x-access-token:tok").toString("base64")
+        );
+    });
+
+    it("**Gitee 用 `oauth2` 当用户名** —— 用 `git` 会被 Gitee 直接拒绝", () => {
+        // 这条是回归用例。Gitee 服务端只接受 账号名 / oauth2 / gitee.com 三种用户名，
+        // 其它一律拒绝：
+        //   remote: Username, "oauth2" or "gitee.com" is supported as username
+        //           when using access token to pull or push the repository
+        // 曾经这里填的是 `git`（GitHub 的习惯写法），后果是 Gitee 私有仓库的
+        // push/pull 全部失败，而公开仓库照常能读 —— 很容易被误判成令牌问题。
+        const result = withAuth({ baseDir: "/tmp" }, { host: "gitee", token: "tok" });
+
+        expect(result.config![0]).toContain(
+            Buffer.from("oauth2:tok").toString("base64")
+        );
+        expect(result.config![0]).not.toContain(Buffer.from("git:tok").toString("base64"));
+    });
+
+    it("有账号名时优先用账号名（两个平台都接受）", () => {
+        const result = withAuth(
+            { baseDir: "/tmp" },
+            { host: "gitee", account: "sofqi", token: "tok" }
+        );
+
+        expect(result.config![0]).toContain(
+            Buffer.from("sofqi:tok").toString("base64")
+        );
     });
 
     it("保留调用方已有的 -c 配置", () => {

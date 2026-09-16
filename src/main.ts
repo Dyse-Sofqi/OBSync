@@ -43,10 +43,15 @@ import { ObsyncSettingsTab } from "./settingsTab";
  * 静态导入会让整条依赖链在**插件加载时**就初始化，于是移动端一启用就崩，
  * 连纯 HTTP 的安装器都用不了。所以这里用**动态 import** 推迟到确认是桌面端之后。
  *
- * 实测依据（`.probe/probe_mobile_load.mjs`）：把打包产物放进一个
+ * 实测依据（`scripts/verify-mobile-load.mjs`）：把打包产物放进一个
  * 「require 对 node 内置模块抛错」的环境里加载 —— 静态导入时以
  * `require is not defined: fs` 失败，改成动态 import 后不再抛错。
- * 那个探针就是在模拟移动端。
+ * 那个脚本就是在模拟移动端，随时可以重跑：
+ *
+ *     pnpm verify:mobile      # 构建 + 验证，发布前该跑一次
+ *
+ * 另有 `scripts/checks.mjs` 的「移动端安全」一项从静态导入图做快速守卫 ——
+ * 两者是「快速守卫 + 发布前实证」的关系。
  *
  * 注意**不要**改回 `require(...)`：Obsidian 桌面端能用，但测试环境是 ESM，
  * `require` 不存在，启动测试会全部失败。

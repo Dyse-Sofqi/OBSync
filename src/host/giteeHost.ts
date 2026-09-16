@@ -96,6 +96,11 @@ export class GiteeHost implements IRepoHost {
     readonly webBaseUrl = "https://gitee.com";
     readonly apiBaseUrl = API_BASE;
     readonly tokenInQuery = true;
+    /**
+     * Gitee 只接受 账号名 / `oauth2` / `gitee.com` 三种用户名（见 IRepoHost 的说明）。
+     * 用 `oauth2` 是因为它**恒定可用**，不需要先查一次账号名。
+     */
+    readonly gitAuthUsername = "oauth2";
 
     private baseHeaders(): Record<string, string> {
         return {

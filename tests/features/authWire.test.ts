@@ -20,10 +20,14 @@ import { basicAuthHeader, withAuth } from "../../src/features/sync/auth";
  *
  * - ✅ simple-git 的 `config` → git 的 `-c`（本文件）
  * - ✅ git 会把该配置变成 HTTP 请求上的 `Authorization` 头，
- *   且在**第一个请求**就带上、不等 401 挑战（`.probe/probe_auth.mjs` 用
- *   本地 HTTP 服务器实测：`/info/refs?service=git-upload-pack` 已带正确头）
- * - ❌ **Gitee 服务端是否接受「令牌当密码」的 Basic 认证** —— 需要真实令牌与私有仓库，
- *   属 live 验证（HANDOVER 第六节唯一待实测项）
+ *   且在**第一个请求**就带上、不等 401 挑战
+ *   （`tests/features/authHeader.test.ts`：本地 HTTP 服务器实测
+ *   `/info/refs?service=git-upload-pack` 已带正确头）
+ * - ✅ **Gitee 服务端确实读取并校验这个头**（`tests/live/giteeGitAuth.live.test.ts`）
+ * - ❌ **有效的私人令牌是否被接受** —— 需要真实令牌与私有仓库。
+ *   注意用户名这一环已经查出问题并修掉了（Gitee 只接受 账号名 / `oauth2` /
+ *   `gitee.com`，见 `IRepoHost.gitAuthUsername`），但那正是**只有实测才能发现**的
+ *   一类问题，所以这条待办不能因为「用户名改对了」就当作已解决。
  *
  * ## 踩过的坑：不要给 simple-git 传 `.env({...process.env})`
  *
@@ -62,7 +66,7 @@ describe("simple-git 的 config 选项到 git -c 的传递", () => {
         expect(value.trim()).toBe(basicAuthHeader("sofqi", "tok-123"));
     });
 
-    it("账号名缺失时用 git 占位，值仍是合法 Basic 头", async () => {
+    it("账号名缺失时用 host 层声明的用户名，值仍是合法 Basic 头", async () => {
         const options = withAuth({ baseDir: root }, { host: "github", token: "gh-tok" });
 
         const value = await simpleGit(options as never).raw([
@@ -72,9 +76,9 @@ describe("simple-git 的 config 选项到 git -c 的传递", () => {
         ]);
 
         expect(value.trim()).toMatch(/^Authorization: Basic /);
-        expect(Buffer.from(value.trim().slice("Authorization: Basic ".length), "base64").toString()).toBe(
-            "git:gh-tok"
-        );
+        expect(
+            Buffer.from(value.trim().slice("Authorization: Basic ".length), "base64").toString()
+        ).toBe("x-access-token:gh-tok");
     });
 
     it("保留调用方已有的 -c 配置，两者共存", async () => {

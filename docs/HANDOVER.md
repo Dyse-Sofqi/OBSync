@@ -108,6 +108,10 @@
 - 阶段三 🟩：本地闭环已由真实仓库单测覆盖（init/提交/拉取/推送/冲突/恢复）；
   **剩一项待实测**：对真实 Gitee 私有仓库的 `http.extraheader` 鉴权 push/pull
   （需要用户的令牌与真实仓库，单元测试只验证了配置构造）。
+  > 2026-09-17 推进：鉴权链路的四段里，前三段已全部有实测依据
+  > （config 构造 / git 的 `-c` / 真实 HTTP 头），Gitee 服务端校验该头也由 live
+  > 测试确认；顺带查出并修掉了「用户名填 `git` 被 Gitee 拒绝」这个真 bug
+  > （详见 `docs/reference-analysis.md` 差异 6）。剩下的只有令牌本身与账号策略。
 
 ## 三、命令与环境
 ```
@@ -142,9 +146,13 @@ pnpm test:live  # 真实 API 测试（OBSYNC_LIVE=1，需网络）
 就初始化，移动端一启用就崩，连安装器都用不了。
 
 所以 `main.ts` 用**动态 import**（`loadSyncModule()`）推迟到 `Platform.isDesktopApp`
-之后。实测依据在 `.probe/probe_mobile_load.mjs`：把打包产物放进一个「require 对
-node 内置模块抛错」的环境里加载 —— 静态导入时以 `require is not defined: fs` 失败，
-改成动态 import 后不再抛错，且 esbuild 不产生额外分块（仍然只有 `main.js`）。
+之后。实测依据在 `scripts/verify-mobile-load.mjs`（`pnpm verify:mobile`）：把打包产物
+放进一个「require 对 node 内置模块抛错」的环境里加载 —— 静态导入时以
+`require is not defined: fs` 失败，改成动态 import 后不再抛错，且 esbuild 不产生
+额外分块（仍然只有 `main.js`）。
+
+这条不变式有两道防线：`scripts/checks.mjs` 的「移动端安全」（静态导入图，快）
++ 上面那个脚本（真实产物，发布前跑）。
 
 > ⚠ 别改回 `require("./features/sync")`：Obsidian 桌面端能用，但测试环境是 ESM，
 > `require` 不存在，启动测试会全部失败。（试过，踩了。）
@@ -302,13 +310,21 @@ simple-git 实例按「远端 URL + gitPath」缓存，`setRemoteUrl`/设置变�
 > 验证边界（`tests/features/authWire.test.ts` 里也写了）：
 > - ✅ simple-git 的 `config` 数组 → git 命令行的 `-c`（测试：让 git 在同一次调用里读回该配置）
 > - ✅ git 把该配置变成 HTTP 的 `Authorization` 头，且**在第一个请求就带上**、
->   不等 401 挑战（`.probe/probe_auth.mjs`：本地 HTTP 服务器实测 `/info/refs?service=git-upload-pack` 已带正确头）
-> - ✅ **Gitee 服务端确实读取并校验这个头**（`tests/live/giteeGitAuth.live.test.ts`）：
->   带伪造凭据会被拒（401 挑战），不带凭据可匿名读公开仓库。
+>   不等 401 挑战（`tests/features/authHeader.test.ts`：本地 HTTP 服务器实测
+>   `/info/refs?service=git-upload-pack` 已带正确头）
+> - ✅ **Gitee 服务端确实读取并校验这个头**（`tests/live/giteeGitAuth.live.test.ts`，
+>   2026-09-17 实跑通过）：带伪造凭据会被拒（401 挑战），不带凭据可匿名读公开仓库。
 >   两条同时成立才说明机制有效 —— 若 Gitee 忽略该头（当匿名请求处理），
 >   公开仓库照样能读成功，那就说明这个机制在它这里不成立。
-> - ❌ **有效的私人令牌是否被接受** —— 需要真实 Gitee 令牌，无法在此确认。
+> - ✅ **用户名必须用 Gitee 认的值**（查出来的一个真 bug，见
+>   `docs/reference-analysis.md` 差异 6）：Gitee 只接受 账号名 / `oauth2` /
+>   `gitee.com`，之前填的 `git` 会被服务端**直接拒绝**。现在由
+>   `IRepoHost.gitAuthUsername` 声明（Gitee → `oauth2`、GitHub → `x-access-token`）。
+>   这条单测发现不了 —— 我们构造出的 Basic 头本身合法，不合法的是对端接不接受。
+> - ❌ **有效的私人令牌是否被接受** —— 需要真实 Gitee 令牌与私有仓库。
 >   这是 PLAN.md 风险表第一条，也是**目前唯一剩下的待实测项**。
+>   上面那条用户名 bug 正是「实测才能发现」的例证，所以这条待办不能
+>   因为「用户名改对了」就当作已解决 —— 它验证的是令牌本身与账号策略。
 >   失败的回退方案：askpass 弹窗（obsidian-git 的做法，见其 simpleGit.ts:249）。
 
 **pull 三态**（`simpleGitManager.ts`）：先 fetch、比较本地/远端引用（照搬

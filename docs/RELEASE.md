@@ -8,16 +8,24 @@
 ## 一、发版前
 
 ```bash
-pnpm check        # 项目自查（minAppVersion / 硬编码中文 / 死键 / CSS 类）
+pnpm check        # 项目自查（minAppVersion / 硬编码中文 / 死键 / CSS 类 / 移动端安全）
 pnpm typecheck
 pnpm test         # 单元测试，约 2.5 分钟
 pnpm build        # 会先跑 check，然后构建 + 部署到测试库
+pnpm verify:mobile  # 构建 + 用真实产物验证「移动端能加载」（见下）
 ```
 
 `pnpm check` 里最容易漏的是 **minAppVersion 一致性** ——
 它是发布阻断级的：manifest 承诺的最低版本低于代码实际用到的 API，
 低版本用户装上就崩，而 TypeScript 不会提醒（类型包永远是最新版）。
 自查会拦下这种情况。
+
+**`pnpm verify:mobile` 为什么单独一步**：自查里的「移动端安全」是从
+`src/main.ts` 走**静态导入图**判断的（快，但只是推断）；这一步直接把打包后的
+`main.js` 放进一个「`require` 对 node 内置模块抛错」的环境里加载，
+等价于移动端的条件 —— 是**实证**。它守的性质是「插件在移动端不会一启用就崩」，
+而这个不变式很容易被顺手改回静态 import 破坏，且在桌面上测不出来。
+预期输出「加载结果：没有在加载阶段抛错」。
 
 ### 手工确认（自查覆盖不到的）
 

@@ -90,6 +90,12 @@ export class GitHubHost implements IRepoHost {
     readonly webBaseUrl = "https://github.com";
     readonly apiBaseUrl = API_BASE;
     readonly tokenInQuery = false;
+    /**
+     * GitHub 只校验令牌、不校验用户名，所以这里用约定俗成的 `x-access-token`
+     * （与 GitHub Actions 的 `actions/checkout` 一致）而不是 `git` ——
+     * 两边统一成「有据可依的值」，免得将来又有人以为是随手填的占位符。
+     */
+    readonly gitAuthUsername = "x-access-token";
 
     private baseHeaders(): Record<string, string> {
         return {
