@@ -24,6 +24,38 @@ export interface UpdateCheckSummary {
     failed: number;
 }
 
+/**
+ * 「进入设置页自动检查」的最小间隔：10 分钟。
+ *
+ * 设置页每次打开都会触发一次机会，但用户可能反复开合（改个设置、看一眼列表）。
+ * 没有这个节流，Gitee 那种匿名配额极低的平台会立刻被 403。
+ */
+export const SETTINGS_OPEN_CHECK_INTERVAL_MS = 10 * 60 * 1000;
+
+/**
+ * 判断这次打开设置页要不要跑自动检查。
+ *
+ * 做成纯函数是为了能单测 —— 真正的触发点在设置页里（依赖 Obsidian 的
+ * display/hide 时序，node 环境测不了）。
+ */
+export function shouldCheckOnSettingsOpen(input: {
+    enabled: boolean;
+    autoCheckOnSettingsOpen: boolean;
+    trackedCount: number;
+    lastCheckAt: number;
+    now: number;
+    intervalMs?: number;
+}): boolean {
+    if (!input.enabled) return false;
+    if (!input.autoCheckOnSettingsOpen) return false;
+    if (input.trackedCount === 0) return false;
+
+    const interval = input.intervalMs ?? SETTINGS_OPEN_CHECK_INTERVAL_MS;
+    const elapsed = input.now - input.lastCheckAt;
+    // lastCheckAt 为 0（从未检查过）时 elapsed 极大 → 放行。
+    return elapsed >= interval;
+}
+
 export class UpdateChecker {
     constructor(private readonly service: InstallerService) {}
 

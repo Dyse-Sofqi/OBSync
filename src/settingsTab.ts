@@ -1,5 +1,6 @@
 import { PluginSettingTab, Setting, type App } from "obsidian";
 import { LANGUAGE_OPTIONS, type LanguageSetting } from "./core/i18n";
+import { shouldCheckOnSettingsOpen } from "./features/installer/updateChecker";
 import { renderTrackedPlugins } from "./features/installer/ui/TrackedPluginsList";
 import type ObsyncPlugin from "./main";
 import { getHost } from "./host/hostRegistry";
@@ -12,13 +13,26 @@ import type { HostKind } from "./host/types";
  * 并且**新旧两套渲染方式并存**（声明式的 `getSettingDefinitions()` 与
  * 手写的 `display()`），因为要兼容不同 Obsidian 版本。这里只用后者 ——
  * 兼容包袱不值得背。
+ *
+ * ## 进入设置页自动检查更新
+ *
+ * Obsidian 每次打开页签都会调用 `display()`，关闭时调用 `hide()` ——
+ * 用这两个时机区分「用户打开了设置页」与「页内重绘」（commit/refresh 也会
+ * 调 display()）。再加一层时间节流（见 shouldCheckOnSettingsOpen），
+ * 避免反复开合把接口配额打光。
  */
 export class ObsyncSettingsTab extends PluginSettingTab {
+    /** 页签当前是否打开（用于识别 display() 是「打开」还是「重绘」）。 */
+    private tabOpen = false;
+
     constructor(private readonly obsync: ObsyncPlugin) {
         super(obsync.app, obsync);
     }
 
     display(): void {
+        const justOpened = !this.tabOpen;
+        this.tabOpen = true;
+
         const { containerEl } = this;
         const t = this.obsync.t;
         containerEl.empty();
@@ -30,6 +44,30 @@ export class ObsyncSettingsTab extends PluginSettingTab {
         this.renderSync();
 
         void t; // t 在各 render 方法里按需取，这里只是保持引用一致
+
+        if (justOpened) void this.autoCheckOnOpen();
+    }
+
+    hide(): void {
+        this.tabOpen = false;
+        super.hide();
+    }
+
+    /** 打开设置页时的自动检查（受设置与节流控制）。 */
+    private async autoCheckOnOpen(): Promise<void> {
+        const installer = this.obsync.settings.installer;
+        const due = shouldCheckOnSettingsOpen({
+            enabled: installer.enabled,
+            autoCheckOnSettingsOpen: installer.autoCheckOnSettingsOpen,
+            trackedCount: installer.tracked.length,
+            lastCheckAt: installer.lastUpdateCheckAt,
+            now: Date.now(),
+        });
+        if (!due) return;
+
+        // 自动检查静默：全部最新时不弹提示（用户只是打开设置页看一眼，
+        // 不需要被打扰）；有更新时列表徽标本身就是提示。
+        await this.checkAllUpdates({ quietWhenNone: true });
     }
 
     /** 设置改完后统一走这里：落盘 + 重算派生状态 + 重绘。 */
@@ -213,6 +251,16 @@ export class ObsyncSettingsTab extends PluginSettingTab {
             );
 
         new Setting(this.containerEl)
+            .setName(t.settings.installer.autoCheckOnSettingsOpen)
+            .setDesc(t.settings.installer.autoCheckOnSettingsOpenDesc)
+            .addToggle((toggle) =>
+                toggle.setValue(settings.autoCheckOnSettingsOpen).onChange(async (value) => {
+                    settings.autoCheckOnSettingsOpen = value;
+                    await this.commit();
+                })
+            );
+
+        new Setting(this.containerEl)
             .setName(t.settings.installer.autoCheckDelay)
             .setDesc(t.settings.installer.autoCheckDelayDesc)
             .addText((text) => {
@@ -220,6 +268,8 @@ export class ObsyncSettingsTab extends PluginSettingTab {
                 text.inputEl.min = "0";
                 text.inputEl.max = "3600";
                 text.setValue(String(settings.autoCheckDelaySeconds));
+                // 启动检查关着时这项没有意义 —— 置灰比藏起来更少困惑（用户能看到它还在）。
+                text.setDisabled(!settings.autoCheckOnStartup);
                 text.onChange(async (value) => {
                     const parsed = Number.parseInt(value, 10);
                     if (!Number.isFinite(parsed)) return;
@@ -273,19 +323,23 @@ export class ObsyncSettingsTab extends PluginSettingTab {
         });
     }
 
-    private async checkAllUpdates(): Promise<void> {
+    private async checkAllUpdates(options: { quietWhenNone?: boolean } = {}): Promise<void> {
         const t = this.obsync.t;
         const tracked = this.obsync.settings.installer.tracked;
 
         if (tracked.length === 0) {
-            this.obsync.notifier.info(t.settings.installer.trackedEmpty);
+            if (!options.quietWhenNone) {
+                this.obsync.notifier.info(t.settings.installer.trackedEmpty);
+            }
             return;
         }
 
         try {
             const summary = await this.obsync.installer.checker.checkAll(tracked);
             if (summary.outdated === 0 && summary.failed === 0) {
-                this.obsync.notifier.success(t.installer.checkNone);
+                if (!options.quietWhenNone) {
+                    this.obsync.notifier.success(t.installer.checkNone);
+                }
                 return;
             }
             this.obsync.notifier.info(t.installer.checkSummary(summary.outdated, summary.failed));

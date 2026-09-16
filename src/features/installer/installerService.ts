@@ -414,10 +414,15 @@ export class InstallerService {
      *
      * 有更新 → 记入（列表据此渲染常驻徽标，Notice 一闪就错过）；
      * 无更新 → 清除旧记录；检查失败 → **不动**旧记录（过期信息好过没有）。
+     *
+     * 顺带刷新 `lastUpdateCheckAt`：即使这一轮全部失败也算「检查过了」——
+     * 否则限流期间每次打开设置页都会再打一遍 API，情况只会更糟。
      */
     async recordUpdateChecks(results: UpdateCheckResult[]): Promise<void> {
-        const store = this.settings.installer.availableUpdates;
-        let changed = false;
+        if (results.length === 0) return;
+        const settings = this.settings;
+        settings.installer.lastUpdateCheckAt = Date.now();
+        const store = settings.installer.availableUpdates;
 
         for (const result of results) {
             if (result.error !== undefined) continue;
@@ -429,9 +434,8 @@ export class InstallerService {
             } else {
                 delete store[result.tracked.pluginId];
             }
-            changed = true;
         }
 
-        if (changed) await this.deps.saveSettings();
+        await this.deps.saveSettings();
     }
 }

@@ -5,7 +5,10 @@ import { SecretStore } from "../../src/core/secretStore";
 import { normalizeSettings, type ObsyncSettings } from "../../src/core/settings";
 import { zhCN } from "../../src/core/i18n/locales/zh-cn";
 import { InstallerService } from "../../src/features/installer/installerService";
-import { UpdateChecker } from "../../src/features/installer/updateChecker";
+import {
+    shouldCheckOnSettingsOpen,
+    UpdateChecker,
+} from "../../src/features/installer/updateChecker";
 import type { TrackedPlugin } from "../../src/features/installer/types";
 import { createFakeApp, type FakeApp } from "../helpers/fakeApp";
 
@@ -189,6 +192,40 @@ describe("checkAll", () => {
             latestVersion: "v9.9.9",
             checkedAt: 1,
         });
+    });
+});
+
+describe("shouldCheckOnSettingsOpen（进入设置页自动检查的判据）", () => {
+    const base = {
+        enabled: true,
+        autoCheckOnSettingsOpen: true,
+        trackedCount: 2,
+        lastCheckAt: 0,
+        now: 1_000_000_000,
+    };
+
+    it("条件齐备且从未检查过时放行", () => {
+        expect(shouldCheckOnSettingsOpen(base)).toBe(true);
+    });
+
+    it("安装器关闭、开关关闭、无跟踪插件时都不检查", () => {
+        expect(shouldCheckOnSettingsOpen({ ...base, enabled: false })).toBe(false);
+        expect(
+            shouldCheckOnSettingsOpen({ ...base, autoCheckOnSettingsOpen: false })
+        ).toBe(false);
+        expect(shouldCheckOnSettingsOpen({ ...base, trackedCount: 0 })).toBe(false);
+    });
+
+    it("距上次检查太近时跳过（防止反复开合设置页打光配额）", () => {
+        const fiveMinutesAgo = base.now - 5 * 60 * 1000;
+        expect(
+            shouldCheckOnSettingsOpen({ ...base, lastCheckAt: fiveMinutesAgo })
+        ).toBe(false);
+
+        const fifteenMinutesAgo = base.now - 15 * 60 * 1000;
+        expect(
+            shouldCheckOnSettingsOpen({ ...base, lastCheckAt: fifteenMinutesAgo })
+        ).toBe(true);
     });
 });
 

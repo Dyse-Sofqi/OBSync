@@ -9,16 +9,28 @@ import type { LanguageSetting } from "./i18n";
  * 这样 `data.json` 可以安全地随仓库同步到多设备而令牌不跟着走。
  */
 
-export const SETTINGS_VERSION = 1;
+export const SETTINGS_VERSION = 2;
 
 export interface InstallerSettings {
     enabled: boolean;
-    /** 启动后是否自动检查已跟踪插件的更新。 */
+    /**
+     * 启动后是否自动检查已跟踪插件的更新。**默认关闭**（v2 起）——
+     * 由「进入设置页时自动检查」承接，后者时机更准（用户正在看列表）。
+     */
     autoCheckOnStartup: boolean;
     /** 启动检查的延迟秒数 —— 避开 Obsidian 自身的启动流程。 */
     autoCheckDelaySeconds: number;
+    /** 打开 OBSync 设置页时自动检查更新。默认开启。 */
+    autoCheckOnSettingsOpen: boolean;
     /** 安装 GitHub 插件时是否优先探测 Gitee 镜像。 */
     discoverGiteeMirrors: boolean;
+    /**
+     * 上次成功跑完一轮更新检查的时间戳（毫秒）。
+     *
+     * 给「进入设置页自动检查」做节流：设置页的重绘很频繁，
+     * 没有它会在反复开合设置页时把 API 配额打光（Gitee 匿名配额尤其紧张）。
+     */
+    lastUpdateCheckAt: number;
     /**
      * 已跟踪的插件。
      *
@@ -65,12 +77,16 @@ export const DEFAULT_SETTINGS: ObsyncSettings = {
     debugLogging: false,
     installer: {
         enabled: true,
-        autoCheckOnStartup: true,
+        // v2 起默认关闭：把「检查」放在用户真正在看列表的时刻（进入设置页），
+        // 而不是每次启动都无条件打一遍各平台的 API。
+        autoCheckOnStartup: false,
         autoCheckDelaySeconds: 60,
+        autoCheckOnSettingsOpen: true,
         // 默认关闭。实测抽样 40 个社区插件，Gitee 上同 owner 同名的镜像命中 0 个 ——
         // 这个功能服务的是「用户知道某插件有镜像」的少数场景，不是普遍优化，
         // 而每次探测都要花掉 Gitee 稀缺的配额。详见 features/installer/mirrorFinder.ts。
         discoverGiteeMirrors: false,
+        lastUpdateCheckAt: 0,
         tracked: [],
         availableUpdates: {},
     },
@@ -94,6 +110,13 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
         !Array.isArray(value) &&
         Object.getPrototypeOf(value) === Object.prototype
     );
+}
+
+/** 读磁盘数据里的设置版本号；缺失或非法时当作 0（最老的形态）。 */
+function readVersion(loaded: unknown): number {
+    if (!isPlainObject(loaded)) return 0;
+    const version = loaded.version;
+    return typeof version === "number" && Number.isFinite(version) ? version : 0;
 }
 
 /**
@@ -133,6 +156,9 @@ function mergeWithDefaults<T extends Record<string, unknown>>(
 
 /** 把磁盘上读到的原始数据变成一份完整、可信的设置对象。 */
 export function normalizeSettings(loaded: unknown): ObsyncSettings {
+    // 迁移判断要在覆盖 version 之前取原始值。
+    const loadedVersion = readVersion(loaded);
+
     const merged = mergeWithDefaults(
         DEFAULT_SETTINGS as unknown as Record<string, unknown>,
         loaded
@@ -140,12 +166,23 @@ export function normalizeSettings(loaded: unknown): ObsyncSettings {
 
     merged.version = SETTINGS_VERSION;
 
+    // v1 → v2：启动检查改为默认关闭，由「进入设置页自动检查」承接。
+    // 老 data.json 里往往已经持久化了旧的默认 true（用户从没动过这个开关），
+    // 不纠正的话新默认形同虚设 —— 所以这里对 v1 数据一并置为 false。
+    // 用户之后手动打开不会再被改回。
+    if (loadedVersion < 2) {
+        merged.installer.autoCheckOnStartup = false;
+    }
+
     // 数值范围钳制 —— data.json 是用户可以手改的。
     merged.installer.autoCheckDelaySeconds = clamp(
         merged.installer.autoCheckDelaySeconds,
         0,
         3600
     );
+    if (!Number.isFinite(merged.installer.lastUpdateCheckAt) || merged.installer.lastUpdateCheckAt < 0) {
+        merged.installer.lastUpdateCheckAt = 0;
+    }
     merged.sync.autoCommitMinutes = clamp(merged.sync.autoCommitMinutes, 0, 24 * 60);
     merged.sync.autoPushMinutes = clamp(merged.sync.autoPushMinutes, 0, 24 * 60);
     merged.sync.autoPullMinutes = clamp(merged.sync.autoPullMinutes, 0, 24 * 60);

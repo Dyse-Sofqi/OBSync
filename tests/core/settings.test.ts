@@ -76,8 +76,47 @@ describe("normalizeSettings", () => {
         expect(settings.language).toBe(DEFAULT_SETTINGS.language);
     });
 
-    it("可更新记录：剪掉不在跟踪列表里的条目，丢弃形状不对的条目", () => {
-        // 跟踪列表是「谁该有徽标」的唯一事实来源 —— 残留已移除插件的
+    it("空白仓库默认不参与自动更新检查", () => {
+        // v2 起的默认：启动检查关闭，改由「进入设置页自动检查」承接。
+        expect(DEFAULT_SETTINGS.installer.autoCheckOnStartup).toBe(false);
+        expect(DEFAULT_SETTINGS.installer.autoCheckOnSettingsOpen).toBe(true);
+        expect(DEFAULT_SETTINGS.installer.lastUpdateCheckAt).toBe(0);
+    });
+
+    it("v1 → v2 迁移：把老数据里持久化的启动检查一并纠正为关闭", () => {
+        // 旧的默认值是 true，用户从没动过开关也会被持久化成 true ——
+        // 不纠正的话「新默认关闭」形同虚设。
+        const migrated = normalizeSettings({
+            version: 1,
+            installer: { autoCheckOnStartup: true },
+        });
+        expect(migrated.installer.autoCheckOnStartup).toBe(false);
+        expect(migrated.version).toBe(SETTINGS_VERSION);
+    });
+
+    it("v2 数据里的启动检查保持用户选择，不被迁移覆盖", () => {
+        const kept = normalizeSettings({
+            version: 2,
+            installer: { autoCheckOnStartup: true },
+        });
+        expect(kept.installer.autoCheckOnStartup).toBe(true);
+    });
+
+    it("非法的时间戳回退为 0", () => {
+        const settings = normalizeSettings({
+            version: 2,
+            installer: { lastUpdateCheckAt: -5 },
+        });
+        expect(settings.installer.lastUpdateCheckAt).toBe(0);
+
+        const nan = normalizeSettings({
+            version: 2,
+            installer: { lastUpdateCheckAt: "yesterday" },
+        });
+        expect(nan.installer.lastUpdateCheckAt).toBe(0);
+    });
+
+    it("可更新记录：剪掉不在跟踪列表里的条目，丢弃形状不对的条目", () => {        // 跟踪列表是「谁该有徽标」的唯一事实来源 —— 残留已移除插件的
         // 记录会在重装同名 id 插件时显示过期徽标。
         const settings = normalizeSettings({
             installer: {
