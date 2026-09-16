@@ -1,4 +1,5 @@
 import type { IRepoHost } from "../../host/IRepoHost";
+import { NotFoundError } from "../../host/errors";
 import { InstallerError } from "./errors";
 import { logger } from "../../core/logger";
 import { parseManifest } from "./manifest";
@@ -113,7 +114,16 @@ async function loadReleaseFile(
             );
             return {
                 content: await host.readFile(repoRef, name, { token, ref: release.tag }),
-                assetUnreachable: true,
+                // **只有传输层失败才算「资产通道整体不可用」。**
+                //
+                // 404 是**这一个资产**的问题（私有仓库的 `browser_download_url`
+                // 本来就会 404），不代表后面的文件也拿不到。把它也算成不可用，
+                // 会让后面的文件被无谓地跳过资产通道 —— 而 `main.js` 通常被
+                // gitignore，源码通道取不到它，于是一次本可成功的安装变成失败。
+                //
+                // 反过来，网络超时才是「这条通道现在都不通」，那时记住它、
+                // 后面的文件直接走源码，可以少等两次超时。
+                assetUnreachable: !(err instanceof NotFoundError),
             };
         }
     }

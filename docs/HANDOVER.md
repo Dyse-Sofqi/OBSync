@@ -62,6 +62,7 @@
 | **两处错误类型用错** | 真 bug：「没有上游分支」「游离 HEAD」都抛了 `GitNotRepoError`，提示语是「请先初始化仓库」—— 让用户去初始化一个已存在的仓库，**指错方向** | 新增 `NoUpstreamError` / `DetachedHeadError` |
 | **鉴权失败被一律归为「令牌问题」** | 真缺口（与上一行同一类）：平台因**凭据用户名**不符而拒绝时，用户看到的是「请检查访问令牌是否有效」—— 去反复检查一个没问题的令牌。实测：Gitee 只接受 账号名 / `oauth2` / `gitee.com` 三种用户名，其余直接拒绝（见 `reference-analysis.md` 差异 6） | 新增 `GitCredentialUsernameRejectedError`，文案说清「令牌本身是有效的、这是插件配置错误」；`mapError` 加这条分类并排在鉴权判断**之前**（用例锁着顺序） |
 | **「测试连接」报「同步配置可用」** | 过度承诺：该检查走 `ls-remote`，验不了推送路径，而 Gitee 的凭据用户名规则只在 push 路径执行。说成「配置可用」会让人以为推送也验过了 | 文案限定为「远端可读取」，并在通过时追加一句说明本次只验证了读取 |
+| **资产 404 被当成「资产通道整体不可用」** | 真 bug：`pluginFiles` 里任何资产下载失败都置 `assetUnreachable = true`，于是后续文件被跳过资产通道。而 `main.js` 通常被 gitignore、源码通道取不到它 —— **一次本可成功的安装变成失败**（变异验证时失败信息正是 `missingRequiredFiles: "main.js"`）。代码注释本来就写着「传输层原因（不是文件不存在）」，是实现没做到 | 只有 `NotFoundError` 之外才算通道不可用；新增 `tests/features/pluginFiles.test.ts`（此前该文件**没有任何单测**） |
 | **安装器的命令没有插件名前缀** | UX 缺口：同步命令叫「OBSync：立即同步」，安装器命令却直接用了弹窗标题（「添加插件仓库」）。Obsidian 用户按插件名搜命令，没前缀就搜不到 | 新增 `cmdAddRepo` / `cmdBindExisting` / `cmdCheckUpdates` / `cmdUpdateAll` / `cmdOpenSettings`；弹窗标题保持不带前缀 |
 | 设置页术语混用 | 「已追**踪**插件」（标签）vs「已跟**踪**的插件」（同页标题） | 统一为「跟踪」 |
 | `autoCheckDelay` 的置灰状态不更新 | 小 bug：切换上面的开关后，下面的输入框还是灰的（`commit()` 不重绘） | 持有 `TextComponent` 引用，在开关回调里即时 `setDisabled` |
@@ -268,7 +269,14 @@ src/
   API 限流/不可用时降级源码通道并提示用户 —— Gitee 匿名配额实测极低，
   没有这条降级路径就完全装不了。
 - **逐文件回退**（`pluginFiles.ts`）：release 资产里缺哪个文件，就回该 tag 源码里读。
+  资产下载**失败**（不只是"不存在"）也回退 —— 资产 CDN 在国内经常不可达。
   `styles.css` 是可选文件，任何失败静默跳过（包括网络错误）。
+  > 注意「记住资产通道不可用」的判定边界：**只有传输层失败**（网络/超时）
+  > 才跳过后续文件的资产通道；**404 不算** —— 那只是这一个资产的问题
+  > （私有仓库的 `browser_download_url` 本来就会 404），把它也算上会让
+  > 后面的文件被无谓跳过，而 `main.js` 通常被 gitignore、源码通道取不到它，
+  > 于是一次本可成功的安装变成失败。锁这条性质的是
+  > `tests/features/pluginFiles.test.ts`（双向变异都验过）。
 - **写入前备份 + 回滚**（`pluginFolder.ts`）：先快照进内存，写失败整体还原。
   回滚也失败时报错让用户手动检查。BRAT 没有这套机制。
 - **单一跟踪列表**（`types.ts` 的 `TrackedPlugin`）：不复刻 BRAT 的双平行列表。
