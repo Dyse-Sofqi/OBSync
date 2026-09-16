@@ -309,6 +309,30 @@ export const en = {
             "That does not look like a git remote. Use a URL, git@host:path, or a local path.",
         editRemoteNotGithubOrGitee:
             "You can save and use this — syncing is plain git. But since the host is not GitHub or Gitee, no access token will be injected and \"Open on remote\" will not work (private repositories then rely on the OS credential helper).",
+        // ── .gitignore ──
+        gitignoreCreated:
+            "Created a .gitignore (it excludes Obsidian's workspace state files, which would otherwise cause conflicts between devices).",
+        cmdEditGitignore: "OBSync: Edit .gitignore",
+        /** Contents of the .gitignore written when initialising a repository. */
+        gitignoreTemplate: [
+            "# Created by OBSync.",
+            "",
+            "# Obsidian's workspace layout (panels, tabs, cursor positions). It is",
+            "# per-device; syncing it only creates conflicts — the single most common",
+            "# pitfall when syncing a vault across devices.",
+            ".obsidian/workspace.json",
+            ".obsidian/workspace-mobile.json",
+            "",
+            "# Obsidian's trash",
+            ".trash/",
+            "",
+            "# OS junk",
+            ".DS_Store",
+            "Thumbs.db",
+            "",
+            "# Add anything else you want to ignore below.",
+        ].join("\n"),
+
         repoInited: "Git repository initialized.",
         mergeAborted: "Merge aborted; the repository is back to the pre-pull state.",
 

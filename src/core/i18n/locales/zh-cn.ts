@@ -313,6 +313,31 @@ export const zhCN = {
         editRemoteInvalid: "这看起来不是一个 git 远端地址。请填写 URL、git@host:path 或本地路径。",
         editRemoteNotGithubOrGitee:
             "可以保存并使用 —— 同步是纯 git 操作。但该平台不是 GitHub 或 Gitee，所以不会自动注入访问令牌，「在远端打开」也用不了（私有仓库需要系统凭据助手）。",
+        // ── .gitignore ──
+        gitignoreCreated: "已创建 .gitignore（排除了 Obsidian 的工作区状态文件，避免多设备冲突）。",
+        cmdEditGitignore: "OBSync：编辑 .gitignore",
+        /**
+         * 初始化仓库时写入的 .gitignore 内容（整段放在 locale 里，
+         * 而不是在代码里拼 —— 它含面向用户的说明文字）。
+         */
+        gitignoreTemplate: [
+            "# 由 OBSync 创建。",
+            "",
+            "# Obsidian 的工作区布局（面板、标签、光标位置）。每台设备各自维护，",
+            "# 同步它只会制造冲突 —— 这是 Obsidian 多设备同步最常见的坑。",
+            ".obsidian/workspace.json",
+            ".obsidian/workspace-mobile.json",
+            "",
+            "# Obsidian 的回收站",
+            ".trash/",
+            "",
+            "# 系统垃圾文件",
+            ".DS_Store",
+            "Thumbs.db",
+            "",
+            "# 想忽略别的文件，直接加到下面即可。",
+        ].join("\n"),
+
         repoInited: "git 仓库已初始化。",
         mergeAborted: "已放弃当前合并，仓库回到拉取前的状态。",
 

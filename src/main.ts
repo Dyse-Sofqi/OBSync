@@ -313,6 +313,13 @@ export default class ObsyncPlugin extends Plugin {
         });
 
         this.addCommand({
+            id: "edit-gitignore",
+            name: t.sync.cmdEditGitignore,
+            callback: () =>
+                void this.runSyncAction(() => this.sync!.service.openGitignore()),
+        });
+
+        this.addCommand({
             id: "open-source-control-view",
             name: t.sync.viewTitle,
             callback: () => void this.openSyncView(),
@@ -404,13 +411,17 @@ export default class ObsyncPlugin extends Plugin {
     }
 
     private async initRepo(): Promise<void> {
-        const git = this.sync?.git;
-        if (!git) return;
+        const sync = this.sync;
+        if (!sync) return;
 
         try {
-            await git.init();
+            // 走 service 而不是直接 git.init()：service 会顺带处理 .gitignore
+            // （没有就建一份默认的，避免用户把 workspace.json 同步出去）。
+            const { createdGitignore } = await sync.service.initRepo();
             this.notifier.success(this.t.sync.repoInited);
-            await this.sync!.service.refresh();
+            if (createdGitignore) {
+                this.notifier.info(this.t.sync.gitignoreCreated);
+            }
         } catch (err) {
             await this.runSyncAction(() => Promise.reject(err));
         }

@@ -1,4 +1,4 @@
-import { normalizePath, type App, type Vault } from "obsidian";
+import { normalizePath, TFile, type App, type Vault } from "obsidian";
 import { logger } from "../../core/logger";
 import type { LocaleStrings } from "../../core/i18n";
 import type { Notifier } from "../../core/notice";
@@ -172,6 +172,63 @@ export class SyncService {
             this.deps.notifier.success(this.deps.getT().sync.mergeAborted);
             await this.refreshStatus();
         });
+    }
+
+    /**
+     * 初始化仓库，并在**没有** `.gitignore` 时建一个默认的。
+     *
+     * ## 为什么自动建
+     *
+     * `.obsidian/workspace.json` 存的是面板与标签布局 —— **每开关一个标签它就变**。
+     * 多设备同步它必然冲突，而且冲突内容是整份 JSON，用户根本没法手工合并。
+     * 这是 Obsidian 同步最常见的坑，但用户不会预见到 —— 等冲突发生了再处理，
+     * 成本高得多。所以初始化时顺手挡掉，并**明确告知建了什么**（不偷偷摸摸）。
+     *
+     * 已经存在 `.gitignore` 时**绝不覆盖** —— 用户可能有自己的规则，
+     * 覆盖掉是数据损失。（实测用户的测试库里就有一份别的同步插件建的。）
+     */
+    async initRepo(): Promise<{ createdGitignore: boolean }> {
+        return this.enqueue(async () => {
+            await this.git.init();
+            const createdGitignore = await this.ensureGitignore();
+            await this.refreshStatus();
+            return { createdGitignore };
+        });
+    }
+
+    private async ensureGitignore(): Promise<boolean> {
+        const vault: Vault = this.deps.app.vault;
+        const path = normalizePath(".gitignore");
+
+        try {
+            if (await vault.adapter.exists(path)) return false;
+            await vault.adapter.write(path, this.deps.getT().sync.gitignoreTemplate);
+            return true;
+        } catch (err) {
+            // 建不了 .gitignore 不该让初始化失败 —— 只是少了一层保护。
+            logger.warn("could not create .gitignore", err);
+            return false;
+        }
+    }
+
+    /**
+     * 打开 `.gitignore` 供用户编辑；不存在就先建一个默认的。
+     *
+     * 复用初始化时的那份模板，所以用户看到的是一个**有注释解释为什么**的文件，
+     * 而不是空文件 —— 空文件没法教人该忽略什么。
+     */
+    async openGitignore(): Promise<void> {
+        const vault: Vault = this.deps.app.vault;
+        const path = normalizePath(".gitignore");
+
+        if (!(await vault.adapter.exists(path))) {
+            await vault.adapter.write(path, this.deps.getT().sync.gitignoreTemplate);
+        }
+
+        const file = vault.getAbstractFileByPath(path);
+        if (file instanceof TFile) {
+            await this.deps.app.workspace.getLeaf(false).openFile(file);
+        }
     }
 
     /** 只刷新状态（不打扰任何 git 写操作）。 */

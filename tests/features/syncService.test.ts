@@ -502,3 +502,42 @@ describe("diagnose（同步配置诊断）", () => {
         expect(git.calls).not.toContain("push");
     });
 });
+
+describe("initRepo 与 .gitignore", () => {
+    it("初始化时建一份默认 .gitignore（避免同步 workspace.json）", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service } = makeService(git, fake);
+
+        const result = await service.initRepo();
+
+        expect(git.calls).toContain("init");
+        expect(result.createdGitignore).toBe(true);
+        const content = fake.files.get(".gitignore") ?? "";
+        // 这条规则是这个功能存在的理由：workspace.json 每次开关标签都变，
+        // 多设备同步它必然冲突，而且冲突内容是整份 JSON，没法手工合并。
+        expect(content).toContain(".obsidian/workspace.json");
+        expect(content).toContain(".obsidian/workspace-mobile.json");
+    });
+
+    it("**已有 .gitignore 时绝不覆盖**（用户可能有自己的规则）", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp({ ".gitignore": "# 我自己的规则\n*.tmp\n" });
+        const { service } = makeService(git, fake);
+
+        const result = await service.initRepo();
+
+        expect(result.createdGitignore).toBe(false);
+        expect(fake.files.get(".gitignore")).toBe("# 我自己的规则\n*.tmp\n");
+    });
+
+    it("建不了 .gitignore 也不让初始化失败（只是少一层保护）", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service } = makeService(git, fake);
+        fake.failWriteOn = (path) => path.endsWith(".gitignore");
+
+        await expect(service.initRepo()).resolves.toEqual({ createdGitignore: false });
+        expect(git.calls).toContain("init");
+    });
+});
