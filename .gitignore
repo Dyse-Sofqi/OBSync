@@ -17,3 +17,6 @@ Thumbs.db
 
 # Test coverage
 coverage/
+
+# 沙箱/工具产生的临时文件
+_tmp_*
