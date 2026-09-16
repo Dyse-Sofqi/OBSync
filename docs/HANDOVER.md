@@ -112,10 +112,12 @@ src/
   （实测抽样 40 个社区插件命中 0 个），且全程走 raw 通道零 API 配额。
 - **绑定已有插件**（`existingPlugins.ts` + `ui/BindExistingModal.ts`）：
   扫描 `{configDir}/plugins/`（以磁盘为准，能发现刚手动拷入的插件），
-  用官方社区索引按插件 id 反查来源仓库 —— manifest 规范里没有 repo 字段，
-  这是唯一权威映射；索引外的插件（大量中文/Gitee 插件）标记
-  「来源未识别」留给手动添加。绑定只写跟踪列表不动文件。
-  入口：设置页按钮 + 命令。
+  用官方社区索引按**manifest id** 反查来源仓库 —— manifest 规范里没有 repo 字段，
+  这是唯一权威映射；注意 id 不能用目录名代替（见第七节第 9 条）。
+  索引外的插件（PKMer 等非官方渠道分发的中文插件）标记「来源未识别」，
+  留给手动添加。绑定只写跟踪列表不动文件。入口：设置页按钮 + 命令。
+  实测测试库 32 个插件：24 个可识别，8 个确实不在官方索引
+  （pkmer / trefoil / bewater / qimen / lyricflux / Enhanced-editing 等）。
 - **社区插件索引**（`communityPlugins.ts`）：GitHub 独有资源，Gitee 无等价物。
   6 小时缓存；统计文件可选；7685 条实测；`byId()` 供绑定功能反查。
 
@@ -176,6 +178,16 @@ diff 查看、树形文件视图、squash、子模块、行作者/blame。GitMan
 8. **`addStatusBarItem()` 在 `Plugin` 类上，不在 `app.workspace` 上** ——
    猜错位置会直接 `TypeError`（真实启动时才暴露，stub 造不出这种差异）。
    现状：状态栏元素由主类 `this.addStatusBarItem()` 创建后经 SyncDeps 传入。
+9. **插件目录名不保证等于 manifest id**（实测测试库 32 个插件里 5 个错位：
+   `MDRazor/`→`md-razor`、`obsidian-commander/`→`cmdr`、`obsidian-pkmer/`→`pkmer`、
+   `obsidian-plugin-manager/`→`plugin-manager`、`obsidian-style-tuner/`→`style-tuner`；
+   手动解压 release 或别的安装器用仓库名建目录所致）。
+   所以：**插件身份一律用 manifest id**（查社区索引、查启用状态、写跟踪记录），
+   **目录只用于定位文件**（`pluginFolder.resolvePluginFolder` 按 id 反查真实目录，
+   否则更新会新建出第二份同 id 安装）。按目录名查索引会漏掉 5/32 的插件 ——
+   曾表现为「明明上了官方市场却提示来源未识别」。
+   另外 `loadManifest` 要目录、`enablePluginAndSave` 要 id，两者别混用。
+   顺带观察：同一 id 可能存在于多个目录（旧 id 的残留安装），扫描时按 id 去重。
 
 ### 测试策略
 
