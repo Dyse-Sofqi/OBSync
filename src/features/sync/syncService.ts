@@ -40,8 +40,8 @@ export interface SyncHost {
 export class SyncService {
     /** 串行队列：队尾 promise。 */
     private tail: Promise<unknown> = Promise.resolve();
-    /** 有同步动作进行中（UI 与自动任务都看这个）。 */
-    private running = false;
+    /** 排队中 + 执行中的任务数。 */
+    private pending = 0;
 
     constructor(
         readonly git: GitManager,
@@ -49,18 +49,26 @@ export class SyncService {
         private readonly statusBar: StatusBar
     ) {}
 
-    /** 是否有动作在进行中。automatics 用它避免无意义排队。 */
+    /**
+     * 是否有动作在进行中（含**已排队但还没轮到**的）。
+     *
+     * 用计数器而不是布尔量：`enqueue` 里若写成「任务 settle 时置 false」，
+     * 那么队列里还有第二个任务时它就已经变 false 了 —— 于是 `isBusy` 在
+     * 真正有活干的时候报"空闲"。automatics 靠它决定"跳过本轮"，
+     * 状态栏与视图也靠它显示忙碌状态，语义错了会连锁出错。
+     */
     get isBusy(): boolean {
-        return this.running;
+        return this.pending > 0;
     }
 
     /** 串行执行一个动作；错误原样上抛给调用方决定怎么提示。 */
     private enqueue<T>(run: () => Promise<T>): Promise<T> {
+        this.pending += 1;
+        // 前一个任务无论成功失败都要接着跑下一个，所以 onRejected 也传 run。
         const task = this.tail.then(run, run);
         this.tail = task.catch(() => {});
-        this.running = true;
         return task.finally(() => {
-            this.running = false;
+            this.pending -= 1;
         });
     }
 
@@ -121,16 +129,23 @@ export class SyncService {
      */
     async sync(): Promise<SyncOutcome> {
         return this.enqueue(async () => {
-            this.statusBar.setActivity("committing");
             try {
+                // 每个阶段都更新活动状态 —— 只在开头设一次的话，
+                // 整条链路（含拉取、推送）都会显示「正在提交」，与实际不符。
+                this.statusBar.setActivity("committing");
                 await this.doCommitAll();
+
+                this.statusBar.setActivity("pulling");
                 const pulled = await this.doPull();
                 if (pulled.kind === "conflict") return pulled;
                 if (pulled.kind === "pulled") {
                     // 拉下来的文件可能又和本地未提交内容合并出新东西 ——
                     // 二次提交后再推送，保证推上去的是完整状态。
+                    this.statusBar.setActivity("committing");
                     await this.doCommitAll();
                 }
+
+                this.statusBar.setActivity("pushing");
                 return await this.doPush();
             } finally {
                 await this.refreshStatus();
@@ -163,9 +178,26 @@ export class SyncService {
 
     private async doCommitAll(): Promise<SyncOutcome> {
         const status = await this.git.status();
+
+        // 冲突未解决时**绝不能提交**。
+        //
+        // 这里有个不显眼的陷阱：冲突文件在 `git status` 里是 `UU`，
+        // 于是它**同时**被归进 `staged`（index 位非空）与 `unstaged`（worktree 位非空），
+        // 所以"有没有改动"的判断在有冲突时必然为真 —— 光看 dirty 是拦不住的。
+        // 不拦的话 `git add -A` 会把 `<<<<<<<` / `>>>>>>>` 冲突标记当普通内容暂存并提交，
+        // 把冲突写进历史。这正是本模块的设计要避免的事。
+        //
+        // 现实触发路径：上次同步遇到冲突没处理 → 自动提交定时器到点 → sync() 第一步就是这里。
+        if (status.conflicted.length > 0) {
+            throw new ConflictError(
+                `commit: ${status.conflicted.length} unresolved conflict(s)`,
+                status.conflicted
+            );
+        }
+
         const dirty =
             status.staged.length + status.unstaged.length + status.untracked.length;
-        if (dirty === 0 && status.conflicted.length === 0) {
+        if (dirty === 0) {
             return { kind: "nothing-to-commit" };
         }
 

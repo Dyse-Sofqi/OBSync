@@ -2,6 +2,7 @@ import { ItemView, Setting, WorkspaceLeaf } from "obsidian";
 import type { LocaleStrings } from "../../../core/i18n";
 import type { SyncService } from "../syncService";
 import type { SimpleGitManager } from "../simpleGitManager";
+import type { FileChange, RepoStatus } from "../types";
 
 /**
  * 源码控制视图。
@@ -114,7 +115,8 @@ export class SourceControlView extends ItemView {
                 });
         }
         // 变更列表
-        const changes = [...status.staged, ...status.unstaged, ...status.untracked];
+        const changes = visibleChanges(status);
+
         if (changes.length === 0 && status.conflicted.length === 0) {
             contentEl.createEl("p", { text: t.sync.nothingToCommit, cls: "obsync-empty" });
         } else {
@@ -139,15 +141,39 @@ export class SourceControlView extends ItemView {
         }
     }
 
-    /** 动作跑完重绘整个视图。错误由 SyncService 内部提示，这里只需兜底。 */
+    /**
+     * 跑一个动作，然后重绘整个视图。
+     *
+     * **错误必须在这里报出去。** `SyncService` 只对「拉取冲突」与「没有远端」
+     * 两种情况做了提示，其余错误（推送被拒、鉴权失败、找不到 git、网络问题）
+     * 会原样上抛。早先这里静默吞掉，症状是：用户在视图里点「推送」，
+     * 远端拒绝了，**界面上什么都不会发生** —— 连一句提示都没有。
+     */
     private async run(action: () => Promise<unknown>): Promise<void> {
         try {
             await action();
-        } catch {
-            // 通知已经由 service/notifier 完成；视图只负责恢复可用状态。
+        } catch (err) {
+            this.service.deps.notifier.reportError(err);
         }
         await this.render();
     }
+}
+
+/**
+ * 变更列表里该显示的文件。
+ *
+ * **必须把冲突文件滤掉。** 它们在 `git status` 里是 `UU`，于是 `mapStatus`
+ * 会把它**同时**归进 `staged`（index 位非空）与 `unstaged`（worktree 位非空）。
+ * 不滤的话同一个冲突文件会在列表里出现三次：staged 一次、unstaged 一次、
+ * 外加下面单独渲染的 conflicted 那一行。
+ *
+ * 抽成独立函数是为了能直接测 —— 这类"列表里多了一项"的问题靠读代码很难发现，
+ * 而视图本身要做 DOM 级测试代价太高。
+ */
+export function visibleChanges(status: RepoStatus): FileChange[] {
+    return [...status.staged, ...status.unstaged, ...status.untracked].filter(
+        (change) => change.status !== "conflicted"
+    );
 }
 
 function markOf(status: string): string {

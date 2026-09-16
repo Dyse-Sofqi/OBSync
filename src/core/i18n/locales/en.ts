@@ -318,7 +318,10 @@ export const en = {
         editRemoteLabel: "Remote repository URL",
         editRemotePlaceholder: "https://github.com/owner/repo.git",
         editRemoteSaved: (url: string) => `Remote set to ${url}`,
-        editRemoteInvalid: "Could not parse this repository URL. GitHub and Gitee HTTPS / SSH URLs are supported.",
+        editRemoteInvalid:
+            "That does not look like a git remote. Use a URL, git@host:path, or a local path.",
+        editRemoteNotGithubOrGitee:
+            "You can save and use this — syncing is plain git. But since the host is not GitHub or Gitee, no access token will be injected and \"Open on remote\" will not work (private repositories then rely on the OS credential helper).",
         repoInited: "Git repository initialized.",
         mergeAborted: "Merge aborted; the repository is back to the pre-pull state.",
 

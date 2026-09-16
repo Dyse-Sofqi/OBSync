@@ -132,6 +132,15 @@ function makeService(git: FakeGit, fake: FakeApp) {
     const settings = normalizeSettings({});
     settings.sync.commitMessage = "backup {{numFiles}}";
 
+    const statusBar = new StatusBar({ item: fakeItem, t: zhCN });
+    // 记录活动状态变化 —— 「整条链路都显示正在提交」那个 bug 就靠这个断言。
+    const activities: string[] = [];
+    const realSetActivity = statusBar.setActivity.bind(statusBar);
+    statusBar.setActivity = (activity: Parameters<StatusBar["setActivity"]>[0]) => {
+        activities.push(activity);
+        realSetActivity(activity);
+    };
+
     const service = new SyncService(git, {
         app: fake.app,
         notifier,
@@ -139,9 +148,9 @@ function makeService(git: FakeGit, fake: FakeApp) {
         getCommitTemplate: () => settings.sync.commitMessage,
         getStrategy: () => "merge",
         getConflictGuideName: () => zhCN.sync.conflictGuideFile,
-    }, new StatusBar({ item: fakeItem, t: zhCN }));
+    }, statusBar);
 
-    return { service, notices };
+    return { service, notices, activities };
 }
 
 describe("commitAll", () => {
@@ -257,6 +266,85 @@ describe("并发控制", () => {
         expect(sawBusy).toBe(true);
         // 串行队列保证 git 调用永不重叠 —— 并发的 commitAll 不会互相踩 index。
         expect(git.maxInFlight).toBe(1);
+    });
+});
+
+describe("冲突未解决时拒绝提交", () => {
+    it("commitAll 抛 ConflictError，且完全不碰 index 与提交", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service } = makeService(git, fake);
+
+        // 冲突文件在 `git status` 里是 `UU`，于是它**同时**算 staged 与 unstaged ——
+        // 所以「有没有改动」的判断在有冲突时必然为真，光看 dirty 拦不住。
+        git.conflicted = ["notes/会打架.md"];
+        git.staged = ["notes/会打架.md"];
+        git.unstaged = ["notes/会打架.md"];
+
+        await expect(service.commitAll()).rejects.toBeInstanceOf(ConflictError);
+
+        // 关键：不能调 stage / commit。否则 `git add -A` 会把
+        // `<<<<<<<` / `>>>>>>>` 冲突标记当普通内容提交，把冲突写进历史。
+        expect(git.calls).not.toContain("stage-all");
+        expect(git.calls.some((call) => call.startsWith("commit:"))).toBe(false);
+    });
+
+    it("sync 在冲突未解决时也拒绝开跑（自动定时器会走到这条路）", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service } = makeService(git, fake);
+        git.conflicted = ["notes/会打架.md"];
+
+        await expect(service.sync()).rejects.toBeInstanceOf(ConflictError);
+
+        // 冲突没解决就不该继续拉取与推送
+        expect(git.calls.some((call) => call.startsWith("pull:"))).toBe(false);
+        expect(git.calls).not.toContain("push");
+    });
+
+    it("没有冲突时正常提交（确认没误伤）", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service } = makeService(git, fake);
+        git.untracked = ["new.md"];
+
+        await expect(service.commitAll()).resolves.toMatchObject({ kind: "committed" });
+    });
+});
+
+describe("isBusy 的语义", () => {
+    it("排队中的任务也算忙，不只是正在跑的那个", async () => {
+        const git = new InstrumentedGit();
+        const fake = createFakeApp();
+        const { service } = makeService(git, fake);
+
+        expect(service.isBusy).toBe(false);
+
+        const first = service.push();
+        const second = service.push();
+
+        // 用布尔量实现的话，第一个任务 settle 时就会变 false ——
+        // 而此时第二个还在跑，于是「忙」的状态在真正有活干时报"空闲"。
+        expect(service.isBusy).toBe(true);
+
+        await Promise.all([first, second]);
+        expect(service.isBusy).toBe(false);
+    });
+});
+
+describe("sync 的阶段状态", () => {
+    it("按阶段更新活动状态，而不是整条链路都显示「正在提交」", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service, activities } = makeService(git, fake);
+
+        git.untracked = ["a.md"];
+        git.pullScript = "pulled"; // 拉到东西 → 会二次提交
+        git.ahead = 1;
+
+        await service.sync();
+
+        expect(activities).toEqual(["committing", "pulling", "committing", "pushing"]);
     });
 });
 

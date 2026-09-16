@@ -322,7 +322,9 @@ export const zhCN = {
         editRemoteLabel: "远端仓库地址",
         editRemotePlaceholder: "https://github.com/owner/repo.git",
         editRemoteSaved: (url: string) => `远端已设置为 ${url}`,
-        editRemoteInvalid: "无法识别该仓库地址。支持 GitHub 与 Gitee 的 HTTPS / SSH 地址。",
+        editRemoteInvalid: "这看起来不是一个 git 远端地址。请填写 URL、git@host:path 或本地路径。",
+        editRemoteNotGithubOrGitee:
+            "可以保存并使用 —— 同步是纯 git 操作。但该平台不是 GitHub 或 Gitee，所以不会自动注入访问令牌，「在远端打开」也用不了（私有仓库需要系统凭据助手）。",
         repoInited: "git 仓库已初始化。",
         mergeAborted: "已放弃当前合并，仓库回到拉取前的状态。",
 
