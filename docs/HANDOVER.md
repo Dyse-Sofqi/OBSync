@@ -32,6 +32,10 @@
 | 一：脚手架 + core + host 抽象层 | ✅ 完成 | `002056d` |
 | 二：插件安装器（BRAT 复刻） | ✅ 完成 | `46170ef` |
 | 三：Git 同步（obsidian-git 复刻） | 🟩 代码与单测完成 | `bdd2861` |
+
+> 阶段二之后按使用反馈持续增补（均已提交）：绑定库里已有的插件（`1a73339`）、
+> 可用更新常驻徽标（`e9a0729`）、插件身份改用 manifest id（`3c4e660`）、
+> 检查时机调整（`c5bc825`）。设置结构版本现在是 `SETTINGS_VERSION = 2`。
 | 四：打磨与发布 | ⬜ 未开始 | — |
 
 **验收标准速查**（详见 PLAN.md 第三节）：
@@ -101,12 +105,20 @@ src/
   回滚也失败时报错让用户手动检查。BRAT 没有这套机制。
 - **单一跟踪列表**（`types.ts` 的 `TrackedPlugin`）：不复刻 BRAT 的双平行列表。
   settings 加载时会做结构校验（`sanitizeTrackedPlugins`），坏条目直接丢弃。
-- **更新检查与执行分离**（`updateChecker.ts`）：只提示不自动装。
-  冻结项（`frozen`）跳过检查与批量更新，但可以手动重装。
+- **更新检查与执行分离**（`updateChecker.ts`）：**没有任何自动安装**。
+  两个自动**检查**时机：
+  1. 启动后延迟 N 秒（`autoCheckOnStartup`，**v2 起默认关闭**）；
+  2. 打开 OBSync 设置页（`autoCheckOnSettingsOpen`，默认开启，
+     由 `display`/`hide` 区分「打开页签」与「页内重绘」，并有 10 分钟节流
+     `SETTINGS_OPEN_CHECK_INTERVAL_MS` + 持久化的 `lastUpdateCheckAt`）。
+  执行更新永远手动：命令「更新全部插件」、行上的 ⬇ / ↻ 按钮。
+  冻结项（`frozen`）**不参与任何检查**，因此也不会进入「更新全部」的集合
+  （文案已修正为「不参与更新检查」——产品里没有自动更新）。
   检查结果持久化在 `installer.availableUpdates`（pluginId → 新版本 + 时间），
   已跟踪列表据此渲染**常驻徽标**（整行高亮，Notice 一闪就错过）；
   安装/更新成功后由 `recordInstalled` 清除，normalizeSettings 会剪掉
-  已不在跟踪列表的条目。检查失败保留旧记录（过期信息好过没有）。
+  已不在跟踪列表的条目。检查失败保留旧记录（过期信息好过没有），
+  但 `lastUpdateCheckAt` 照常刷新（限流期间不要反复重试）。
 - **镜像发现**（`mirrorFinder.ts`）：用两边 manifest 的 `id` 二次校验，
   同名不同项目直接放弃 —— 装错比找不到严重。默认关闭
   （实测抽样 40 个社区插件命中 0 个），且全程走 raw 通道零 API 配额。
