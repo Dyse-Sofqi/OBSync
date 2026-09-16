@@ -66,6 +66,13 @@ export const en = {
     settings: {
         title: "OBSync settings",
 
+        tabs: {
+            tracked: "Tracked plugins",
+            installer: "Plugin installer",
+            sync: "Vault sync",
+            general: "General",
+        },
+
         language: {
             heading: "Language",
             name: "Interface language",

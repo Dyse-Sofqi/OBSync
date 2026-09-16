@@ -67,6 +67,13 @@ export const zhCN = {
     settings: {
         title: "OBSync 设置",
 
+        tabs: {
+            tracked: "已追踪插件",
+            installer: "插件安装器",
+            sync: "仓库同步",
+            general: "通用",
+        },
+
         language: {
             heading: "语言",
             name: "界面语言",
@@ -115,7 +122,7 @@ export const zhCN = {
         },
 
         sync: {
-            heading: "笔记同步",
+            heading: "仓库同步",
             enabled: "启用笔记同步",
             enabledDesc: "使用系统 git 同步当前仓库。此功能仅在桌面端可用。",
             desktopOnly: "笔记同步依赖系统 git，仅在桌面端可用。",

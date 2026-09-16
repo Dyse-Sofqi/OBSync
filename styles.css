@@ -29,3 +29,35 @@
     opacity: 0.7;
     margin: 0.5em 0;
 }
+
+/* 设置页标签栏（Obsidian 的 PluginSettingTab 没有内建分页，自己画一条） */
+.obsync-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25em;
+    margin-bottom: 1.25em;
+    border-bottom: 1px solid var(--background-modifier-border);
+    padding-bottom: 0.5em;
+}
+
+.obsync-tab {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    color: var(--text-muted);
+    padding: 0.35em 0.9em;
+    border-radius: var(--radius-s);
+    cursor: pointer;
+    font-size: var(--font-ui-small);
+}
+
+.obsync-tab:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+
+.obsync-tab.is-active {
+    background: var(--background-modifier-active-hover, var(--background-modifier-hover));
+    color: var(--text-accent);
+    font-weight: 600;
+}

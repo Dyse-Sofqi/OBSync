@@ -7,6 +7,14 @@ import { getHost } from "./host/hostRegistry";
 import type { HostKind } from "./host/types";
 
 /**
+ * 设置页的四个标签页。
+ *
+ * 顺序即显示顺序。把「已追踪插件」放第一页：用户进设置页多半是想看
+ * 哪个插件能更新、或再装一个，而不是来调开关的。
+ */
+type SettingsTabId = "tracked" | "installer" | "sync" | "general";
+
+/**
  * 设置页。
  *
  * 与参考项目 BRAT 的一个明显不同：BRAT 的 `SettingsTab.ts` 有 30KB，
@@ -25,6 +33,9 @@ export class ObsyncSettingsTab extends PluginSettingTab {
     /** 页签当前是否打开（用于识别 display() 是「打开」还是「重绘」）。 */
     private tabOpen = false;
 
+    /** 当前选中的标签页。显示顺序即数组顺序（见 renderTabs）。 */
+    private activeTab: SettingsTabId = "tracked";
+
     constructor(private readonly obsync: ObsyncPlugin) {
         super(obsync.app, obsync);
     }
@@ -34,16 +45,24 @@ export class ObsyncSettingsTab extends PluginSettingTab {
         this.tabOpen = true;
 
         const { containerEl } = this;
-        const t = this.obsync.t;
         containerEl.empty();
 
-        this.renderLanguage();
-        this.renderTokens();
-        this.renderGeneral();
-        this.renderInstaller();
-        this.renderSync();
+        this.renderTabs();
 
-        void t; // t 在各 render 方法里按需取，这里只是保持引用一致
+        switch (this.activeTab) {
+            case "tracked":
+                this.renderTrackedTab();
+                break;
+            case "installer":
+                this.renderInstaller();
+                break;
+            case "sync":
+                this.renderSync();
+                break;
+            case "general":
+                this.renderGeneral();
+                break;
+        }
 
         if (justOpened) void this.autoCheckOnOpen();
     }
@@ -51,6 +70,78 @@ export class ObsyncSettingsTab extends PluginSettingTab {
     hide(): void {
         this.tabOpen = false;
         super.hide();
+    }
+
+    /**
+     * 标签栏。
+     *
+     * Obsidian 的 PluginSettingTab 没有内建分页，自己画一条 ——
+     * 用普通 button 而不是 Setting，因为它们只是导航，不承载设置语义。
+     * 选中项存在内存里：页内重绘（改设置、刷新列表）后仍停在原标签，
+     * 不会把用户弹回第一页。
+     */
+    private renderTabs(): void {
+        const t = this.obsync.t;
+        const tabs: Array<{ id: SettingsTabId; label: string }> = [
+            { id: "tracked", label: t.settings.tabs.tracked },
+            { id: "installer", label: t.settings.tabs.installer },
+            { id: "sync", label: t.settings.tabs.sync },
+            { id: "general", label: t.settings.tabs.general },
+        ];
+
+        const nav = this.containerEl.createDiv({ cls: "obsync-tabs" });
+        for (const tab of tabs) {
+            const button = nav.createEl("button", {
+                text: tab.label,
+                cls: "obsync-tab",
+            });
+            if (tab.id === this.activeTab) button.addClass("is-active");
+
+            button.addEventListener("click", () => {
+                if (this.activeTab === tab.id) return;
+                this.activeTab = tab.id;
+                // 切标签不触发自动检查（tabOpen 已为 true），只换内容。
+                this.display();
+            });
+        }
+    }
+
+    /** 标签一：已追踪插件 —— 三个主操作按钮 + 跟踪列表。 */
+    private renderTrackedTab(): void {
+        const t = this.obsync.t;
+
+        new Setting(this.containerEl)
+            .addButton((button) =>
+                button
+                    .setButtonText(t.installer.modalTitle)
+                    .setCta()
+                    .onClick(() => this.obsync.installer.openAddRepoModal())
+            )
+            .addButton((button) =>
+                button
+                    .setButtonText(t.installer.bindTitle)
+                    .onClick(() =>
+                        this.obsync.installer.openBindExistingModal(() => this.display())
+                    )
+            )
+            .addButton((button) =>
+                button.setButtonText(t.installer.checkAll).onClick(async () => {
+                    button.setDisabled(true);
+                    await this.checkAllUpdates();
+                    button.setDisabled(false);
+                })
+            );
+
+        renderTrackedPlugins(this.containerEl, {
+            app: this.obsync.app,
+            t,
+            service: this.obsync.installer.service,
+            checker: this.obsync.installer.checker,
+            getTracked: () => this.obsync.settings.installer.tracked,
+            getUpdateFor: (pluginId) =>
+                this.obsync.settings.installer.availableUpdates[pluginId],
+            refresh: () => this.display(),
+        });
     }
 
     /** 打开设置页时的自动检查（受设置与节流控制）。 */
@@ -198,8 +289,11 @@ export class ObsyncSettingsTab extends PluginSettingTab {
         void setting;
     }
 
+    /** 标签四：通用 —— 界面语言 + 提示与日志。 */
     private renderGeneral(): void {
         const t = this.obsync.t;
+
+        this.renderLanguage();
 
         new Setting(this.containerEl).setName(t.settings.general.heading).setHeading();
 
@@ -288,39 +382,9 @@ export class ObsyncSettingsTab extends PluginSettingTab {
                 })
             );
 
-        // 主要操作放在设置页顶部一眼能看到的位置。
-        new Setting(this.containerEl)
-            .addButton((button) =>
-                button
-                    .setButtonText(t.installer.modalTitle)
-                    .setCta()
-                    .onClick(() => this.obsync.installer.openAddRepoModal())
-            )
-            .addButton((button) =>
-                button
-                    .setButtonText(t.installer.bindTitle)
-                    .onClick(() =>
-                        this.obsync.installer.openBindExistingModal(() => this.display())
-                    )
-            )
-            .addButton((button) =>
-                button.setButtonText(t.installer.checkAll).onClick(async () => {
-                    button.setDisabled(true);
-                    await this.checkAllUpdates();
-                    button.setDisabled(false);
-                })
-            );
-
-        renderTrackedPlugins(this.containerEl, {
-            app: this.obsync.app,
-            t,
-            service: this.obsync.installer.service,
-            checker: this.obsync.installer.checker,
-            getTracked: () => this.obsync.settings.installer.tracked,
-            getUpdateFor: (pluginId) =>
-                this.obsync.settings.installer.availableUpdates[pluginId],
-            refresh: () => this.display(),
-        });
+        // 令牌属于「怎么访问插件来源」的范畴，跟着安装器页走 ——
+        // 列表与操作按钮已移到「已追踪插件」页。
+        this.renderTokens();
     }
 
     private async checkAllUpdates(options: { quietWhenNone?: boolean } = {}): Promise<void> {
