@@ -33,6 +33,7 @@ export * from "./types";
 export * from "./errors";
 export {
     commitWebUrl,
+    fileHistoryWebUrl,
     fileWebUrl,
     formatRemoteUrl,
     formatRepoId,

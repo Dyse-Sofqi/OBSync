@@ -243,6 +243,14 @@ export const zhCN = {
         cmdInit: "OBSync：初始化仓库",
         cmdAbortMerge: "OBSync：放弃当前合并（冲突恢复）",
         cmdEditRemote: "OBSync：编辑远端地址",
+        cmdOpenFileOnRemote: "OBSync：在浏览器中打开当前文件",
+        cmdOpenFileHistoryOnRemote: "OBSync：在浏览器中查看当前文件的历史",
+
+        // 文件右键菜单
+        menuOpenOnRemote: "在远端打开",
+        menuOpenHistoryOnRemote: "在远端查看历史",
+        remoteLinkUnavailable:
+            "无法生成远端链接。请确认已配置 GitHub 或 Gitee 远端，且当前仓库至少有一次提交。",
 
         // 视图 / 状态栏里的短动作名
         actSync: "立即同步",

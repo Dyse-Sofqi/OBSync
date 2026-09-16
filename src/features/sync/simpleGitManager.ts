@@ -35,6 +35,17 @@ import type { FileStatusResult, StatusResult } from "simple-git";
  *   这里统一在 `mapError` 一处收口成领域错误。
  */
 
+/**
+ * 识别「HEAD 还没有出生」（仓库建好但一次都没提交过）。
+ *
+ * 注意 git 的输出里 HEAD 是**带引号**的：`fatal: could not resolve 'HEAD'`。
+ * 第一版正则写的是不带引号的 `could not resolve HEAD`，于是永远匹配不上，
+ * 回退分支形同虚设 —— 表现为「全新仓库里取消暂存直接报错」。
+ * 这里用 `['"\`]?` 容忍引号，同时保留其他措辞以覆盖不同 git 版本。
+ */
+const HEAD_UNBORN_RE =
+    /could not resolve ['"`]?HEAD|unborn|unknown revision|ambiguous argument ['"`]?HEAD/i;
+
 export interface SimpleGitManagerOptions {
     /** vault（git 仓库）的绝对路径。 */
     baseDir: string;
@@ -150,7 +161,7 @@ export class SimpleGitManager implements GitManager {
             // 全新仓库还没有任何提交（HEAD 未出生），restore 拿不到基准；
             // 等价做法是把文件从 index 里摘掉、保留工作区内容。
             const message = err instanceof Error ? err.message : String(err);
-            if (!/could not resolve HEAD|unborn|unknown revision/i.test(message)) {
+            if (!HEAD_UNBORN_RE.test(message)) {
                 throw mapError(err, "unstaging files");
             }
             await wrap("unstaging files (no HEAD)", () =>

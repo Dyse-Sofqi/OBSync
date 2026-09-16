@@ -3,7 +3,8 @@
 > **这是接手本项目的第一份必读文件。** 配套阅读：`docs/PLAN.md`（总体规划与阶段划分）、
 > `docs/reference-analysis.md`（两个参考项目的源码分析）、`.workbuddy-ai/memory/`（历次工作日志）。
 >
-> 最后更新：2026-09-16（阶段三代码与单测完成，待实测项见第六节开头）
+> 最后更新：2026-09-16（验收复查：修掉 2 个真 bug + 补 3 处降级 + 补回一个漏做的功能，
+> 详见下方「验收复查记录」）
 
 ---
 
@@ -37,6 +38,24 @@
 > 可用更新常驻徽标（`e9a0729`）、插件身份改用 manifest id（`3c4e660`）、
 > 检查时机调整（`c5bc825`）。设置结构版本现在是 `SETTINGS_VERSION = 2`。
 | 四：打磨与发布 | ⬜ 未开始 | — |
+
+### 验收复查记录（2026-09-16）
+
+阶段二/三完成后做了一轮独立复查（不看实现者结论，只跑验证 + 读代码）。结论：
+架构与文档质量都好，但**测试套件实际是红的**（10 个失败），且有几处"文档说做了、
+实际没生效"的地方。已全部修复：
+
+| 问题 | 性质 | 修复 |
+| --- | --- | --- |
+| `unstage` 的 HEAD 未出生回退**从未触发** | 真 bug：正则写的是 `could not resolve HEAD`，而 git 实际输出带引号 `could not resolve 'HEAD'` | `HEAD_UNBORN_RE` 容忍引号 |
+| 9 个 git 用例超时 + 清理 EBUSY | 测试配置：本机进程创建 340ms，默认 5 秒超时不够 | `testTimeout: 30_000` + 清理带 `maxRetries` |
+| release 资产下载失败直接判安装失败 | 真缺口：同一文件在源码通道可取，却因资产 CDN 抖动而整体失败 | `loadReleaseFile` 失败也回退源码 |
+| GitHub raw 域名不可达时无退路 | 真缺口：国内 raw 常被阻断而 api 可达，两者可达性无关 | `readFile` 回退 contents API |
+| live 测试长期飘红（Gitee 限流） | 测试质量：会训练人忽略失败 | 限流时**跳过**并提示配 `OBSYNC_GITEE_TOKEN` |
+| `fileWebUrl` / `commitWebUrl` 是死代码 | 漏做的功能：PLAN 里规划的「在浏览器打开」没接上 | 新增 `remoteLinks.ts` + 2 条命令 + 文件右键菜单 |
+| `registerView` 用了 `this.sync!` 且无平台守卫 | 潜在崩溃：移动端会解引用 undefined | 加守卫，仅桌面注册 |
+| 文档写"整个套件 ~1.5s" | 文档失真 | 改为实测值（该文件单独 ~150s） |
+| `auth.ts` 的验证边界模糊 | 文档没说清"验证到哪一步" | 明确区分已验证（config 传递 + git 发头）与未验证（Gitee 服务端接受度） |
 
 **验收标准速查**（详见 PLAN.md 第三节）：
 
@@ -106,6 +125,7 @@ src/
    ├─ gitManager.ts        # 抽象接口（含状态字符映射 mapStatusChar）
    ├─ simpleGitManager.ts  # simple-git 实现（状态映射/错误收口/reset 策略）
    ├─ auth.ts              # http.extraheader 注入（simple-git config 是字符串数组）
+   ├─ remoteLinks.ts       # 「在远端打开」：凑齐 origin + 当前分支，拼网页地址
    ├─ commitMessage.ts     # 模板变量 {{date}}/{{hostname}}/{{numFiles}}/{{files}}
    ├─ syncService.ts       # 编排：串行队列 + commit→pull→push 链 + 冲突指南
    ├─ automatics.ts        # 自动定时器（剩余时间模型，时间戳存 localStorage）
@@ -168,8 +188,14 @@ src/
 simple-git 的 `config` 选项（字符串数组，逐项 `-c key=value`）给每条命令注入
 `http.extraheader=Authorization: Basic base64(user:token)`，不落盘、不进 remote URL。
 simple-git 实例按「远端 URL + gitPath」缓存，`setRemoteUrl`/设置变更后重建。
-> ⚠ 唯一待实测项：对真实 Gitee 私有仓库 push 一次确认（PLAN.md 风险表第一条）。
-> 失败的回退方案：askpass 弹窗（obsidian-git 的做法，见其 simpleGit.ts:249）。
+
+> 验证边界（`tests/features/authWire.test.ts` 里也写了）：
+> - ✅ simple-git 的 `config` 数组 → git 命令行的 `-c`（测试：让 git 在同一次调用里读回该配置）
+> - ✅ git 把该配置变成 HTTP 的 `Authorization` 头，且**在第一个请求就带上**、
+>   不等 401 挑战（`.probe/probe_auth.mjs`：本地 HTTP 服务器实测 `/info/refs?service=git-upload-pack` 已带正确头）
+> - ❌ **Gitee 服务端是否接受「令牌当密码」的 Basic 认证** —— 仍需真实令牌与私有仓库，
+>   这是 PLAN.md 风险表第一条，也是**目前唯一剩下的待实测项**。
+>   失败的回退方案：askpass 弹窗（obsidian-git 的做法，见其 simpleGit.ts:249）。
 
 **pull 三态**（`simpleGitManager.ts`）：先 fetch、比较本地/远端引用（照搬
 obsidian-git 验证过的形态），merge/rebase 直接整合；**reset = stash 保护（含
@@ -194,7 +220,17 @@ syncService 在库根目录写《OBSync 冲突指南.md》（冲突文件清单 
 分支 / ↑ahead ↓behind / ~脏文件数 / ⚠冲突数。
 
 **命令**：立即同步 / 提交全部 / 推送 / 拉取 / 初始化仓库 / 放弃当前合并 /
-编辑远端 / 打开源码控制视图。设置页新增：拉取整合策略（三态下拉）、gitPath。
+编辑远端 / 打开源码控制视图 / **在浏览器中打开当前文件** / **在浏览器中查看当前文件的历史**。
+后两条同时挂在文件右键菜单上（「在远端打开」「在远端查看历史」）。
+设置页新增：拉取整合策略（三态下拉）、gitPath。
+
+> 「在远端打开」的实现要点：URL 模板在 host 层（`repoRef.fileWebUrl` /
+> `fileHistoryWebUrl`），`remoteLinks.ts` 只负责凑齐「origin 的 RepoRef + 当前分支」。
+> 两个平台的网页路径格式一致，所以**没有平台分支** —— 这正是把
+> `openInGitHub` 的硬编码正则抽象掉之后该有的样子。
+> 拿不到远端 / 远端不是 GitHub 或 Gitee / 仓库还没有提交时，
+> 给可行动的提示而不是打开一个必然 404 的地址。
+> 路径逐段编码（`encodePathSegments`），中文文件名与空格不会截断链接。
 
 **v1 有意不做的**（obsidian-git 有，但 PLAN.md 范围外）：逐文件 hunk 级暂存、
 diff 查看、树形文件视图、squash、子模块、行作者/blame。GitManager 接口里
@@ -227,6 +263,22 @@ diff 查看、树形文件视图、squash、子模块、行作者/blame。GitMan
    曾表现为「明明上了官方市场却提示来源未识别」。
    另外 `loadManifest` 要目录、`enablePluginAndSave` 要 id，两者别混用。
    顺带观察：同一 id 可能存在于多个目录（旧 id 的残留安装），扫描时按 id 去重。
+10. **`git restore --staged` 在 HEAD 未出生时报的错里，HEAD 是带引号的**：
+    `fatal: could not resolve 'HEAD'`。`simpleGitManager.unstage` 的回退分支
+    最初用 `/could not resolve HEAD/` 匹配，**永远匹配不上** ——
+    回退形同虚设，表现为「全新仓库里取消暂存直接报错」。
+    现在是 `HEAD_UNBORN_RE`，用 `['"\`]?` 容忍引号。
+    教训：**靠 git 的错误文案做分支判断时，必须用真实输出校准正则**，
+    不要凭记忆写（记忆里是"没有引号的版本"）。
+11. **不要给 simple-git 传 `.env({ ...process.env })`**。simple-git 3.36 起会检查
+    通过 `.env()` 显式传入的环境变量，遇到会注入 git 配置的变量直接抛
+    `Use of "GIT_PAGER" is not permitted without enabling allowUnsafePager`
+    （`GIT_EDITOR` / `GIT_ASKPASS` 等同理）。本机环境恰好有 `GIT_PAGER=cat`，
+    于是测试以「本地服务器收到 0 个请求」的形式失败，看起来像网络问题。
+    **生产代码不调 `.env()`，不受影响**；只有测试里需要绕过代理时才想调它。
+    确实需要时改用 `unsafe: { allowUnsafePager: true }` 或只传需要的键。
+12. **`git config --get <key>` 在键不存在时，simple-git 返回空串而不是抛错**
+    （退出码 1 被解析掉了）。断言「配置未设置」要断言 `""`，别写 `rejects.toThrow()`。
 
 ### 测试策略
 
@@ -236,6 +288,12 @@ push 拒绝 —— git 语义的真实性是 mock 给不了的，且不碰网络
 `init.defaultBranch` 不可控，测试里统一 `checkout -b main`，提交身份用
 `addConfig` 设在仓库本地（绝不碰用户全局配置）。`syncService.test.ts` 用
 可编程假 GitManager 验证编排（顺序/冲突停止/推送前置/串行化）。
+`authWire.test.ts` 用「让 git 在同一次调用里读回 `-c` 配置」的手法验证
+simple-git 的 config 传递（不碰网络、不需令牌）。
+
+**跑测试要有耐心**：本机进程创建开销约 340ms，`simpleGitManager.test.ts`
+单独跑约 **150 秒**（不是"整个套件 1.5 秒"）。别因为"慢"就以为它挂了 ——
+`vitest.config.ts` 里已把 `testTimeout` 提到 30 秒，卡死与否看这个。
 
 ## 七、实测发现（读文档看不出来，改代码前先看这里）
 
@@ -267,11 +325,27 @@ push 拒绝 —— git 语义的真实性是 mock 给不了的，且不碰网络
 ### 环境约束
 
 13. **Gitee 匿名 API 配额极低**：连续请求直接 403，实测约一分钟内不恢复。
-    live 测试里 Gitee 的 API 用例可能因限流失败 —— 这是环境现象不是回归，等窗口重置再跑。
-14. **本机网络访问 objects.githubusercontent.com（GitHub 资产 CDN）超时**（2026-09-16 实测
-    21s 0 字节），但 api.github.com / raw.githubusercontent.com 正常。
-    live 测试里「下载 release 资产」用例在该网络下会超时，属环境问题。
-15. 测试库里已装的第三方插件 `gitee-sync-plus` 不是真 git 实现（只做文件级收发），
+    live 测试里 Gitee 的 API 用例**已改为限流时跳过**（不是判失败）——
+    长期飘红的套件会训练人忽略失败。想让它稳定跑绿就配令牌：
+    `OBSYNC_GITEE_TOKEN=xxx pnpm test:live`（配了令牌还被限流才会真失败）。
+14. **GitHub 的三条通道可达性互不相关**，本机 2026-09-16 实测：
+    | 通道 | 用途 | 本机表现 |
+    | --- | --- | --- |
+    | `api.github.com` | release 列表、contents API | 稳定 |
+    | `raw.githubusercontent.com` | 匿名读源码文件 | 稳定 |
+    | `github.com/.../releases/download/...` → `objects.githubusercontent.com` | 下载 release 资产 | **3 次里 2 次 21 秒超时 0 字节** |
+    这直接决定了安装器的两条降级（都是补的洞，别删）：
+    - `pluginFiles.loadReleaseFile`：**资产下载失败**（不只是"资产不存在"）也回退该 tag 的源码文件；
+    - `GitHubHost.readFile`：raw 域名不可达时回退 contents API（代价是消耗未认证配额）。
+    国内网络下 raw 域名常被阻断、资产 CDN 常超时，所以这两条不是"锦上添花"。
+15. **本机进程创建开销约 340ms**（连 `cmd /c echo` 也要 317ms，不是 git 特有的）。
+    后果：`simpleGitManager.test.ts` 一个用例起十几次 git 就要 4~5 秒，
+    vitest 默认的 5 秒超时必然不够 —— 表现为「用例超时 + 清理时 EBUSY」，
+    极易误判成被测代码有 bug。已在 `vitest.config.ts` 设 `testTimeout: 30_000`。
+    **该文件单独跑约 150 秒**（不是文档早先写的"整个套件 ~1.5s"，那个数字是错的）。
+    Windows 上 git 进程退出后目录句柄还会被占一会儿，清理要带
+    `maxRetries`/`retryDelay`，否则 EBUSY。
+16. 测试库里已装的第三方插件 `gitee-sync-plus` 不是真 git 实现（只做文件级收发），
     所以 OBSync 走真 git 是差异化，不是重复劳动。
 
 ## 八、交接习惯（沿用 WorkBuddy 的做法）

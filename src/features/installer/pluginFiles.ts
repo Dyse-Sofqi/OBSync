@@ -68,6 +68,45 @@ async function fetchOne(
     }
 }
 
+/**
+ * 取 release 里的单个文件：先试资产，**失败或不存在**都回到该 tag 的源码里读。
+ *
+ * 为什么失败也要回退（不只是"资产不存在"时回退）：
+ * release 资产的下载地址是 `github.com/{o}/{r}/releases/download/...`，
+ * 会 302 到 `objects.githubusercontent.com`。这条链路在国内网络下经常不可达 ——
+ * 本机实测 3 次里 2 次 21 秒超时、0 字节，第 3 次才成功。
+ * 而同一个文件在 `raw.githubusercontent.com` 上现成可取（release 本来就是从某个
+ * tag 构建的），两者可达性互不相关。
+ *
+ * 不补这条回退，症状是「网络稍差就完全装不上插件」，
+ * 而用户看到的只是一句网络错误，完全不知道换个通道就能成。
+ */
+async function loadReleaseFile(
+    host: IRepoHost,
+    repoRef: RepoRef,
+    name: PluginFileName,
+    release: Release,
+    token: string | undefined,
+    repoLabel: string
+): Promise<string | undefined> {
+    const asset = release.assets.find((candidate) => candidate.name === name);
+
+    if (asset) {
+        try {
+            const bytes = await host.downloadAsset(repoRef, asset, { token, release });
+            return decode(bytes);
+        } catch (err) {
+            logger.warn(
+                `downloading asset ${name} for ${repoLabel} failed, ` +
+                    `falling back to the source file at ${release.tag}`,
+                err
+            );
+        }
+    }
+
+    return await host.readFile(repoRef, name, { token, ref: release.tag });
+}
+
 /** 从 release 资产 + 该 tag 的源码里取文件。 */
 async function fetchFromRelease(
     host: IRepoHost,
@@ -81,21 +120,11 @@ async function fetchFromRelease(
 
     for (const name of PLUGIN_FILES) {
         onProgress?.(name);
-        const asset = release.assets.find((candidate) => candidate.name === name);
-
         const content = await fetchOne(
-            async () => {
-                if (asset) {
-                    const bytes = await host.downloadAsset(repoRef, asset, { token, release });
-                    return decode(bytes);
-                }
-                // 资产里没有这个文件 —— 回到该 tag 的源码里找。
-                return await host.readFile(repoRef, name, { token, ref: release.tag });
-            },
+            () => loadReleaseFile(host, repoRef, name, release, token, repoLabel),
             name,
             repoLabel
         );
-
         if (content !== undefined) files.set(name, content);
     }
 

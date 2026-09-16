@@ -134,10 +134,13 @@ describe("GitHubHost.readFile", () => {
         expect(calls[0]!.headers?.Authorization).toBe("Bearer tok");
     });
 
-    it("文件不存在时返回 undefined", async () => {
+    it("文件不存在时返回 undefined，且不消耗 API 配额", async () => {
         respond = () => ({ status: 404, text: '{"message":"Not Found"}' });
 
         await expect(new GitHubHost().readFile(REF, "nope.json")).resolves.toBeUndefined();
+
+        // 只发了一次请求 —— 404 是明确答案，不该再打一次 API。
+        expect(calls).toHaveLength(1);
     });
 
     it("逐段编码路径与含斜杠的分支名", async () => {
@@ -148,6 +151,27 @@ describe("GitHubHost.readFile", () => {
         expect(calls[0]!.url).toBe(
             "https://raw.githubusercontent.com/owner/repo/feature/new%20ui/src/my%20file.ts"
         );
+    });
+
+    it("raw 域名不可达时退回 contents API", async () => {
+        // raw.githubusercontent.com 在国内网络下经常被阻断，而 api.github.com
+        // 通常可达 —— 两个域名的可达性互不相关。没有这条回退，
+        // 症状就是「网络一换就装不上插件」。
+        respond = (request) => {
+            if (request.url.includes("raw.githubusercontent.com")) {
+                throw new Error("simulated raw domain unreachable");
+            }
+            return { status: 200, text: '{"id":"demo"}' };
+        };
+
+        const content = await new GitHubHost().readFile(REF, "manifest.json");
+
+        expect(content).toBe('{"id":"demo"}');
+        expect(
+            calls.some((call) =>
+                call.url.includes("api.github.com/repos/owner/repo/contents/manifest.json")
+            )
+        ).toBe(true);
     });
 });
 

@@ -201,6 +201,11 @@ export function fileWebUrl(ref: RepoRef, branch: string, path: string): string {
     return `${repoWebUrl(ref)}/blob/${branch}/${path}`;
 }
 
+/** 文件历史在网页端的地址。两个平台的路径格式一致。 */
+export function fileHistoryWebUrl(ref: RepoRef, branch: string, path: string): string {
+    return `${repoWebUrl(ref)}/commits/${branch}/${path}`;
+}
+
 /** 提交在网页端的地址。 */
 export function commitWebUrl(ref: RepoRef, hash: string): string {
     return `${repoWebUrl(ref)}/commit/${hash}`;

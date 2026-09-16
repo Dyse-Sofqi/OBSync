@@ -239,6 +239,14 @@ export const en = {
         cmdInit: "OBSync: Initialize repository",
         cmdAbortMerge: "OBSync: Abort current merge (conflict recovery)",
         cmdEditRemote: "OBSync: Edit remote URL",
+        cmdOpenFileOnRemote: "OBSync: Open current file in browser",
+        cmdOpenFileHistoryOnRemote: "OBSync: View current file history in browser",
+
+        // File context menu
+        menuOpenOnRemote: "Open on remote",
+        menuOpenHistoryOnRemote: "View history on remote",
+        remoteLinkUnavailable:
+            "Could not build a remote link. Make sure a GitHub or Gitee remote is configured and the repository has at least one commit.",
 
         actSync: "Sync now",
         actCommit: "Commit all",

@@ -31,6 +31,10 @@ pnpm test:live  # 真实 API 测试（需要网络）
 
 ### 测试
 - `tests/live/**` 默认被 `vitest.config.ts` 排除，靠 `OBSYNC_LIVE=1` 开启。
+- **`testTimeout` 是 30 秒不是默认的 5 秒**。本机进程创建约 340ms，
+  `simpleGitManager.test.ts` 一个用例起十几次 git 就要 4~5 秒 —— 默认超时会
+  以「用例超时 + 清理 EBUSY」的形式误报，看着像被测代码有 bug。
+  该文件单独跑约 150 秒，**不要因为慢就以为它挂了**。
 - `obsidian` 模块在测试里被 alias 到 `tests/stubs/obsidian.ts`。
   **测试里要调 stub 的辅助函数（如 `__setRequestUrlHandler`）必须用相对路径 import** ——
   TS 会把 `"obsidian"` 解析到真实的类型包，只有 vitest 运行时才走 alias。
@@ -41,8 +45,30 @@ pnpm test:live  # 真实 API 测试（需要网络）
   测试以「manifest 不是合法 JSON」的方式假失败（2026-09-16 踩过）。
 - 单测的 HTTP mock 里，**可选文件也要给 404 路由** —— 否则「无路由抛错 → 重试退避」
   每个用例白耗 1.6 秒。
+- **不要给 simple-git 传 `.env({ ...process.env })`**：3.36 起会守卫
+  `GIT_PAGER` / `GIT_EDITOR` 这类会注入配置的环境变量，直接抛
+  `Use of "GIT_PAGER" is not permitted without enabling allowUnsafePager`。
+  表现为「本地服务器收到 0 个请求」，看着像网络问题。生产代码不调 `.env()`，不受影响。
+- `git config --get <key>` 键不存在时 simple-git 返回**空串**而非抛错，
+  断言"未设置"要写 `toBe("")`。
+
+### 网络可达性（决定了两处必须保留的降级）
+- **GitHub 三条通道可达性互不相关**（本机实测）：`api.github.com` 稳定、
+  `raw.githubusercontent.com` 稳定、但 `github.com/.../releases/download/` →
+  `objects.githubusercontent.com` **3 次里 2 次 21 秒超时 0 字节**。
+  所以：`pluginFiles.loadReleaseFile` 在**资产下载失败**时也回退该 tag 的源码；
+  `GitHubHost.readFile` 在 raw 域名不可达时回退 contents API。这两条不是洁癖，别删。
+- **Gitee 匿名 API 配额极低**：连续请求直接 403 且一分钟内不恢复。
+  live 测试里 Gitee 的 API 用例会**跳过**（不是失败）—— 想跑绿就配
+  `OBSYNC_GITEE_TOKEN`。走网页 raw 通道的用例不吃配额，不包装。
 - 本机网络对 `objects.githubusercontent.com`（GitHub 资产 CDN）超时，API 域名正常；
   Gitee 匿名 API 配额极低（403 后约一分钟不恢复）。live 测试相关用例失败先怀疑环境。
+
+### git 错误文案
+- **靠 git 的错误文案做分支判断时，正则必须用真实输出校准**。
+  `git restore --staged` 在 HEAD 未出生时报的是 `fatal: could not resolve 'HEAD'`
+  —— **HEAD 带单引号**。凭记忆写 `/could not resolve HEAD/` 会永远匹配不上，
+  回退分支形同虚设（2026-09-16 踩过，见 `HEAD_UNBORN_RE`）。
 
 ### host 层设计原则
 - 平台差异**只允许出现在 `host/` 内部**。上层（安装器 / 同步）不得出现 `if (host === "gitee")`。

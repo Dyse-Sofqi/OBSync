@@ -11,6 +11,11 @@ import {
 import { createInstallerModule, type InstallerModule } from "./features/installer";
 import type { InstallerHost } from "./features/installer/installerService";
 import { createSyncModule, type SyncModule } from "./features/sync";
+import {
+    fileHistoryOnRemoteUrl,
+    fileOnRemoteUrl,
+    resolveRemoteContext,
+} from "./features/sync/remoteLinks";
 import { EditRemoteModal } from "./features/sync/ui/EditRemoteModal";
 import { SourceControlView, SYNC_VIEW_TYPE } from "./features/sync/ui/SourceControlView";
 import { setHttpDebugLogger } from "./host/http";
@@ -73,17 +78,23 @@ export default class ObsyncPlugin extends Plugin {
             this.installer.openAddRepoModal();
         });
 
-        this.registerView(
-            SYNC_VIEW_TYPE,
-            (leaf: WorkspaceLeaf) =>
-                new SourceControlView(
-                    leaf,
-                    this.sync!.service,
-                    this.sync!.git,
-                    this.t,
-                    () => this.editRemote()
-                )
-        );
+        // 视图只在桌面端注册 —— 工厂函数会解引用 sync 模块，移动端它是 undefined。
+        // 虽然命令入口已经做了守卫，但视图类型一旦注册，恢复工作区布局时
+        // 仍可能被实例化，所以守卫要放在注册这一步。
+        if (this.sync) {
+            const sync = this.sync;
+            this.registerView(
+                SYNC_VIEW_TYPE,
+                (leaf: WorkspaceLeaf) =>
+                    new SourceControlView(
+                        leaf,
+                        sync.service,
+                        sync.git,
+                        this.t,
+                        () => this.editRemote()
+                    )
+            );
+        }
         this.registerSyncCommands();
 
         // 等 Obsidian 自身启动完成后再做后台动作，避免争抢资源。
@@ -306,6 +317,80 @@ export default class ObsyncPlugin extends Plugin {
             name: t.sync.viewTitle,
             callback: () => void this.openSyncView(),
         });
+
+        // 「在远端打开」—— 参考项目 obsidian-git 的 openInGitHub 能力，
+        // 但 URL 模板走 host 层，所以 GitHub 与 Gitee 同一套代码。
+        this.addCommand({
+            id: "open-file-on-remote",
+            name: t.sync.cmdOpenFileOnRemote,
+            checkCallback: (checking) => {
+                const file = this.app.workspace.getActiveFile();
+                if (!file) return false;
+                if (!checking) void this.openFileOnRemote(file.path);
+                return true;
+            },
+        });
+
+        this.addCommand({
+            id: "open-file-history-on-remote",
+            name: t.sync.cmdOpenFileHistoryOnRemote,
+            checkCallback: (checking) => {
+                const file = this.app.workspace.getActiveFile();
+                if (!file) return false;
+                if (!checking) void this.openFileHistoryOnRemote(file.path);
+                return true;
+            },
+        });
+
+        this.registerEvent(
+            this.app.workspace.on("file-menu", (menu, file) => {
+                menu.addItem((item) =>
+                    item
+                        .setTitle(t.sync.menuOpenOnRemote)
+                        .setIcon("external-link")
+                        .onClick(() => void this.openFileOnRemote(file.path))
+                );
+                menu.addItem((item) =>
+                    item
+                        .setTitle(t.sync.menuOpenHistoryOnRemote)
+                        .setIcon("history")
+                        .onClick(() => void this.openFileHistoryOnRemote(file.path))
+                );
+            })
+        );
+    }
+
+    /**
+     * 打开文件在远端的网页地址。
+     *
+     * 拼不出链接时给出可行动的提示，而不是打开一个必然 404 的地址 ——
+     * 拿不到远端、远端不是 GitHub/Gitee、仓库还没有提交，都会走到这里。
+     */
+    private async openRemoteUrl(
+        vaultPath: string,
+        build: typeof fileOnRemoteUrl
+    ): Promise<void> {
+        const git = this.sync?.git;
+        if (!git) return;
+
+        try {
+            const context = await resolveRemoteContext(git);
+            if (!context) {
+                this.notifier.warn(this.t.sync.remoteLinkUnavailable);
+                return;
+            }
+            window.open(build(context, vaultPath), "_blank");
+        } catch (err) {
+            this.notifier.reportError(err, this.t.sync.remoteLinkUnavailable);
+        }
+    }
+
+    private async openFileOnRemote(vaultPath: string): Promise<void> {
+        await this.openRemoteUrl(vaultPath, fileOnRemoteUrl);
+    }
+
+    private async openFileHistoryOnRemote(vaultPath: string): Promise<void> {
+        await this.openRemoteUrl(vaultPath, fileHistoryOnRemoteUrl);
     }
 
     /** 同步动作的统一错误出口。sync 层的错误类型都带用户可读文案，直接展示。 */

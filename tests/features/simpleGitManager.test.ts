@@ -26,7 +26,9 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-    await fs.rm(root, { recursive: true, force: true });
+    // Windows 上 git 进程退出后短时间内仍会占着目录句柄，直接 rm 会 EBUSY。
+    // maxRetries 让 Node 自己退避重试，比在测试里 sleep 可靠。
+    await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 /** 建一个带初始提交的仓库，返回 manager 与目录。 */

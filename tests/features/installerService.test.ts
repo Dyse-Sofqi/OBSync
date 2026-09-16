@@ -170,6 +170,47 @@ describe("install —— release 通道", () => {
         expect(readPluginFile(fake, "demo", "manifest.json")).toBe(MANIFEST);
     });
 
+    it("release 资产下载失败时回退到该 tag 的源码文件", async () => {
+        // 资产下载走 github.com → objects.githubusercontent.com，这条链路
+        // 在国内网络下经常不可达（本机实测 3 次里 2 次 21 秒超时 0 字节），
+        // 而同一个文件在 raw 通道上现成可取。不回退的话症状是
+        // 「网络稍差就完全装不上插件」。
+        const fake = createFakeApp();
+        const { service } = createService(fake);
+
+        route(/releases\/latest$/, () => ({ status: 200, text: releaseJson([]) }));
+        route(/releases\/tags\/v2\.0\.0$/, () => ({
+            status: 200,
+            text: releaseJson([
+                { name: "manifest.json", url: "https://dl.test/manifest.json" },
+                { name: "main.js", url: "https://dl.test/main.js" },
+            ]),
+        }));
+        // 资产下载一律抛网络错误（会触发 http 层的重试退避）
+        route(/^https:\/\/dl\.test\//, () => {
+            throw new Error("simulated CDN unreachable");
+        });
+        // 源码通道正常
+        route(/raw\.githubusercontent\.com\/owner\/demo\/v2\.0\.0\/manifest\.json$/, () => ({
+            status: 200,
+            text: MANIFEST,
+        }));
+        route(/raw\.githubusercontent\.com\/owner\/demo\/v2\.0\.0\/main\.js$/, () => ({
+            status: 200,
+            text: "// main from source",
+        }));
+        route(/raw\.githubusercontent\.com\/owner\/demo\/v2\.0\.0\/styles\.css$/, () => ({
+            status: 404,
+            text: "not found",
+        }));
+
+        const result = await service.install({ repo: "owner/demo" });
+
+        expect(result.version).toBe("2.0.0");
+        expect(readPluginFile(fake, "demo", "main.js")).toBe("// main from source");
+        expect(readPluginFile(fake, "demo", "manifest.json")).toBe(MANIFEST);
+    });
+
     it("更新已有插件时保留冻结状态", async () => {
         const fake = createFakeApp(seedPlugin("demo", { "manifest.json": MANIFEST }));
         const { service, settings } = createService(fake);

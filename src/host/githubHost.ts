@@ -1,4 +1,5 @@
-import { NotFoundError } from "./errors";
+import { logger } from "../core/logger";
+import { NetworkError, NotFoundError } from "./errors";
 import { encodePathSegments, getHeader, httpJson, httpRequest } from "./http";
 import type {
     DownloadAssetOptions,
@@ -270,17 +271,39 @@ export class GitHubHost implements IRepoHost {
             return res.text;
         }
 
-        // 无令牌时走 raw 域名：不消耗 60 次/小时的未认证 API 配额。
+        // 无令牌时优先走 raw 域名：不消耗 60 次/小时的未认证 API 配额。
         // `HEAD` 是 GitHub 支持的「默认分支」写法，省掉一次 getRepoMeta 请求。
         const refSegment = encodePathSegments(refName ?? "HEAD");
-        const res = await httpRequest({
-            url: `${RAW_BASE}/${id}/${refSegment}/${encodedPath}`,
-        });
-        if (res.status === 404) return undefined;
-        if (res.status !== 200) {
+        try {
+            const res = await httpRequest({
+                url: `${RAW_BASE}/${id}/${refSegment}/${encodedPath}`,
+            });
+            if (res.status === 200) return res.text;
+            if (res.status === 404) return undefined;
             this.fail(res.status, res.headers, res.text, ref, `reading ${path}`);
+        } catch (err) {
+            // raw 域名不可达时退回 contents API。
+            // `raw.githubusercontent.com` 在国内网络下经常被阻断，而
+            // `api.github.com` 通常可达 —— 两个域名的可达性互不相关。
+            // 代价是会消耗未认证配额（60 次/小时），但总比"装不上"好。
+            if (!(err instanceof NetworkError)) throw err;
+            logger.warn(
+                `raw.githubusercontent.com unreachable for ${id}, ` +
+                    `falling back to the contents API`,
+                err
+            );
         }
-        return res.text;
+
+        const query = refName ? `?ref=${encodeURIComponent(refName)}` : "";
+        const fallback = await httpRequest({
+            url: `${API_BASE}/repos/${id}/contents/${encodedPath}${query}`,
+            headers: { ...this.baseHeaders(), Accept: "application/vnd.github.raw" },
+        });
+        if (fallback.status === 404) return undefined;
+        if (fallback.status !== 200) {
+            this.fail(fallback.status, fallback.headers, fallback.text, ref, `reading ${path}`);
+        }
+        return fallback.text;
     }
 
     async validateToken(token: string): Promise<TokenInfo> {
