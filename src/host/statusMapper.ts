@@ -1,4 +1,4 @@
-import { AuthError, NotFoundError, ObsyncError, RateLimitError } from "./errors";
+import { AuthError, HttpStatusError, NotFoundError, RateLimitError } from "./errors";
 import { extractServerMessage } from "./http";
 import type { HostKind, RepoId } from "./types";
 
@@ -69,8 +69,13 @@ export function throwForStatus(ctx: StatusContext): never {
                 ctx.resetAt
             );
         default:
-            throw new ObsyncError(
-                `Unexpected HTTP ${status} from ${where}${what}${suffix}`
+            // 意料之外的状态码。带上 status 与服务端说明，让展示层能拼出中文 ——
+            // 直接抛英文技术描述的话，中文用户在界面上会看到一句英文。
+            throw new HttpStatusError(
+                `Unexpected HTTP ${status} from ${where}${what}${suffix}`,
+                status,
+                serverMessage,
+                { cause: undefined }
             );
     }
 }

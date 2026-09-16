@@ -8,7 +8,6 @@ export const en = {
     plugin: {
         name: "OBSync",
         ribbonTooltip: "OBSync: sync vaults and install plugins",
-        commandCategory: "OBSync",
     },
 
     common: {
@@ -36,18 +35,10 @@ export const en = {
         required: "Required",
     },
 
-    notice: {
-        error: "Error",
-        warning: "Warning",
-        info: "Info",
-        success: "Done",
-    },
-
     host: {
         github: "GitHub",
         gitee: "Gitee",
         unknown: "Unknown host",
-        detecting: "Detecting host…",
         tokenMissing: (host: string) =>
             `${host} requires an access token to read private repositories. Add one in settings.`,
         tokenInvalid: (host: string) => `The ${host} access token is invalid or expired.`,
@@ -64,7 +55,6 @@ export const en = {
     },
 
     settings: {
-        title: "OBSync settings",
         cmdOpenSettings: "OBSync: Open settings",
 
         tabs: {
@@ -177,10 +167,8 @@ export const en = {
         reinstalled: (name: string) => `Reinstalled ${name}`,
         removed: (name: string) => `Removed ${name}`,
         removeFailed: "Removal failed",
-        sourceRelease: "Source: release asset",
         sourceRaw: "Source: repository source file",
         mirrorFound: (repo: string) => `Found Gitee mirror ${repo}; downloading from it instead.`,
-        noReleaseFallback: "This repository publishes no releases; installing from source files instead.",
         /**
          * Error messages.
          *
@@ -272,7 +260,6 @@ export const en = {
 
     sync: {
         viewTitle: "OBSync",
-        statusIdle: "Ready",
         statusPulling: "Pulling…",
         statusPushing: "Pushing…",
         statusCommitting: "Committing…",

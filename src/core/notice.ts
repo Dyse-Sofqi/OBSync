@@ -3,6 +3,7 @@ import type { LocaleStrings } from "./i18n";
 import { logger } from "./logger";
 import {
     AuthError,
+    HttpStatusError,
     NetworkError,
     NotFoundError,
     ObsyncError,
@@ -141,6 +142,13 @@ export class Notifier {
 
         if (err instanceof NetworkError) {
             return t.host.networkFailed(err.message);
+        }
+
+        if (err instanceof HttpStatusError) {
+            // 意料之外的 HTTP 状态码（500 / 502 / 422 之类）。
+            // 不带这一条的话会落到下面的 `ObsyncError → err.message`，
+            // 中文用户在界面上看到的就是一句英文技术描述。
+            return t.host.requestFailed(err.status, err.detail);
         }
 
         if (err instanceof ObsyncError) {

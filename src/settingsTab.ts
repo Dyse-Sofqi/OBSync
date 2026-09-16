@@ -156,9 +156,16 @@ export class ObsyncSettingsTab extends PluginSettingTab {
             )
             .addButton((button) =>
                 button.setButtonText(t.installer.checkAll).onClick(async () => {
+                    // 检查要逐个仓库打接口，可能好几秒 —— 得让用户知道在跑。
+                    // 旁边的「测试」令牌按钮就是这么做的，保持一致。
                     button.setDisabled(true);
-                    await this.checkAllUpdates();
-                    button.setDisabled(false);
+                    button.setButtonText(t.installer.checking);
+                    try {
+                        await this.checkAllUpdates();
+                    } finally {
+                        button.setDisabled(false);
+                        button.setButtonText(t.installer.checkAll);
+                    }
                 })
             );
 

@@ -157,6 +157,9 @@ export class SyncService {
     async abortMerge(): Promise<void> {
         await this.enqueue(async () => {
             await this.git.abortMerge();
+            // 必须给反馈：这是个"撤销"类动作，做完之后库里的冲突标记消失了，
+            // 但用户如果不看文件是不知道发生了什么 —— 静默会让人怀疑到底成没成。
+            this.deps.notifier.success(this.deps.getT().sync.mergeAborted);
             await this.refreshStatus();
         });
     }

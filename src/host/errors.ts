@@ -77,3 +77,21 @@ export class UnsupportedHostError extends ObsyncError {
         super(message, options);
     }
 }
+
+/**
+ * 意料之外的 HTTP 状态码（既不是 401/403/404/429 那几类，也不是网络失败）。
+ *
+ * 单独一个类型是为了能本地化：这类错误的原始文案是英文技术描述
+ * （`Unexpected HTTP 500 from ... while ...`），直接抛出去会让中文用户
+ * 在界面上看到一句英文。带上 `status` 与 `detail`，展示层就能拼出中文。
+ */
+export class HttpStatusError extends ObsyncError {
+    constructor(
+        message: string,
+        readonly status: number,
+        readonly detail: string,
+        options?: { cause?: unknown }
+    ) {
+        super(message, options);
+    }
+}

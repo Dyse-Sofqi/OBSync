@@ -83,6 +83,9 @@ export class BindExistingModal extends Modal {
 
         if (this.candidates === undefined) {
             contentEl.createEl("p", { text: t.installer.bindScanning, cls: "obsync-modal-status" });
+            // 扫描要拉社区索引（可能几秒），期间也得有「取消」可点 ——
+            // 否则用户只能按 Esc 或点弹窗外，和其他状态不一致。
+            this.renderFooter();
             return;
         }
 
@@ -98,6 +101,8 @@ export class BindExistingModal extends Modal {
                 text: t.installer.bindEmpty,
                 cls: "obsync-empty",
             });
+            // 空状态同样要有「取消」—— 没有可绑定的东西不代表用户就该被困住。
+            this.renderFooter();
             return;
         }
 

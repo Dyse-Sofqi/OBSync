@@ -28,7 +28,11 @@ export class AddRepoModal extends Modal {
     private versions: VersionOption[] = [];
     /** 拉版本列表失败时的说明，用于在界面上给出解释而不是静默降级。 */
     private versionError: string | undefined;
-    private busy = false;
+    /**
+     * 正在做什么。用具体阶段而不是布尔量 —— 弹窗里要显示「正在识别…」
+     * 还是「正在安装…」，笼统的「加载中…」会让用户不知道卡在哪一步。
+     */
+    private busy: "resolving" | "installing" | undefined;
 
     constructor(
         app: App,
@@ -60,7 +64,7 @@ export class AddRepoModal extends Modal {
             .addText((text) => {
                 text.setPlaceholder(t.installer.repoPlaceholder)
                     .setValue(this.repoInput)
-                    .setDisabled(this.busy);
+                    .setDisabled(this.busy !== undefined);
                 text.onChange((value) => {
                     this.repoInput = value;
                 });
@@ -76,18 +80,21 @@ export class AddRepoModal extends Modal {
             .addButton((button) =>
                 button
                     .setButtonText(t.installer.resolve)
-                    .setDisabled(this.busy || this.repoInput.trim().length === 0)
+                    .setDisabled(this.busy !== undefined || this.repoInput.trim().length === 0)
                     .onClick(() => void this.resolve())
             )
             .addButton((button) =>
                 button
                     .setButtonText(t.installer.browse)
-                    .setDisabled(this.busy)
+                    .setDisabled(this.busy !== undefined)
                     .onClick(() => void this.browseCommunity())
             );
 
         if (this.busy) {
-            contentEl.createEl("p", { text: t.common.loading, cls: "obsync-modal-status" });
+            contentEl.createEl("p", {
+                text: this.busy === "resolving" ? t.installer.resolving : t.installer.installing,
+                cls: "obsync-modal-status",
+            });
             return;
         }
 
@@ -163,7 +170,7 @@ export class AddRepoModal extends Modal {
         const t = this.t;
         if (!this.repoInput.trim()) return;
 
-        this.busy = true;
+        this.busy = "resolving";
         this.versionError = undefined;
         this.render();
 
@@ -173,14 +180,14 @@ export class AddRepoModal extends Modal {
             this.version = "latest";
         } catch (err) {
             logger.warn("resolve failed", err);
-            this.busy = false;
+            this.busy = undefined;
             this.resolved = undefined;
             this.render();
             this.service.deps.notifier.reportError(err);
             return;
         }
 
-        this.busy = false;
+        this.busy = undefined;
         this.render();
 
         // 版本列表单独拉，失败不影响安装（降级到源码通道照样能装）。
@@ -217,7 +224,7 @@ export class AddRepoModal extends Modal {
         const t = this.t;
         if (!this.resolved) return;
 
-        this.busy = true;
+        this.busy = "installing";
         this.render();
 
         try {
@@ -237,7 +244,7 @@ export class AddRepoModal extends Modal {
             this.onInstalled?.(result);
             this.close();
         } catch (err) {
-            this.busy = false;
+            this.busy = undefined;
             this.render();
             this.service.deps.notifier.reportError(err, t.installer.installFailed);
         }

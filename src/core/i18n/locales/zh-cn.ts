@@ -9,7 +9,6 @@ export const zhCN = {
     plugin: {
         name: "OBSync",
         ribbonTooltip: "OBSync：同步笔记仓库 / 安装插件",
-        commandCategory: "OBSync",
     },
 
     common: {
@@ -37,18 +36,10 @@ export const zhCN = {
         required: "必填",
     },
 
-    notice: {
-        error: "出错了",
-        warning: "注意",
-        info: "提示",
-        success: "完成",
-    },
-
     host: {
         github: "GitHub",
         gitee: "Gitee",
         unknown: "未知平台",
-        detecting: "正在识别平台…",
         tokenMissing: (host: string) =>
             `${host} 需要访问令牌才能访问私有仓库，请在设置中填写。`,
         tokenInvalid: (host: string) => `${host} 访问令牌无效或已过期。`,
@@ -65,7 +56,6 @@ export const zhCN = {
     },
 
     settings: {
-        title: "OBSync 设置",
         cmdOpenSettings: "OBSync：打开设置",
 
         tabs: {
@@ -183,10 +173,8 @@ export const zhCN = {
         reinstalled: (name: string) => `已重装 ${name}`,
         removed: (name: string) => `已移除 ${name}`,
         removeFailed: "移除失败",
-        sourceRelease: "来源：Release 资产",
         sourceRaw: "来源：仓库源码文件",
         mirrorFound: (repo: string) => `发现 Gitee 镜像：${repo}，将改用镜像源下载。`,
-        noReleaseFallback: "该仓库没有发布 Release，将直接从源码文件安装。",
         /**
          * 错误文案。
          *
@@ -278,7 +266,6 @@ export const zhCN = {
 
     sync: {
         viewTitle: "OBSync",
-        statusIdle: "就绪",
         statusPulling: "正在拉取…",
         statusPushing: "正在推送…",
         statusCommitting: "正在提交…",

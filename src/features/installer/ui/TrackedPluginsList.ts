@@ -70,7 +70,11 @@ function renderRow(
         // 扫列表时眼睛只需看一列。
         .setDesc(
             `${hostName} · ${plugin.owner}/${plugin.repo} · ` +
-                `${t.common.version} ${plugin.installedVersion}`
+                `${t.common.version} ${plugin.installedVersion}` +
+                // 只在「从源码装」时说明来源。这是**解释性**信息：
+                // 该仓库没有发布 release，所以更新检查查不到版本可比 ——
+                // 不写出来用户会以为更新检查坏了。常见的 release 通道不加噪音。
+                (plugin.channel === "raw" ? ` · ${t.installer.sourceRaw}` : "")
         );
 
     if (update) {
