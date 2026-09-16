@@ -365,6 +365,84 @@ function checkCssClasses() {
     return { name: "CSS 类覆盖", detail: `${used.size} 用 / ${defined.size} 定义` };
 }
 
+/**
+ * 移动端安全：主类的**静态**导入图里不能出现依赖 Node 的模块。
+ *
+ * ## 为什么
+ *
+ * `manifest.json` 写的是 `isDesktopOnly: false`，移动端用户可以安装。
+ * 而 `simple-git`（及其依赖）在**模块初始化阶段**就 `require("child_process")`
+ * / `require("fs")`。移动端没有 Node 集成，`require` 不可用 ——
+ * Obsidian 官方文档明确说这类调用「会让插件崩溃」。
+ *
+ * 静态导入会让整条依赖链在插件加载时就初始化，于是移动端一启用就崩，
+ * 连纯 HTTP 的安装器都用不了。所以 `main.ts` 用**动态 import** 把同步模块
+ * 推迟到确认桌面端之后（见 `loadSyncModule`）。
+ *
+ * 这个不变式很容易被后来的改动破坏 —— 谁顺手写回 `import { createSyncModule }`
+ * 就白改了，而且**在桌面上测不出来**。所以在这里守住。
+ *
+ * ## 怎么查
+ *
+ * 从 `main.ts` 出发走一遍**静态**导入图（`import type` 会被擦除、动态 import
+ * 不算），看有没有走到依赖 Node 的裸模块。
+ */
+function checkMobileSafety() {
+    const entry = path.join(SRC, "main.ts");
+    if (!fs.existsSync(entry)) return { name: "移动端安全", skipped: true };
+
+    /** 这些裸模块依赖 Node，不能在移动端可达的静态导入图里。 */
+    const NODE_DEPENDENT = ["simple-git"];
+
+    const STATIC_IMPORT = /^import\s+(?!type\b)[^;]*from\s+"([^"]+)"/gm;
+
+    const resolveRelative = (from, id) => {
+        const base = path.resolve(path.dirname(from), id);
+        for (const candidate of [`${base}.ts`, path.join(base, "index.ts")]) {
+            if (fs.existsSync(candidate)) return candidate;
+        }
+        return base;
+    };
+
+    const visited = new Set();
+    const queue = [entry];
+    const offenders = [];
+
+    while (queue.length > 0) {
+        const file = queue.pop();
+        if (visited.has(file)) continue;
+        visited.add(file);
+
+        if (!fs.existsSync(file)) continue;
+        const source = stripComments(read(file));
+
+        for (const match of source.matchAll(STATIC_IMPORT)) {
+            const id = match[1];
+            if (!id.startsWith(".")) {
+                if (NODE_DEPENDENT.includes(id)) {
+                    offenders.push(`${relative(file)} → ${id}`);
+                }
+                continue;
+            }
+            queue.push(resolveRelative(file, id));
+        }
+    }
+
+    if (offenders.length > 0) {
+        failures.push(
+            `移动端可达的静态导入图里出现了依赖 Node 的模块：\n      ` +
+                offenders.join("\n      ") +
+                `\n      移动端没有 Node，这会让整个插件加载失败（连纯 HTTP 的安装器都用不了）。` +
+                `\n      改法：用动态 import 把它推迟到 Platform.isDesktopApp 之后。`
+        );
+    }
+
+    return {
+        name: "移动端安全",
+        detail: `静态导入图 ${visited.size} 个模块，未触及 Node 依赖`,
+    };
+}
+
 // ── 跑 ──────────────────────────────────────────────────────────────────────
 
 const results = [
@@ -372,6 +450,7 @@ const results = [
     checkHardcodedCjk(),
     checkUnusedI18nKeys(),
     checkCssClasses(),
+    checkMobileSafety(),
 ];
 
 console.log("OBSync 项目自查\n");

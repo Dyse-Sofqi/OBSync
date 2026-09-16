@@ -10,7 +10,7 @@ import {
 } from "./core/settings";
 import { createInstallerModule, type InstallerModule } from "./features/installer";
 import type { InstallerHost } from "./features/installer/installerService";
-import { createSyncModule, type SyncModule } from "./features/sync";
+import type { SyncModule } from "./features/sync";
 import {
     fileHistoryOnRemoteUrl,
     fileOnRemoteUrl,
@@ -31,6 +31,30 @@ import { ObsyncSettingsTab } from "./settingsTab";
  * 参考项目 obsidian-git 的 main.ts 有 60KB、把同步编排也塞在里面，
  * 结果是改任何一处都要先读完整个文件。这里从一开始就切开。
  */
+/**
+ * 只在桌面端加载同步模块。
+ *
+ * ## 为什么不能静态 import
+ *
+ * 同步模块依赖 `simple-git`，而它（及其依赖）在**模块初始化阶段**就
+ * `require("child_process")` / `require("fs")`。移动端没有 Node 集成，
+ * `require` 不可用 —— Obsidian 官方文档明确说这类调用「会让插件崩溃」。
+ *
+ * 静态导入会让整条依赖链在**插件加载时**就初始化，于是移动端一启用就崩，
+ * 连纯 HTTP 的安装器都用不了。所以这里用**动态 import** 推迟到确认是桌面端之后。
+ *
+ * 实测依据（`.probe/probe_mobile_load.mjs`）：把打包产物放进一个
+ * 「require 对 node 内置模块抛错」的环境里加载 —— 静态导入时以
+ * `require is not defined: fs` 失败，改成动态 import 后不再抛错。
+ * 那个探针就是在模拟移动端。
+ *
+ * 注意**不要**改回 `require(...)`：Obsidian 桌面端能用，但测试环境是 ESM，
+ * `require` 不存在，启动测试会全部失败。
+ */
+async function loadSyncModule(): Promise<typeof import("./features/sync")> {
+    return await import("./features/sync");
+}
+
 export default class ObsyncPlugin extends Plugin {
     settings: ObsyncSettings = DEFAULT_SETTINGS;
 
@@ -59,15 +83,18 @@ export default class ObsyncPlugin extends Plugin {
 
         this.applyDerivedSettings();
 
-        // 同步模块在桌面端始终创建（它自己处理「还不是 git 仓库」的状态）。
-        this.sync = createSyncModule({
-            app: this.app,
-            notifier: this.notifier,
-            secretStore: this.secretStore,
-            getSettings: () => this.settings,
-            getT: () => this.translations,
-            createStatusBarItem: () => this.addStatusBarItem(),
-        });
+        // 同步模块**只在桌面端加载**（理由见 loadSyncModule 的说明）。
+        if (Platform.isDesktopApp) {
+            const { createSyncModule } = await loadSyncModule();
+            this.sync = createSyncModule({
+                app: this.app,
+                notifier: this.notifier,
+                secretStore: this.secretStore,
+                getSettings: () => this.settings,
+                getT: () => this.translations,
+                createStatusBarItem: () => this.addStatusBarItem(),
+            });
+        }
 
         this.addSettingTab(new ObsyncSettingsTab(this));
 

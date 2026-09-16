@@ -87,6 +87,7 @@
 | **「从 Gitee 装只有源码的插件」这条验收标准从没被真正走通** | 测试盲区：`installerService.test.ts` 用 mock 的 host（验编排）、`giteeHost.test.ts` 验 host 单独工作 —— 两者都对，但**组合起来**的缝隙没人管 | 新增 `tests/features/giteeInstall.test.ts`：用**真实的 GiteeHost** 驱动完整安装流程 |
 | **初始化仓库不建 `.gitignore`** | 真缺口：`init()` 只跑 `git init`。用户会把 `.obsidian/workspace.json`（面板/标签布局，**每开关一个标签就变**）同步出去，多设备必然冲突且没法手工合并 | 初始化时建一份默认的（已有则**绝不覆盖**，建不了也不让初始化失败）；另加「编辑 .gitignore」命令 |
 | **同一个文件被重复计入**（三处） | 真 bug：`mapStatus` 按 `git status` 的两位状态位分别归类，「改了又暂存」的文件（`AM`/`MM`）同时进 `staged` 与 `unstaged`。于是 `{{numFiles}}` 多算、`{{files}}` 重复、**状态栏脏文件数虚高**、视图列表同一路径出现两遍 | 三处都改成**按路径去重** |
+| **插件在移动端会加载失败** | 真 bug（发布阻断级）：manifest 是 `isDesktopOnly: false`，但 `main.ts` **静态导入**了同步模块 → `simple-git` → 它在**模块初始化阶段**就 `require("child_process")` / `require("fs")`。移动端没有 Node，整个插件一启用就崩 —— 连纯 HTTP 的安装器都用不了 | `main.ts` 改用**动态 import**，推迟到 `Platform.isDesktopApp` 之后；`pnpm check` 加「移动端安全」守住这个不变式 |
 
 > ⚠ **一处我自己的误判，记下来免得再犯**：判断 `minAppVersion` 时我最初用
 > `grep -B6 "<成员>(" | grep -o "@since …" | tail -1` 取值，得到
@@ -128,9 +129,25 @@ pnpm test:live  # 真实 API 测试（OBSYNC_LIVE=1，需网络）
 | **硬编码中文** | i18n 的编译期保证只管「locale 之间结构一致」，管不住「代码里直接写了一句中文」。实测扫出 22 处用户可见的错误文案 |
 | **未使用的 i18n 键** | 死键是信号：通常是漏接的本地化或没接线的功能。实测 4 个死键背后都是真缺口 |
 | **CSS 类覆盖** | 用了但没定义的类会静默丢样式；定义了没用的类是残留 |
+| **移动端安全** | 从 `main.ts` 走一遍**静态**导入图，看有没有触及依赖 Node 的模块（`simple-git`）。移动端没有 Node，静态导入会让整个插件加载失败 —— 而这个**在桌面上测不出来** |
 
-两张**带理由**的豁免表在脚本里（`KNOWN_SAFE` / `ALLOWED`）—— 加条目时必须写清
-为什么安全，否则它们会变成掩盖问题的地方。
+两张**带理由**的豁免表在脚本里（`KNOWN_SAFE` / `ALLOWED` / `NOT_A_CLASS`）——
+加条目时必须写清为什么安全，否则它们会变成掩盖问题的地方。
+
+### 移动端：为什么同步模块必须动态导入
+
+`manifest.json` 是 `isDesktopOnly: false`（安装器是纯 HTTP 的，移动端可用），
+但**同步模块依赖 Node**。而 `simple-git` 在**模块初始化阶段**就
+`require("child_process")` / `require("fs")` —— 静态导入会让整条依赖链在插件加载时
+就初始化，移动端一启用就崩，连安装器都用不了。
+
+所以 `main.ts` 用**动态 import**（`loadSyncModule()`）推迟到 `Platform.isDesktopApp`
+之后。实测依据在 `.probe/probe_mobile_load.mjs`：把打包产物放进一个「require 对
+node 内置模块抛错」的环境里加载 —— 静态导入时以 `require is not defined: fs` 失败，
+改成动态 import 后不再抛错，且 esbuild 不产生额外分块（仍然只有 `main.js`）。
+
+> ⚠ 别改回 `require("./features/sync")`：Obsidian 桌面端能用，但测试环境是 ESM，
+> `require` 不存在，启动测试会全部失败。（试过，踩了。）
 
 - 部署目标 `F:/_Workspace/Plugin-Test/.obsidian/plugins/obsync`，
   环境变量 `OBSYNC_DEPLOY_DIR` 可覆盖，设空串跳过；部署失败只警告不中断构建。
