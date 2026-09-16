@@ -5,8 +5,9 @@ import { normalizeSettings } from "../../src/core/settings";
 import { zhCN } from "../../src/core/i18n/locales/zh-cn";
 import { SyncService } from "../../src/features/sync/syncService";
 import { StatusBar } from "../../src/features/sync/statusBar";
+import { SecretStore } from "../../src/core/secretStore";
 import type { GitManager } from "../../src/features/sync/gitManager";
-import { ConflictError } from "../../src/features/sync/errors";
+import { ConflictError, GitAuthError } from "../../src/features/sync/errors";
 import type { CommitInfo, FileChange, RepoStatus, SyncOutcome, SyncStrategy } from "../../src/features/sync/types";
 import { createFakeApp, type FakeApp } from "../helpers/fakeApp";
 
@@ -118,6 +119,21 @@ class FakeGit implements GitManager {
     async fileChanges(): Promise<FileChange[]> {
         return [];
     }
+
+    /** testRemoteAccess 的行为脚本 —— 诊断用例靠它模拟各种失败。 */
+    remoteAccessScript: "ok" | "auth-failed" | "unreachable" = "ok";
+    remoteRefCount = 3;
+
+    async testRemoteAccess(): Promise<number> {
+        this.calls.push("testRemoteAccess");
+        if (this.remoteAccessScript === "auth-failed") {
+            throw new GitAuthError("remote authentication failed (testing remote access: ...)");
+        }
+        if (this.remoteAccessScript === "unreachable") {
+            throw new Error("Could not resolve host: gitee.com");
+        }
+        return this.remoteRefCount;
+    }
 }
 
 function makeService(git: FakeGit, fake: FakeApp) {
@@ -141,16 +157,18 @@ function makeService(git: FakeGit, fake: FakeApp) {
         realSetActivity(activity);
     };
 
+    const secretStore = new SecretStore(fake.app);
     const service = new SyncService(git, {
         app: fake.app,
         notifier,
+        secretStore,
         getT: () => zhCN,
         getCommitTemplate: () => settings.sync.commitMessage,
         getStrategy: () => "merge",
         getConflictGuideName: () => zhCN.sync.conflictGuideFile,
     }, statusBar);
 
-    return { service, notices, activities };
+    return { service, notices, activities, secretStore };
 }
 
 describe("commitAll", () => {
@@ -364,3 +382,123 @@ class InstrumentedGit extends FakeGit {
         }
     }
 }
+
+describe("diagnose（同步配置诊断）", () => {
+    it("一切正常时全部通过，且带出远端与引用数", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service, secretStore } = makeService(git, fake);
+        secretStore.setToken("github", "tok");
+
+        const report = await service.diagnose();
+
+        expect(report.ok).toBe(true);
+        expect(report.checks.map((check) => check.id)).toEqual([
+            "git",
+            "repo",
+            "remote",
+            "platform",
+            "access",
+        ]);
+        expect(report.checks.every((check) => check.status === "ok")).toBe(true);
+        // 远端 URL 与引用数作为 detail 带出来，方便用户核对
+        expect(report.checks.find((c) => c.id === "remote")?.detail).toContain("github.com");
+        expect(report.checks.find((c) => c.id === "access")?.detail).toBe("3");
+    });
+
+    it("**鉴权失败时明确报出来** —— 这是这个功能存在的理由", async () => {
+        // 令牌填了不代表有效，光看设置项判断不了。只有真的连一次才知道。
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service, secretStore } = makeService(git, fake);
+        secretStore.setToken("github", "expired-token");
+        git.remoteAccessScript = "auth-failed";
+
+        const report = await service.diagnose();
+
+        expect(report.ok).toBe(false);
+        const access = report.checks.find((check) => check.id === "access");
+        expect(access?.status).toBe("failed");
+        // detail 是**本地化**的文案（走 describeSyncError），用户能直接看懂
+        expect(access?.detail).toBe(zhCN.sync.gitAuthFailed);
+    });
+
+    it("网络不通与鉴权失败要能区分（引导完全不同）", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service } = makeService(git, fake);
+        git.remoteAccessScript = "unreachable";
+
+        const report = await service.diagnose();
+
+        const detail = report.checks.find((check) => check.id === "access")?.detail ?? "";
+        expect(report.ok).toBe(false);
+        expect(detail).not.toBe(zhCN.sync.gitAuthFailed);
+        expect(detail).toContain("gitee.com"); // 原始网络错误信息透传
+    });
+
+    it("不是 git 仓库时只报到那一步，不继续往下测", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service } = makeService(git, fake);
+        git.repo = false;
+
+        const report = await service.diagnose();
+
+        expect(report.ok).toBe(false);
+        expect(report.checks.map((c) => c.id)).toEqual(["git", "repo"]);
+        expect(report.checks[1]!.status).toBe("failed");
+        // 没到访问那一步就不该去连远端
+        expect(git.calls).not.toContain("testRemoteAccess");
+    });
+
+    it("没配远端时停在 remote 那一步", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service } = makeService(git, fake);
+        git.remoteUrl = undefined;
+
+        const report = await service.diagnose();
+
+        expect(report.checks.map((c) => c.id)).toEqual(["git", "repo", "remote"]);
+        expect(report.checks[2]!.status).toBe("failed");
+    });
+
+    it("平台认不出时标为 skipped（不是失败），并且仍然去测访问", async () => {
+        // 认不出平台只意味着**注入不了令牌**，用户仍可走系统凭据助手 ——
+        // 报成失败会误导人去改一个没问题的配置。
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service } = makeService(git, fake);
+        git.remoteUrl = "https://gitlab.com/owner/repo.git";
+
+        const report = await service.diagnose();
+
+        expect(report.checks.find((c) => c.id === "platform")?.status).toBe("skipped");
+        expect(git.calls).toContain("testRemoteAccess");
+    });
+
+    it("没配令牌时 platform 标为 skipped 而不是 failed（公开仓库不需要令牌）", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service } = makeService(git, fake);
+
+        const report = await service.diagnose();
+
+        expect(report.checks.find((c) => c.id === "platform")?.status).toBe("skipped");
+        expect(report.ok).toBe(true);
+    });
+
+    it("是**只读**的：不碰 stage / commit / push", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service } = makeService(git, fake);
+        git.untracked = ["a.md"];
+
+        await service.diagnose();
+
+        expect(git.calls).not.toContain("stage-all");
+        expect(git.calls.some((call) => call.startsWith("commit:"))).toBe(false);
+        expect(git.calls).not.toContain("push");
+    });
+});

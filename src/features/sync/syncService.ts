@@ -4,8 +4,16 @@ import type { LocaleStrings } from "../../core/i18n";
 import type { Notifier } from "../../core/notice";
 import { renderCommitMessage } from "./commitMessage";
 import type { GitManager } from "./gitManager";
-import { ConflictError } from "./errors";
-import type { RepoStatus, SyncOutcome, SyncStrategy } from "./types";
+import { ConflictError, describeSyncError } from "./errors";
+import type { SecretStore } from "../../core/secretStore";
+import { parseGitRemoteUrl } from "../../host/repoRef";
+import type {
+    DiagnosticCheck,
+    DiagnosticsReport,
+    RepoStatus,
+    SyncOutcome,
+    SyncStrategy,
+} from "./types";
 import { StatusBar } from "./statusBar";
 
 /**
@@ -28,6 +36,8 @@ import { StatusBar } from "./statusBar";
 export interface SyncHost {
     app: App;
     notifier: Notifier;
+    /** 诊断要判断「该平台的令牌配了没有」。 */
+    secretStore: SecretStore;
     getT(): LocaleStrings;
     /** 提交信息模板（settings.sync.commitMessage）。 */
     getCommitTemplate(): string;
@@ -175,6 +185,86 @@ export class SyncService {
             this.statusBar.update(undefined);
             return undefined;
         }
+    }
+
+    /**
+     * 把错误翻译成用户可读文案。
+     *
+     * **先用自己的翻译器**，而不是只依赖 `notifier.describeError` ——
+     * 后者要靠「`createSyncModule` 已经注册过翻译器」这个隐式前提，
+     * 而诊断是个自包含的工具，不该依赖模块的装配顺序。
+     * （这个隐式依赖是被测试抓出来的：单独构造 SyncService 时，
+     * 鉴权失败只显示英文技术描述。）
+     */
+    private describe(err: unknown): string {
+        return describeSyncError(err, this.deps.getT()) ?? this.deps.notifier.describeError(err);
+    }
+
+    /**
+     * 诊断同步配置。
+     *
+     * 存在的理由：**鉴权配得对不对，光看设置项判断不了** —— 令牌填了不代表有效，
+     * 仓库是私有的才知道。只有真的去连一次才有答案。所以这里跑一条递进的检查链，
+     * 任何一步失败就停（后面的检查依赖前面的前提）。
+     *
+     * 只读：最后一步用 `ls-remote`，不动 refs、不动 index、不写任何文件。
+     *
+     * 返回结构化结果（类型码 + 状态），文案由展示层按 `id` 取 locale ——
+     * 与错误处理同一套约定，所以这个函数不依赖 i18n，可以单独测。
+     */
+    async diagnose(): Promise<DiagnosticsReport> {
+        const checks: DiagnosticCheck[] = [];
+        const add = (
+            id: DiagnosticCheck["id"],
+            status: DiagnosticCheck["status"],
+            detail?: string
+        ): void => {
+            checks.push(detail === undefined ? { id, status } : { id, status, detail });
+        };
+
+        // 1) git 可执行文件。这一步失败的话后面全都做不了，直接停。
+        let repoExists = false;
+        try {
+            repoExists = await this.git.isRepo();
+            add("git", "ok");
+        } catch (err) {
+            add("git", "failed", this.describe(err));
+            return { checks, ok: false };
+        }
+
+        // 2) 当前库是不是 git 仓库。
+        if (!repoExists) {
+            add("repo", "failed");
+            return { checks, ok: false };
+        }
+        add("repo", "ok");
+
+        // 3) 有没有配远端。
+        const remoteUrl = await this.git.getRemoteUrl();
+        if (!remoteUrl) {
+            add("remote", "failed");
+            return { checks, ok: false };
+        }
+        add("remote", "ok", remoteUrl);
+
+        // 4) 平台认不认得出 —— 认不出就注入不了令牌（但可以用系统凭据助手，不算失败）。
+        const ref = parseGitRemoteUrl(remoteUrl);
+        if (!ref) {
+            add("platform", "skipped", remoteUrl);
+        } else {
+            const hasToken = this.deps.secretStore.getToken(ref.host) !== undefined;
+            add("platform", hasToken ? "ok" : "skipped", ref.host);
+        }
+
+        // 5) 真的连一次 —— **鉴权是否有效看这一条**。
+        try {
+            const refCount = await this.git.testRemoteAccess();
+            add("access", "ok", String(refCount));
+        } catch (err) {
+            add("access", "failed", this.describe(err));
+        }
+
+        return { checks, ok: checks.every((check) => check.status !== "failed") };
     }
 
     // ── 内部（不加锁版本，供已持锁的链路复用） ────────────────────────────

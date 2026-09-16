@@ -1,5 +1,9 @@
 import { PluginSettingTab, Setting, type App, type TextComponent } from "obsidian";
-import { LANGUAGE_OPTIONS, type LanguageSetting } from "./core/i18n";
+import { LANGUAGE_OPTIONS, type LanguageSetting, type LocaleStrings } from "./core/i18n";
+import type {
+    DiagnosticCheck,
+    DiagnosticsReport,
+} from "./features/sync/types";
 import { shouldCheckOnSettingsOpen } from "./features/installer/updateChecker";
 import { renderTrackedPlugins } from "./features/installer/ui/TrackedPluginsList";
 import type ObsyncPlugin from "./main";
@@ -584,6 +588,100 @@ export class ObsyncSettingsTab extends PluginSettingTab {
                         await this.commit();
                     })
             );
+
+        this.renderDiagnostics();
+    }
+
+    /**
+     * 连接测试。
+     *
+     * 存在的理由：**鉴权配得对不对，光看设置项判断不了** —— 令牌填了不代表有效，
+     * 只有真的去连一次才有答案。而这个按钮就是「真的去连一次」。
+     *
+     * 放在同步设置的最后：用户配完远端与令牌，顺手就能验一下。
+     */
+    private renderDiagnostics(): void {
+        const t = this.obsync.t;
+        const sync = this.obsync.sync;
+        if (!sync) return;
+
+        new Setting(this.containerEl).setName(t.sync.diagnoseHeading).setHeading();
+        this.containerEl.createEl("p", {
+            cls: "setting-item-description",
+            text: t.sync.diagnoseDesc,
+        });
+
+        const resultEl = this.containerEl.createDiv({ cls: "obsync-diagnostics" });
+
+        new Setting(this.containerEl).addButton((button) =>
+            button
+                .setButtonText(t.sync.diagnoseRun)
+                .setCta()
+                .onClick(async () => {
+                    button.setDisabled(true);
+                    button.setButtonText(t.sync.diagnoseRunning);
+                    resultEl.empty();
+                    try {
+                        this.renderDiagnosticsResult(resultEl, await sync.service.diagnose());
+                    } catch (err) {
+                        // diagnose 内部已经把每一步的失败收进报告了，走到这里说明
+                        // 是意料之外的异常（比如 statusBar 渲染崩了）。
+                        this.obsync.notifier.reportError(err, t.sync.diagnoseHasFailures);
+                    } finally {
+                        button.setDisabled(false);
+                        button.setButtonText(t.sync.diagnoseRun);
+                    }
+                })
+        );
+    }
+
+    private renderDiagnosticsResult(
+        container: HTMLElement,
+        report: DiagnosticsReport
+    ): void {
+        const t = this.obsync.t;
+
+        container.createEl("p", {
+            text: report.ok ? t.sync.diagnoseAllPassed : t.sync.diagnoseHasFailures,
+            cls: report.ok ? "obsync-diag-ok" : "obsync-diag-failed",
+        });
+
+        const list = container.createEl("ul", { cls: "obsync-diag-list" });
+        for (const check of report.checks) {
+            const mark = check.status === "ok" ? "✓" : check.status === "failed" ? "✗" : "–";
+            // 类名写成显式字面量而不是模板串拼接：拼出来的类名 grep 不到，
+            // 项目自查（scripts/checks.mjs）会把它们报成「定义了没用到」。
+            const cls =
+                check.status === "ok"
+                    ? "obsync-diag-ok"
+                    : check.status === "failed"
+                      ? "obsync-diag-failed"
+                      : "obsync-diag-skipped";
+            const item = list.createEl("li", { cls });
+            item.createSpan({ text: `${mark} ${t.sync.diagnoseCheck[check.id]}：` });
+            item.createSpan({ text: describeCheck(check, t) });
+        }
+    }
+}
+
+/** 把一项检查渲染成用户能看懂的一句话。 */
+function describeCheck(check: DiagnosticCheck, t: LocaleStrings): string {
+    const d = t.sync.diagnoseDetail;
+    const detail = check.detail ?? "";
+
+    switch (check.id) {
+        case "git":
+            return check.status === "ok" ? d.gitOk : d.gitFailed(detail);
+        case "repo":
+            return check.status === "ok" ? d.repoOk : d.repoFailed;
+        case "remote":
+            return check.status === "ok" ? d.remoteOk(detail) : d.remoteFailed;
+        case "platform":
+            if (check.status === "ok") return d.platformOk(detail);
+            // skipped 且带 detail = 平台认得出但没配令牌；不带 = 平台认不出
+            return detail ? d.platformNoToken(detail) : d.platformUnknown;
+        case "access":
+            return check.status === "ok" ? d.accessOk(detail) : detail;
     }
 }
 

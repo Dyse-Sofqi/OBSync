@@ -135,7 +135,8 @@ export const zhCN = {
             strategyMerge: "合并（保留双方历史）",
             strategyRebase: "变基（历史线性）",
             strategyReset: "重置（以远端为准，丢弃本地提交）",
-            gitPath: "git 可执行文件路径",
+    
+        gitPath: "git 可执行文件路径",
             gitPathDesc: "留空使用系统 PATH 中的 git。Windows 上 git 不在 PATH 时才需要填写。",
         },
     },
@@ -314,6 +315,36 @@ export const zhCN = {
             "可以保存并使用 —— 同步是纯 git 操作。但该平台不是 GitHub 或 Gitee，所以不会自动注入访问令牌，「在远端打开」也用不了（私有仓库需要系统凭据助手）。",
         repoInited: "git 仓库已初始化。",
         mergeAborted: "已放弃当前合并，仓库回到拉取前的状态。",
+
+        // ── 连接测试 ──
+        diagnoseHeading: "连接测试",
+        diagnoseDesc:
+            "检查同步配置是否可用，并验证访问令牌。只读操作，不会改动任何东西。",
+        diagnoseRun: "测试连接",
+        diagnoseRunning: "正在测试…",
+        diagnoseAllPassed: "全部通过，同步配置可用。",
+        diagnoseHasFailures: "发现问题，详见下方。",
+        diagnoseCheck: {
+            git: "git 可执行文件",
+            repo: "git 仓库",
+            remote: "远端地址",
+            platform: "平台与令牌",
+            access: "远端访问",
+        },
+        diagnoseDetail: {
+            gitOk: "可用",
+            gitFailed: (detail: string) => `不可用：${detail}`,
+            repoOk: "已初始化",
+            repoFailed: "尚未初始化 —— 请先执行命令「OBSync：初始化仓库」",
+            remoteOk: (url: string) => url,
+            remoteFailed: "未配置 —— 请用命令「OBSync：编辑远端地址」填写",
+            platformOk: (host: string) => `${host}，已配置访问令牌`,
+            platformNoToken: (host: string) =>
+                `${host}，**未配置访问令牌** —— 公开仓库可以同步，私有仓库会失败`,
+            platformUnknown: "无法识别平台，不会注入令牌（私有仓库需依赖系统凭据助手）",
+            accessOk: (count: string) => `可以访问，读到 ${count} 个分支`,
+        },
+
 
         conflictGuideFile: "OBSync 冲突指南.md",
         conflictGuideTitle: "同步冲突指南",

@@ -69,3 +69,34 @@ export interface SyncOutcome {
     /** 拉取时更新的文件数。 */
     files?: number;
 }
+
+// ── 诊断 ────────────────────────────────────────────────────────────────────
+
+/**
+ * 一项诊断检查。
+ *
+ * `id` 是**类型码**而不是文案 —— 与错误处理同一套约定：逻辑层产出结构化结果，
+ * 展示层按 id 取 locale 文案。这样诊断逻辑不依赖 i18n，也能被单独测试。
+ */
+export interface DiagnosticCheck {
+    id:
+        /** git 可执行文件是否可用。 */
+        | "git"
+        /** 当前库是否已是 git 仓库。 */
+        | "repo"
+        /** 是否配置了远端。 */
+        | "remote"
+        /** 远端平台是否可识别（决定能不能注入令牌）。 */
+        | "platform"
+        /** 能否访问远端 —— **鉴权是否有效就看这一条**。 */
+        | "access";
+    status: "ok" | "failed" | "skipped";
+    /** 可选的补充说明（技术细节，非本地化文案）。 */
+    detail?: string;
+}
+
+export interface DiagnosticsReport {
+    checks: DiagnosticCheck[];
+    /** 全部通过（跳过不算失败）。 */
+    ok: boolean;
+}

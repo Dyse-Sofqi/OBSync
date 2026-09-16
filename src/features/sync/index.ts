@@ -64,6 +64,7 @@ export function createSyncModule(deps: SyncDeps): SyncModule | undefined {
     const service = new SyncService(git, {
         app: deps.app,
         notifier: deps.notifier,
+        secretStore: deps.secretStore,
         getT: deps.getT,
         getCommitTemplate: () => deps.getSettings().sync.commitMessage,
         getStrategy: (): SyncStrategy => deps.getSettings().sync.syncStrategy,

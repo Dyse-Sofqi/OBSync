@@ -144,6 +144,30 @@ export class SimpleGitManager implements GitManager {
         return [...status.staged, ...status.unstaged, ...status.untracked];
     }
 
+    /**
+     * 测试远端可达性与鉴权（只读）。
+     *
+     * 用 `ls-remote` 而不是 `fetch`：前者不写任何本地状态（不动 refs、不动 index），
+     * 纯粹是「能不能连上、凭据认不认」的探测。
+     *
+     * 这里**不吞异常** —— 让 `mapError` 把 git 的失败翻译成领域错误
+     * （鉴权失败 → `GitAuthError`，连不上 → 原始网络错误），
+     * 上层就能给出「令牌无效」和「网络不通」这两种完全不同的引导。
+     */
+    async testRemoteAccess(): Promise<number> {
+        const remoteUrl = await this.rawGetRemoteUrl();
+        if (!remoteUrl) {
+            throw new NoUpstreamError("test remote access: no remote configured");
+        }
+
+        const git = await this.git();
+        const output = await wrap("testing remote access", () =>
+            git.raw(["ls-remote", "--heads", "origin"])
+        );
+
+        return output.split("\n").filter((line) => line.trim().length > 0).length;
+    }
+
     // ── 暂存与提交 ────────────────────────────────────────────────────────
 
     async stage(paths: string[]): Promise<void> {

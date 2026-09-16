@@ -43,6 +43,23 @@ function relative(file) {
     return path.relative(ROOT, file).replace(/\\/g, "/");
 }
 
+/**
+ * 剥掉注释。
+ *
+ * 扫描类检查（硬编码中文、CSS 类名）都要先剥注释，否则**注释里提到的类名/中文**
+ * 会被算成"用到了"，掩盖真问题。字符串里的 `//` 会被误伤，但用于扫描足够。
+ */
+function stripComments(source) {
+    return source
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .split("\n")
+        .filter((line) => {
+            const trimmed = line.trim();
+            return !trimmed.startsWith("//") && !trimmed.startsWith("*");
+        })
+        .join("\n");
+}
+
 function versionTuple(value) {
     const parts = String(value).match(/\d+/g) ?? [];
     return parts.map(Number);
@@ -188,17 +205,6 @@ function checkHardcodedCjk() {
         ],
     ]);
 
-    /** 剥掉注释。字符串里的 `//` 会误伤，但用于扫描足够。 */
-    const stripComments = (source) =>
-        source
-            .replace(/\/\*[\s\S]*?\*\//g, "")
-            .split("\n")
-            .filter((line) => {
-                const trimmed = line.trim();
-                return !trimmed.startsWith("//") && !trimmed.startsWith("*");
-            })
-            .join("\n");
-
     const findings = [];
     const allowed = [];
     for (const file of walk(SRC, ".ts")) {
@@ -272,8 +278,20 @@ function checkUnusedI18nKeys() {
 
     const unused = leafKeys.filter((key) => {
         if (GENERIC_PREFIXES.some((prefix) => key.startsWith(prefix))) return false;
-        const leaf = key.split(".").pop();
-        return !new RegExp(`\\.${leaf}\\b`).test(code);
+
+        const parts = key.split(".");
+        const leaf = parts.pop();
+        const parent = parts.pop();
+
+        // 静态访问：`.leaf`
+        if (new RegExp(`\\.${leaf}\\b`).test(code)) return false;
+
+        // 动态索引：`parent[expr]` —— 比如 `t.sync.diagnoseCheck[check.id]`。
+        // 静态扫不到具体键名，但这类写法**确实在用整组键**，
+        // 报成死键是误报。所以只要父对象被索引访问过，就视为已用。
+        if (parent && new RegExp(`\\.${parent}\\s*\\[`).test(code)) return false;
+
+        return true;
     });
 
     if (unused.length > 0) {
@@ -292,28 +310,50 @@ function checkCssClasses() {
     const cssPath = path.join(ROOT, "styles.css");
     if (!fs.existsSync(cssPath)) return { name: "CSS 类覆盖", skipped: true };
 
+    /**
+     * **不是** CSS 类名的 `obsync-*` 字符串。
+     *
+     * `obsync-` 这个前缀也被别的东西用着（存储键、视图类型标识）。
+     * 加进来必须说明它是什么 —— 否则这张表会变成掩盖漏样式的地方。
+     */
+    const NOT_A_CLASS = [
+        {
+            match: (name) => name.startsWith("obsync-token-"),
+            why: "SecretStore 的密钥 id 前缀",
+        },
+        {
+            match: (name) => name.startsWith("obsync-last-auto-"),
+            why: "Automatics 的「上次执行时间」存储键前缀",
+        },
+        {
+            match: (name) => name === "obsync-sync-view",
+            why: "源码控制视图的类型标识（registerView 用），不是 CSS 类",
+        },
+    ];
+
+    /**
+     * 收集代码里用到的类名。
+     *
+     * 全文扫而不是按行扫 —— 类名可能出现在多类名字符串里
+     * （`cls: "obsync-badge obsync-badge-update"`）、
+     * 或者跨行的三元赋值里（`const cls = a ? "obsync-x" : "obsync-y"`）。
+     * 按行匹配会漏掉这两种，把它们误报成「定义了没用到」。
+     */
     const used = new Set();
     for (const file of walk(SRC, ".ts")) {
-        const source = read(file);
-        for (const pattern of [
-            /cls:\s*"([^"]+)"/g,
-            /addClass\("([^"]+)"\)/g,
-            /setClass\("([^"]+)"\)/g,
-        ]) {
-            for (const match of source.matchAll(pattern)) {
-                for (const name of match[1].split(/\s+/)) used.add(name);
-            }
+        for (const match of stripComments(read(file)).matchAll(/obsync-[\w-]+/g)) {
+            const name = match[0];
+            if (NOT_A_CLASS.some((entry) => entry.match(name))) continue;
+            used.add(name);
         }
-        for (const match of source.matchAll(/toggleClass\("([^"]+)"/g)) used.add(match[1]);
     }
 
     const defined = new Set(
         [...read(cssPath).matchAll(/\.(obsync-[\w-]+)/g)].map((match) => match[1])
     );
-    const obsyncUsed = new Set([...used].filter((name) => name.startsWith("obsync-")));
 
-    const missing = [...obsyncUsed].filter((name) => !defined.has(name));
-    const zombie = [...defined].filter((name) => !obsyncUsed.has(name));
+    const missing = [...used].filter((name) => !defined.has(name));
+    const zombie = [...defined].filter((name) => !used.has(name));
 
     if (missing.length > 0 || zombie.length > 0) {
         const parts = [];
@@ -322,7 +362,7 @@ function checkCssClasses() {
         failures.push(parts.join("\n      "));
     }
 
-    return { name: "CSS 类覆盖", detail: `${obsyncUsed.size} 用 / ${defined.size} 定义` };
+    return { name: "CSS 类覆盖", detail: `${used.size} 用 / ${defined.size} 定义` };
 }
 
 // ── 跑 ──────────────────────────────────────────────────────────────────────

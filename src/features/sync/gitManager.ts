@@ -73,6 +73,19 @@ export interface GitManager {
 
     /** 单个文件的变更明细（用于差异查看，v1 只列文件级状态）。 */
     fileChanges(): Promise<FileChange[]>;
+
+    /**
+     * 测试能否访问远端（**只读**，不改变任何东西）。
+     *
+     * 这是「鉴权配置对不对」的唯一权威检查：私有仓库令牌不对时，
+     * 只有真的去连一次才知道 —— 光看配置项无法判断令牌是否有效。
+     * 用 `ls-remote` 而不是 `fetch`：前者不写任何本地状态。
+     *
+     * @returns 远端引用数量（>= 0）。失败时抛 `errors.ts` 里的领域错误
+     *          （`GitAuthError` / `NetworkError` / …），由上层翻译成提示。
+     * @throws 没有配置远端时抛 `NoUpstreamError`。
+     */
+    testRemoteAccess(): Promise<number>;
 }
 
 /** simple-git 的状态字符 → 我们的领域类型。 */

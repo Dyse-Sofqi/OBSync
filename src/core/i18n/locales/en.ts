@@ -312,6 +312,37 @@ export const en = {
         repoInited: "Git repository initialized.",
         mergeAborted: "Merge aborted; the repository is back to the pre-pull state.",
 
+
+        // ── Connection test ──
+        diagnoseHeading: "Connection test",
+        diagnoseDesc:
+            "Check whether the sync configuration works and verify the access token. Read-only — nothing is modified.",
+        diagnoseRun: "Test connection",
+        diagnoseRunning: "Testing…",
+        diagnoseAllPassed: "All checks passed; sync is ready.",
+        diagnoseHasFailures: "Problems found — see below.",
+        diagnoseCheck: {
+            git: "git executable",
+            repo: "git repository",
+            remote: "Remote URL",
+            platform: "Host and token",
+            access: "Remote access",
+        },
+        diagnoseDetail: {
+            gitOk: "Available",
+            gitFailed: (detail: string) => `Not available: ${detail}`,
+            repoOk: "Initialised",
+            repoFailed: 'Not initialised yet — run the "OBSync: Initialise repository" command first',
+            remoteOk: (url: string) => url,
+            remoteFailed: 'Not configured — set it with the "OBSync: Edit remote URL" command',
+            platformOk: (host: string) => `${host}, access token configured`,
+            platformNoToken: (host: string) =>
+                `${host}, **no access token configured** — public repositories will work, private ones will fail`,
+            platformUnknown:
+                "Host not recognised, so no token will be injected (private repositories fall back to the OS credential helper)",
+            accessOk: (count: string) => `Reachable, read ${count} branch(es)`,
+        },
+
         conflictGuideFile: "OBSync conflict guide.md",
         conflictGuideTitle: "Sync conflict guide",
         conflictGuideIntro:

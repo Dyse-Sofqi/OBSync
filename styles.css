@@ -215,3 +215,38 @@
     font-size: var(--font-ui-smaller, 0.85em);
     opacity: 0.85;
 }
+
+/* ── 连接测试结果 ───────────────────────────────────────────────────────── */
+
+.obsync-settings .obsync-diagnostics:empty {
+    display: none;
+}
+
+.obsync-settings .obsync-diag-list {
+    margin: 0.4em 0 0;
+    padding-left: 1.1em;
+    font-size: var(--font-ui-smaller, 0.85em);
+}
+
+.obsync-settings .obsync-diag-list li {
+    margin: 0.15em 0;
+    color: var(--text-muted);
+}
+
+/* 状态用颜色区分：通过 / 失败 / 不适用。
+   只用主题变量 —— 硬编码颜色在深浅色主题下总有一边读不清。 */
+.obsync-settings .obsync-diag-ok {
+    color: var(--text-success, var(--text-normal));
+}
+
+.obsync-settings .obsync-diag-failed {
+    color: var(--text-error, var(--text-normal));
+}
+
+.obsync-settings .obsync-diag-skipped {
+    color: var(--text-muted);
+}
+
+.obsync-settings .obsync-diag-failed > span:last-child {
+    font-weight: 600;
+}
