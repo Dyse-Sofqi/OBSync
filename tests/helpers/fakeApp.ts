@@ -1,3 +1,5 @@
+import os from "node:os";
+import path from "node:path";
 import type { App } from "obsidian";
 
 /**
@@ -36,6 +38,10 @@ export interface FakeApp {
      * 用于模拟瞬时故障 —— 这是回滚机制真正要处理的场景。
      */
     failWriteOnceOn?: (path: string) => boolean;
+    /** 触发已注册的 onLayoutReady 回调（模拟 Obsidian 启动完成）。 */
+    runLayoutReady(): void;
+    /** 已注册的工作区事件监听器（如 file-menu），供断言与手动触发。 */
+    workspaceEvents: Array<{ event: string; callback: (...args: never[]) => void }>;
 }
 
 const CONFIG_DIR = ".obsidian";
@@ -43,6 +49,7 @@ const CONFIG_DIR = ".obsidian";
 export function createFakeApp(initialFiles: Record<string, string> = {}): FakeApp {
     const files = new Map<string, string>(Object.entries(initialFiles));
     const folders = new Set<string>([CONFIG_DIR, `${CONFIG_DIR}/plugins`]);
+    const basePath = path.join(os.tmpdir(), "obsync-fake-vault");
 
     // 从初始文件反推目录结构。不做这一步的话 `exists(某目录)` 会返回 false，
     // 于是「目录是否已存在」的判断全部失真 —— 回滚逻辑会误判成"全新安装"，
@@ -71,9 +78,22 @@ export function createFakeApp(initialFiles: Record<string, string> = {}): FakeAp
             },
         },
         app: undefined as unknown as App,
+        // 这两个在下面装配完 workspace 之后再赋真实实现（那时才有回调列表可触发）。
+        runLayoutReady: () => undefined,
+        workspaceEvents: [],
     };
 
     const adapter = {
+        /**
+         * git 的 baseDir 来源。装配路径会调用它（见 `getVaultRoot`），
+         * 缺了会在 `onload` 里直接 TypeError。
+         *
+         * 默认指向一个**不存在 git 仓库**的临时目录：这样 `git status`
+         * 会走「不是仓库」的分支（UI 本就支持这个状态），而不是真去操作什么。
+         */
+        getBasePath(): string {
+            return basePath;
+        },
         async exists(path: string): Promise<boolean> {
             return files.has(path) || folders.has(path);
         },
@@ -123,9 +143,27 @@ export function createFakeApp(initialFiles: Record<string, string> = {}): FakeAp
         },
     };
 
+    const layoutReadyCallbacks: Array<() => void> = [];
+    const workspaceEvents: Array<{ event: string; callback: (...args: never[]) => void }> = [];
+
     state.app = {
         vault: { configDir: CONFIG_DIR, adapter },
         plugins: state.plugins,
+        // 最小工作区。装配路径（main.ts 的 onload）会用到这几个方法 ——
+        // 少一个就会以 TypeError 的形式在启动时炸，所以宁可都留着。
+        workspace: {
+            onLayoutReady(callback: () => void) {
+                layoutReadyCallbacks.push(callback);
+            },
+            getActiveFile: () => null,
+            getLeavesOfType: () => [],
+            getRightLeaf: () => null,
+            revealLeaf: () => undefined,
+            on(event: string, callback: (...args: never[]) => void) {
+                workspaceEvents.push({ event, callback });
+                return { event, callback };
+            },
+        },
         // SecretStore 在拿不到 secretStorage 时会回退到这里。
         localStorage: new Map<string, unknown>(),
         loadLocalStorage(key: string) {
@@ -139,6 +177,11 @@ export function createFakeApp(initialFiles: Record<string, string> = {}): FakeAp
             else store.set(key, data);
         },
     } as unknown as App;
+
+    state.workspaceEvents = workspaceEvents;
+    state.runLayoutReady = () => {
+        for (const callback of layoutReadyCallbacks) callback();
+    };
 
     return state;
 }

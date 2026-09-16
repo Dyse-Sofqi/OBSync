@@ -337,6 +337,16 @@ simple-git 的 config 传递（不碰网络、不需令牌）。
 单独跑约 **150 秒**（不是"整个套件 1.5 秒"）。别因为"慢"就以为它挂了 ——
 `vitest.config.ts` 里已把 `testTimeout` 提到 30 秒，卡死与否看这个。
 
+**`pluginBoot.test.ts`：装配路径的冒烟测试。** 把真实的 `main.ts` `onload()`
+跑在假 app 上，断言它注册了什么。这是唯一覆盖装配路径的测试，而它踩过坑：
+曾经把状态栏元素挂到 `app.workspace.addStatusBarItem()`（真实 API 在 `Plugin` 类上），
+**单测全绿、真机启动才 TypeError**。做法是让 stub 的 `Plugin` 把方法补全 ——
+只要 `onload` 调用了 stub 没有的 API，这里就会以 TypeError 失败。
+
+已做**变异验证**：把 `createStatusBarItem` 改回 `app.workspace.addStatusBarItem()`
+后该测试立刻失败（`TypeError: ... is not a function`），确认它真的拦得住这类问题，
+不是"永远通过"的装饰。改动装配路径时请保持这个性质。
+
 ## 七、实测发现（读文档看不出来，改代码前先看这里）
 
 ### 平台差异

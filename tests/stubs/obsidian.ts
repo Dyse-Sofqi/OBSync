@@ -63,18 +63,25 @@ export function requireApiVersion(version: string): boolean {
     return true;
 }
 
+let desktop = true;
+
+/** 测试里模拟移动端 / 桌面端。 */
+export function __setDesktop(value: boolean): void {
+    desktop = value;
+}
+
 export class Platform {
     static get isDesktopApp(): boolean {
-        return true;
+        return desktop;
     }
     static get isMobileApp(): boolean {
-        return false;
+        return !desktop;
     }
     static get isDesktop(): boolean {
-        return true;
+        return desktop;
     }
     static get isMobile(): boolean {
-        return false;
+        return !desktop;
     }
     static get isWin(): boolean {
         return process.platform === "win32";
@@ -204,9 +211,28 @@ export class PluginSettingTab {
     hide(): void {}
 }
 
+/**
+ * 插件基类。
+ *
+ * 这几个 `addXxx` 方法**必须存在**，否则装配路径（`main.ts` 的 `onload`）
+ * 一跑就 `TypeError`。这不是假想的风险：曾经把状态栏元素挂到
+ * `app.workspace.addStatusBarItem()` 上，而真实 API 在 `Plugin` 类上 ——
+ * 单测全绿、真机启动才炸。补上这些方法后，`tests/pluginBoot.test.ts`
+ * 能在编译期之外把这类错误也拦住。
+ */
 export class Plugin {
     app: unknown = {};
     manifest = { id: "obsync", version: "0.0.0" };
+    /** 记录注册了什么，供冒烟测试断言。 */
+    readonly registered = {
+        commands: [] as Array<{ id: string; name: string }>,
+        views: [] as string[],
+        settingTabs: 0,
+        ribbonIcons: 0,
+        statusBarItems: 0,
+        events: 0,
+    };
+
     constructor(app?: unknown, manifest?: unknown) {
         if (app) this.app = app;
         if (manifest) this.manifest = manifest as typeof this.manifest;
@@ -215,11 +241,26 @@ export class Plugin {
         return {};
     }
     async saveData(): Promise<void> {}
-    addSettingTab(): void {}
+    addSettingTab(): void {
+        this.registered.settingTabs += 1;
+    }
     addRibbonIcon(): HTMLElement {
+        this.registered.ribbonIcons += 1;
         return document.createElement("div");
     }
-    addCommand(): void {}
+    addCommand(command: { id: string; name: string }): void {
+        this.registered.commands.push({ id: command.id, name: command.name });
+    }
+    addStatusBarItem(): HTMLElement {
+        this.registered.statusBarItems += 1;
+        return document.createElement("div");
+    }
+    registerView(type: string): void {
+        this.registered.views.push(type);
+    }
+    registerEvent(): void {
+        this.registered.events += 1;
+    }
 }
 
 export class Events {
