@@ -5,8 +5,9 @@
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
-    "build": "pnpm typecheck && node esbuild.config.mjs production",
+    "build": "pnpm check && pnpm typecheck && node esbuild.config.mjs production",
     "typecheck": "tsc --noEmit --skipLibCheck",
+    "check": "node scripts/checks.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:live": "cross-env OBSYNC_LIVE=1 vitest run tests/live"

@@ -114,7 +114,8 @@ OBSync 针对这两点做了扩展：
 ```bash
 pnpm install
 pnpm dev        # esbuild watch，构建后自动部署到测试库
-pnpm build      # 类型检查 + 生产构建 + 部署
+pnpm build      # 自查 + 类型检查 + 生产构建 + 部署
+pnpm check      # 项目自查（只读，约 0.2 秒）
 pnpm typecheck
 pnpm test       # 单元测试（不碰网络）
 pnpm test:live  # 真实 API 测试，需要网络
@@ -122,9 +123,12 @@ pnpm test:live  # 真实 API 测试，需要网络
 
 - 部署目标默认是 `F:/_Workspace/Plugin-Test/.obsidian/plugins/obsync`，
   用环境变量 `OBSYNC_DEPLOY_DIR` 覆盖，设为空串则跳过部署。
+- **`pnpm check` 查四件编译器管不着的事**：manifest 的 `minAppVersion` 是否覆盖了
+  代码用到的 Obsidian API、有没有硬编码的中文（会漏给英文用户）、有没有定义了却没
+  接上的 i18n 键、CSS 类有没有漏定义。`pnpm build` 会先跑它。
 - 改了 git 相关代码后注意：`simpleGitManager.test.ts` 会起真实 git 进程，
   在这台机器上单独跑约 150 秒 —— 它没挂，只是慢。
-- `pnpm test:live` 里 Gitee 的用例在没有令牌且被限流时会**跳过**而不是失败。
+- `pnpm test:live` 里 Gitee 的 API 用例在没有令牌且被限流时会**跳过**而不是失败。
   想跑绿就设 `OBSYNC_GITEE_TOKEN=<令牌>`。
 
 架构与踩坑记录见 [`docs/HANDOVER.md`](docs/HANDOVER.md)，

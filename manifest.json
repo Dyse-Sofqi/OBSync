@@ -2,7 +2,7 @@
   "id": "obsync",
   "name": "OBSync",
   "version": "0.1.0",
-  "minAppVersion": "1.5.0",
+  "minAppVersion": "1.8.7",
   "description": "Sync your vault with GitHub or Gitee, and install community plugins from both.",
   "author": "Dyse-Sofqi",
   "authorUrl": "https://github.com/Dyse-Sofqi",

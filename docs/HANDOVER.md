@@ -81,6 +81,16 @@
 | **`statusMapper` 没有任何测试** | 测试盲区：一次变异验证打偏才发现的 —— 我把 `HttpStatusError` 换回 `ObsyncError` 后用例照样全绿，因为用例直接构造错误对象，没走映射路径 | 新增 `statusMapper.test.ts`（10 项，覆盖两个平台各自的限流表达方式） |
 | 死键清理 | 25 个未被引用的 i18n 键：4 个背后是真缺口（见上），其余是通用词汇（保留）或设计上不该存在（`plugin.commandCategory` —— Obsidian 命令 API 没有分类字段；`settings.title` —— 被 `cmdOpenSettings` 取代） | 逐个分诊处理 |
 | **资产 CDN 不可达时要白等三倍超时** | 真缺口（性能，且正好打在目标用户身上）：安装器逐文件回退，三个文件各试一次资产、各等一次超时；而 http 层还会重试 2 次 × 20 秒。合计 **约 3 分钟**才装完 —— 国内网络下这就是常态 | ① http 层**不再重试传输层失败**（确定性错误，重试只是把 20 秒变 62 秒）；② 安装器**记住资产通道失败**，后续文件直接走源码。合计降到 20 秒 |
+| **`minAppVersion` 写低了（1.5.0，实际需要 1.8.7）** | 真 bug（发布阻断级）：`SecretStore` 调 `app.loadLocalStorage` / `saveLocalStorage` **没有兜底**，而这两个 API 是 `@since 1.8.7`。1.5~1.8.6 的用户装上后一用就 `TypeError` | `minAppVersion` → `1.8.7`；新增 `pnpm check` 自动校验 |
+| 自查脚本散落在 gitignore 的 `.probe/` | 工程问题：写的时候有用，但不进仓库等于没有 | 移植成 `scripts/checks.mjs`，`pnpm check` 可跑，且 `pnpm build` 会先跑它 |
+
+> ⚠ **一处我自己的误判，记下来免得再犯**：判断 `minAppVersion` 时我最初用
+> `grep -B6 "<成员>(" | grep -o "@since …" | tail -1` 取值，得到
+> `addExtraButton → 1.11.0`，据此断言「1.5~1.10 会崩」。
+> **实际是 0.9.16** —— `-B6` 的范围跨进了**下一个成员**的注释块，`tail -1` 取到的是它的
+> `@since`。真正的问题在别处（`loadLocalStorage` 1.8.7）。
+> 教训：**`@since` 必须和成员声明配对解析，不能用「附近最后一个」近似**。
+> 现在 `scripts/checks.mjs` 是按类作用域配对的，不会再犯。
 
 **验收标准速查**（详见 PLAN.md 第三节）：
 
@@ -92,11 +102,26 @@
 ## 三、命令与环境
 ```
 pnpm dev        # esbuild watch + 自动部署到测试库
-pnpm build      # typecheck + 生产构建 + 部署
+pnpm build      # 自查 + typecheck + 生产构建 + 部署
+pnpm check      # 项目自查（见下），只读，约 0.2 秒
 pnpm typecheck  # tsc --noEmit
-pnpm test       # 单元测试（无网络，~1.5s）
+pnpm test       # 单元测试（无网络，~2.5 分钟）
 pnpm test:live  # 真实 API 测试（OBSYNC_LIVE=1，需网络）
 ```
+
+### `pnpm check` 查什么（`scripts/checks.mjs`）
+
+四项都是「编译器管不着、但会真出问题」的检查，每条都对应一个实际踩过的坑：
+
+| 检查 | 防的是什么 |
+| --- | --- |
+| **minAppVersion 一致性** | manifest 承诺的最低版本必须覆盖代码用到的 API。写低了低版本用户装上就崩，而 TS 不提醒（类型包永远是最新版）。实测踩过：写着 1.5.0，实际需要 1.8.7 |
+| **硬编码中文** | i18n 的编译期保证只管「locale 之间结构一致」，管不住「代码里直接写了一句中文」。实测扫出 22 处用户可见的错误文案 |
+| **未使用的 i18n 键** | 死键是信号：通常是漏接的本地化或没接线的功能。实测 4 个死键背后都是真缺口 |
+| **CSS 类覆盖** | 用了但没定义的类会静默丢样式；定义了没用的类是残留 |
+
+两张**带理由**的豁免表在脚本里（`KNOWN_SAFE` / `ALLOWED`）—— 加条目时必须写清
+为什么安全，否则它们会变成掩盖问题的地方。
 
 - 部署目标 `F:/_Workspace/Plugin-Test/.obsidian/plugins/obsync`，
   环境变量 `OBSYNC_DEPLOY_DIR` 可覆盖，设空串跳过；部署失败只警告不中断构建。
@@ -126,10 +151,9 @@ pnpm test:live  # 真实 API 测试（OBSYNC_LIVE=1，需网络）
    的全局类，不加作用域会污染其他插件的设置页（容器类在 `display()` 里挂上）。
 3. 状态类信息（可更新 / 已冻结 / 令牌已配置）做成名称后的徽标药丸
    （`.obsync-badge*`），描述行只放事实信息。
-4. 自查方式（`.probe/` 下，已 gitignore）：
-   `npx esbuild styles.css --outfile=/dev/null` 验证语法；
-   用脚本比对「代码里用到的 obsync-* 类」与「styles.css 里定义的类」，
-   可发现漏样式或僵尸样式。
+4. 自查方式：**统一走 `pnpm check`**（`scripts/checks.mjs`，见第三节）。
+   早先文档里写的 `npx esbuild styles.css --outfile=/dev/null` **在 Windows 上别用** ——
+   `/dev/null` 会被当成真实路径，在仓库里建出一个 `dev/null` 文件（已踩过）。
 
 ## 四、代码地图
 
@@ -183,11 +207,11 @@ src/
 2. **`Notifier` 用注册制而不是 `import` 各功能的错误类型** —— `core/` 不该知道任何
    `features/` 的东西。功能模块自己把「错误 → 文案」的映射交上来。
 
-**自查手段**（`.probe/` 下，已 gitignore）：
-- `check_hardcoded_cjk.py` —— 扫 `src/` 里 locale 之外字符串字面量中的中文。
-  当前只剩 4 处，都是**合理的**：语言下拉的「简体中文」标签（本就该用母语写）、
-  `giteeHost` 的三个限流**检测词**（不是给用户看的）。**新增的中文都该是可疑的。**
-- `check_css_classes.py` —— 比对代码里用到的 `obsync-*` 类与 `styles.css` 里定义的类。
+**自查手段**：统一走 **`pnpm check`**（`scripts/checks.mjs`，见第三节）。
+早先这几项检查是我在 `.probe/`（gitignore）里写的 Python 脚本 ——
+写的时候有用，但**不进仓库等于没有**，所以移植成了项目内的 Node 脚本，
+并由 `pnpm build` 自动执行。想加豁免条目就改脚本里的 `KNOWN_SAFE` / `ALLOWED`，
+**必须写清理由**，否则那两张表会变成掩盖问题的地方。
 
 测试约定：**断言错误的类型码，不要断言消息文本**。文案来自 locale，改文案不该让测试变红。
 助手见 `tests/helpers/expectInstallerError.ts`。

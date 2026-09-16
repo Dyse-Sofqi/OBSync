@@ -20,3 +20,6 @@ coverage/
 
 # 沙箱/工具产生的临时文件
 _tmp_*
+
+# Windows 上 /dev/null 会被当成真实路径
+/dev/
