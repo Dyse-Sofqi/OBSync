@@ -46,6 +46,9 @@ export class ObsyncSettingsTab extends PluginSettingTab {
 
         const { containerEl } = this;
         containerEl.empty();
+        // 样式作用域标记：下面的规则都挂在 .obsync-settings 下，
+        // 避免污染 Obsidian 与其他插件的设置页（.setting-item-* 是全局类）。
+        containerEl.addClass("obsync-settings");
 
         this.renderTabs();
 
@@ -97,6 +100,8 @@ export class ObsyncSettingsTab extends PluginSettingTab {
             });
             if (tab.id === this.activeTab) button.addClass("is-active");
 
+            if (tab.id === "tracked") this.renderTrackedCounts(button);
+
             button.addEventListener("click", () => {
                 if (this.activeTab === tab.id) return;
                 this.activeTab = tab.id;
@@ -106,11 +111,34 @@ export class ObsyncSettingsTab extends PluginSettingTab {
         }
     }
 
+    /**
+     * 在「已追踪插件」标签上挂计数。
+     *
+     * 有可更新项时用强调色 —— 用户不必点进去就知道有几处要处理。
+     */
+    private renderTrackedCounts(button: HTMLElement): void {
+        const installer = this.obsync.settings.installer;
+        const tracked = installer.tracked.length;
+        if (tracked === 0) return;
+
+        button.createSpan({ text: String(tracked), cls: "obsync-tab-count" });
+
+        const updates = Object.keys(installer.availableUpdates).length;
+        if (updates > 0) {
+            button.createSpan({
+                text: `↑${updates}`,
+                cls: "obsync-tab-count is-update",
+            });
+        }
+    }
+
     /** 标签一：已追踪插件 —— 三个主操作按钮 + 跟踪列表。 */
     private renderTrackedTab(): void {
         const t = this.obsync.t;
 
-        new Setting(this.containerEl)
+        // 主操作单独成卡片（.obsync-actions），与下面的列表拉开层次。
+        const actions = this.containerEl.createDiv({ cls: "obsync-actions" });
+        new Setting(actions)
             .addButton((button) =>
                 button
                     .setButtonText(t.installer.modalTitle)
@@ -213,6 +241,19 @@ export class ObsyncSettingsTab extends PluginSettingTab {
         let pending = this.obsync.secretStore.getToken(host) ?? "";
         let dirty = false;
 
+        // 状态徽标要跟着输入/清除即时变（渲染时机在构造 Setting 之后，
+        // 所以用闭包持有元素引用，而不是等下一次 display()）。
+        let statusEl: HTMLElement | undefined;
+        const refreshStatus = (): void => {
+            if (!statusEl) return;
+            const configured = pending.trim().length > 0;
+            statusEl.setText(
+                configured ? t.settings.token.configured : t.settings.token.notConfigured
+            );
+            statusEl.toggleClass("obsync-badge-ok", configured);
+            statusEl.toggleClass("obsync-badge-muted", !configured);
+        };
+
         const setting = new Setting(this.containerEl)
             .setName(name)
             .setDesc(desc)
@@ -231,6 +272,7 @@ export class ObsyncSettingsTab extends PluginSettingTab {
                     if (!dirty) return;
                     dirty = false;
                     this.obsync.secretStore.setToken(host, pending);
+                    refreshStatus();
                 });
             })
             .addButton((button) =>
@@ -238,12 +280,14 @@ export class ObsyncSettingsTab extends PluginSettingTab {
                     const token = pending.trim();
                     if (!token) {
                         this.obsync.secretStore.clearToken(host);
+                        refreshStatus();
                         this.obsync.notifier.info(t.settings.token.cleared);
                         return;
                     }
 
                     this.obsync.secretStore.setToken(host, token);
                     dirty = false;
+                    refreshStatus();
 
                     button.setDisabled(true);
                     button.setButtonText(t.settings.token.testing);
@@ -287,6 +331,10 @@ export class ObsyncSettingsTab extends PluginSettingTab {
             );
 
         void setting;
+
+        // 一眼看出这个平台有没有配令牌（状态类信息做成徽标，不塞进描述文字）。
+        statusEl = setting.nameEl.createSpan({ cls: "obsync-badge" });
+        refreshStatus();
     }
 
     /** 标签四：通用 —— 界面语言 + 提示与日志。 */

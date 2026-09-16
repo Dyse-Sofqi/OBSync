@@ -70,15 +70,26 @@ function renderRow(
 
     const setting = new Setting(containerEl)
         .setName(plugin.name)
+        // 描述行只放事实（来源、版本）；状态类的信息做成名称后的徽标，
+        // 扫列表时眼睛只需看一列。
         .setDesc(
             `${hostName} · ${plugin.owner}/${plugin.repo} · ` +
-                `${t.common.version} ${plugin.installedVersion}` +
-                (plugin.frozen ? ` · ${t.installer.frozen}` : "") +
-                (update ? ` · ${t.installer.updateBadge(update.latestVersion)}` : "")
+                `${t.common.version} ${plugin.installedVersion}`
         );
 
-    // 有更新的行整行高亮 —— 用户扫一眼列表就该看到哪里能更新。
-    if (update) setting.setClass("obsync-has-update");
+    if (update) {
+        setting.nameEl.createSpan({
+            text: t.installer.updateBadge(update.latestVersion),
+            cls: "obsync-badge obsync-badge-update",
+        });
+        setting.setClass("obsync-has-update");
+    }
+    if (plugin.frozen) {
+        setting.nameEl.createSpan({
+            text: t.installer.frozen,
+            cls: "obsync-badge obsync-badge-muted",
+        });
+    }
 
     // 检查更新
     setting.addExtraButton((button) =>

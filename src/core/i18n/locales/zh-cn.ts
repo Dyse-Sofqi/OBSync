@@ -94,6 +94,8 @@ export const zhCN = {
             valid: (host: string, account: string) => `${host} 令牌有效，账号：${account}`,
             invalid: (host: string) => `${host} 令牌无效。`,
             cleared: "令牌已清除",
+            configured: "已配置",
+            notConfigured: "未配置",
         },
 
         general: {

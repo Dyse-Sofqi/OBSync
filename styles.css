@@ -1,6 +1,44 @@
-/* OBSync — styles are added per-feature as the modules land. */
+/* OBSync 样式。
+ *
+ * 两条约定：
+ * 1. **只用 Obsidian 的主题变量**（var(--text-accent) 等），并给关键颜色兜底，
+ *    这样在任意主题、深浅色模式下都不会出现读不清的文字。
+ * 2. **设置页相关的规则一律挂在 `.obsync-settings` 下** —— `.setting-item-*`
+ *    是 Obsidian 的全局类，不限定作用域会污染其他插件的设置页。
+ */
 
-/* 弹窗里的状态/警告行（AddRepoModal / BindExistingModal 共用） */
+/* ── 徽标药丸 ──────────────────────────────────────────────────────────────
+   状态类信息（可更新 / 已冻结 / 令牌已配置）做成名称后的小药丸，
+   而不是塞进描述文字里 —— 扫列表时眼睛只需看一列。 */
+.obsync-badge {
+    display: inline-block;
+    margin-left: 0.5em;
+    padding: 0.05em 0.5em;
+    border-radius: 999px;
+    font-size: var(--font-ui-smaller, 0.75em);
+    font-weight: 500;
+    line-height: 1.6;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.obsync-badge-update {
+    color: var(--text-on-accent, #fff);
+    background: var(--interactive-accent, #7f6df2);
+}
+
+.obsync-badge-ok {
+    color: var(--text-success, #4caf50);
+    background: var(--background-modifier-border);
+}
+
+.obsync-badge-muted {
+    color: var(--text-muted);
+    background: var(--background-modifier-border);
+    font-weight: 400;
+}
+
+/* ── 弹窗里的状态/警告行（AddRepoModal / BindExistingModal 共用） ──────── */
 .obsync-modal-status {
     opacity: 0.8;
     margin: 0.5em 0;
@@ -18,20 +56,51 @@
     opacity: 0.55;
 }
 
-/* 已跟踪列表里「有可用更新」的行 —— 常驻高亮,不依赖 Notice */
-.obsync-has-update .setting-item-name {
-    color: var(--text-accent);
-    font-weight: 600;
-}
-
 /* 空状态提示 */
 .obsync-empty {
     opacity: 0.7;
     margin: 0.5em 0;
 }
 
-/* 设置页标签栏（Obsidian 的 PluginSettingTab 没有内建分页，自己画一条） */
-.obsync-tabs {
+/* 源码控制视图的变更列表 */
+.obsync-changes {
+    margin: 0.5em 0;
+    padding-left: 1.2em;
+}
+
+.obsync-changes li {
+    line-height: 1.6;
+}
+
+.obsync-changes .obsync-conflict {
+    color: var(--text-error, #e05252);
+}
+
+/* ── 提示列表（社区插件浏览 / 版本选择） ──────────────────────────────────
+   SuggestModal 的每个条目里有多行信息，小字号元素默认是行内的，改成块级堆叠。 */
+.obsync-community-name {
+    font-weight: 600;
+}
+
+.obsync-suggestion-meta,
+.obsync-suggestion-desc {
+    display: block;
+    margin-top: 0.15em;
+    font-size: var(--font-ui-smaller, 0.85em);
+    line-height: 1.4;
+}
+
+.obsync-suggestion-meta {
+    color: var(--text-muted);
+}
+
+.obsync-suggestion-desc {
+    color: var(--text-faint);
+}
+
+/* ── 设置页：标签栏 ────────────────────────────────────────────────────────
+   Obsidian 的 PluginSettingTab 没有内建分页，这里自绘一条。 */
+.obsync-settings .obsync-tabs {
     display: flex;
     flex-wrap: wrap;
     gap: 0.25em;
@@ -40,24 +109,78 @@
     padding-bottom: 0.5em;
 }
 
-.obsync-tab {
+.obsync-settings .obsync-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
     background: transparent;
     border: none;
     box-shadow: none;
     color: var(--text-muted);
     padding: 0.35em 0.9em;
-    border-radius: var(--radius-s);
+    border-radius: var(--radius-s, 4px);
     cursor: pointer;
     font-size: var(--font-ui-small);
+    height: auto;
 }
 
-.obsync-tab:hover {
+.obsync-settings .obsync-tab:hover {
     background: var(--background-modifier-hover);
     color: var(--text-normal);
 }
 
-.obsync-tab.is-active {
-    background: var(--background-modifier-active-hover, var(--background-modifier-hover));
+.obsync-settings .obsync-tab.is-active {
+    background: var(--background-modifier-hover);
     color: var(--text-accent);
     font-weight: 600;
+}
+
+/* 标签上的计数：普通项弱化，有可更新时用强调色 */
+.obsync-settings .obsync-tab-count {
+    padding: 0 0.4em;
+    border-radius: 999px;
+    background: var(--background-modifier-border);
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller, 0.75em);
+    font-weight: 400;
+}
+
+.obsync-settings .obsync-tab-count.is-update {
+    background: var(--interactive-accent, #7f6df2);
+    color: var(--text-on-accent, #fff);
+}
+
+/* ── 设置页：主操作卡片 ──────────────────────────────────────────────────── */
+.obsync-settings .obsync-actions {
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-m, 6px);
+    padding: 0.4em 1em;
+    margin-bottom: 1.5em;
+}
+
+.obsync-settings .obsync-actions .setting-item {
+    border-top: none;
+    padding: 0.5em 0;
+}
+
+/* ── 设置页：跟踪列表 ────────────────────────────────────────────────────── */
+
+/* 有可用更新的一行：左侧强调条 + 极淡底色 + 名称着色 */
+.obsync-settings .obsync-has-update {
+    border-left: 3px solid var(--interactive-accent, #7f6df2);
+    padding-left: 0.6em;
+    background: var(--background-modifier-hover);
+    border-radius: var(--radius-s, 4px);
+}
+
+.obsync-settings .obsync-has-update .setting-item-name {
+    color: var(--text-accent);
+    font-weight: 600;
+}
+
+/* 描述行弱化一档，让插件名先被看到（限定在本插件的设置页内） */
+.obsync-settings .setting-item-description {
+    font-size: var(--font-ui-smaller, 0.85em);
+    opacity: 0.85;
 }

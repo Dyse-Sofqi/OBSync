@@ -93,6 +93,8 @@ export const en = {
             valid: (host: string, account: string) => `${host} token is valid. Account: ${account}`,
             invalid: (host: string) => `The ${host} token is invalid.`,
             cleared: "Token cleared",
+            configured: "Configured",
+            notConfigured: "Not set",
         },
 
         general: {
