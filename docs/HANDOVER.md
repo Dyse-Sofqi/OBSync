@@ -321,11 +321,19 @@ simple-git 实例按「远端 URL + gitPath」缓存，`setRemoteUrl`/设置变�
 >   `gitee.com`，之前填的 `git` 会被服务端**直接拒绝**。现在由
 >   `IRepoHost.gitAuthUsername` 声明（Gitee → `oauth2`、GitHub → `x-access-token`）。
 >   这条单测发现不了 —— 我们构造出的 Basic 头本身合法，不合法的是对端接不接受。
-> - ❌ **有效的私人令牌是否被接受** —— 需要真实 Gitee 令牌与私有仓库。
->   这是 PLAN.md 风险表第一条，也是**目前唯一剩下的待实测项**。
->   上面那条用户名 bug 正是「实测才能发现」的例证，所以这条待办不能
->   因为「用户名改对了」就当作已解决 —— 它验证的是令牌本身与账号策略。
->   失败的回退方案：askpass 弹窗（obsidian-git 的做法，见其 simpleGit.ts:249）。
+> - ✅ **有效令牌在真实私有仓库上被接受**（`tests/live/privateRepoAuth.live.test.ts`，
+>   需 `OBSYNC_LIVE_PRIVATE_REPO` + 令牌，未配置则整组跳过）。
+>   结构是「对照组（不带凭据必须失败）+ 接受（带令牌必须成功）」——
+>   缺了对照组，「成功」什么也证明不了。
+>   2026-09-17 用 GitHub 私有仓库实跑通过；Gitee 那边配上令牌即可同一条命令跑完。
+> - ❌ **有效的 Gitee 令牌是否被接受** —— 需要真实 Gitee 令牌与私有仓库
+>   （我没有 Gitee 令牌，只有 GitHub 的）。这是 PLAN.md 风险表第一条，
+>   也是**目前唯一剩下的待实测项**。跑法见上面那条 live 测试的文件头。
+>   注意：**「测试连接」发现不了用户名问题** —— 它走 `ls-remote`（fetch 路径），
+>   而 Gitee 的用户名白名单只在 **push 路径的服务端钩子**里执行（实测：用伪造令牌
+>   打 fetch 端点时，`git` / `oauth2` / 随机串返回完全相同的通用 401）。
+>   所以这条必须靠一次真实 push 收尾；失败的回退方案是 askpass 弹窗
+>   （obsidian-git 的做法，见其 simpleGit.ts:249）。
 
 **pull 三态**（`simpleGitManager.ts`）：先 fetch、比较本地/远端引用（照搬
 obsidian-git 验证过的形态），merge/rebase 直接整合；**reset = stash 保护（含

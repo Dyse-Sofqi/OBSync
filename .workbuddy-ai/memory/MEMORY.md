@@ -71,6 +71,20 @@ pnpm verify:mobile  # 构建 + 用真实产物验证「移动端能加载」
 
 ### 测试
 - `tests/live/**` 默认被 `vitest.config.ts` 排除，靠 `OBSYNC_LIVE=1` 开启。
+- **`tests/live/privateRepoAuth.live.test.ts` 是可选启用的端到端鉴权验证**：
+  设 `OBSYNC_LIVE_PRIVATE_REPO`（GitHub 上令牌可省略，会回退 `gh auth token`；
+  Gitee 要加 `OBSYNC_LIVE_TOKEN`），未配置时整组跳过。
+  结构是**「对照组 + 接受」**——对照组（不带凭据必须失败）**不能删**，
+  否则「成功」什么也证明不了。再开 `OBSYNC_LIVE_ALLOW_PUSH_DRY_RUN=1`
+  会多跑一条 push 预检（`--dry-run`，不发送对象也不更新引用）。
+- **「连接测试」这类 `ls-remote` 诊断发现不了用户名问题**：Gitee 的用户名白名单
+  只在 **push 路径的服务端钩子**里执行（报错带 `remote:` 前缀）。实测用伪造令牌打
+  fetch 端点时，`git` / `oauth2` / 随机串返回的是**完全相同**的通用 401。
+  所以「对端接不接受这个值」必须靠真实 push 才能验。
+- **本机 `gh` 的令牌可用**（`login=Dyse-Sofqi`），存在
+  `%APPDATA%\GitHub CLI\hosts.yml` —— **不是** `~/.config/gh/hosts.yml`（Windows 路径）。
+  `gh auth status` 会误报「未登录」，但 `gh auth token` 有值（`gho_` 开头）且能调通 API。
+  判断有无凭据一律以 `gh auth token` + 一次真实 API 调用为准。
 - **`testTimeout` 是 30 秒不是默认的 5 秒**。本机进程创建约 340ms，
   `simpleGitManager.test.ts` 一个用例起十几次 git 就要 4~5 秒 —— 默认超时会
   以「用例超时 + 清理 EBUSY」的形式误报，看着像被测代码有 bug。

@@ -33,6 +33,35 @@ pnpm verify:mobile  # 构建 + 用真实产物验证「移动端能加载」（�
       同步命令出现在命令面板里
 - [ ] `manifest.json` 的 `id` 仍是 `obsync`（改 id 等于换插件，用户数据会断）
 - [ ] 中英文都扫一眼：把语言切成 English，确认没有中文残留
+- [ ] **在一个真实的私有仓库上验一次鉴权**（发版前最值得做的一条，见下）
+
+### 私有仓库鉴权：一条命令验完
+
+```bash
+# GitHub
+export OBSYNC_LIVE_PRIVATE_REPO="https://github.com/<你>/<私有仓库>.git"
+pnpm test:live
+
+# Gitee（要令牌；GitHub 上可省略，会自动回退 gh auth token）
+export OBSYNC_LIVE_PRIVATE_REPO="https://gitee.com/<你>/<私有仓库>.git"
+export OBSYNC_LIVE_TOKEN="<私人令牌>"
+pnpm test:live
+```
+
+它会跑两条：**不带凭据必须失败**（对照组 —— 缺了它，「成功」什么也证明不了）、
+**带令牌必须成功**。未配置环境变量时整组跳过，不影响常规 `pnpm test:live`。
+
+⚠ **`pnpm check` / 单测都替代不了这条**：它们能证明「我们构造出了合法的 Basic 头」，
+但证明不了「对端接不接受」。曾经就因为用户名填 `git`（GitHub 的习惯写法）导致
+Gitee 私有仓库必然被拒，而所有单测都是绿的。
+
+⚠ **「设置 → 连接测试」也发现不了用户名问题**：它走 `ls-remote`（fetch 路径），
+而 Gitee 的用户名白名单只在 **push 路径**的服务端钩子里执行。想连这条也覆盖，
+加一个环境变量开启 push 预检（`--dry-run`，不发送对象、不更新引用）：
+
+```bash
+export OBSYNC_LIVE_ALLOW_PUSH_DRY_RUN=1
+```
 
 ---
 
