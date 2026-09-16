@@ -61,6 +61,7 @@ export default class ObsyncPlugin extends Plugin {
             secretStore: this.secretStore,
             getSettings: () => this.settings,
             getT: () => this.translations,
+            createStatusBarItem: () => this.addStatusBarItem(),
         });
 
         this.addSettingTab(new ObsyncSettingsTab(this));

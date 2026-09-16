@@ -163,6 +163,9 @@ diff 查看、树形文件视图、squash、子模块、行作者/blame。GitMan
 6. push 不会更新裸仓库的 HEAD（clone 出来的分支取决于它）——测试环境要手动
    `symbolic-ref HEAD refs/heads/main`。
 7. 测试机全局 `core.autocrlf=true`：检出的内容是 \r\n，测试断言要归一。
+8. **`addStatusBarItem()` 在 `Plugin` 类上，不在 `app.workspace` 上** ——
+   猜错位置会直接 `TypeError`（真实启动时才暴露，stub 造不出这种差异）。
+   现状：状态栏元素由主类 `this.addStatusBarItem()` 创建后经 SyncDeps 传入。
 
 ### 测试策略
 

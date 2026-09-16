@@ -13,51 +13,54 @@ import type { RepoStatus } from "./types";
  * 参考项目 obsidian-git 的状态栏更新跑在固定的定时器里，
  * 这里改为**由 syncService 在每次状态变化后显式调用** ——
  * 没有变化就不动 DOM，也避免与真实同步动作脱节。
+ *
+ * 注意：状态栏元素由调用方用 `plugin.addStatusBarItem()` 创建后传入 ——
+ * 这个 API 在 **Plugin** 类上，不在 `app.workspace` 上（猜错会直接
+ * TypeError，这正是踩过的坑）。
  */
 
 export type StatusBarActivity = "idle" | "pulling" | "pushing" | "committing";
 
-export interface StatusBarContext {
-    app: App;
+export interface StatusBarDeps {
+    /** `plugin.addStatusBarItem()` 的返回值。 */
+    item: HTMLElement;
     t: LocaleStrings;
 }
 
 export class StatusBar {
     private readonly item: HTMLElement;
-    private readonly ctx: StatusBarContext;
+    private readonly t: LocaleStrings;
     private status: RepoStatus | undefined;
     private activity: StatusBarActivity = "idle";
 
-    constructor(ctx: StatusBarContext) {
-        this.ctx = ctx;
-        this.item = (ctx.app.workspace as unknown as {
-            addStatusBarItem(): HTMLElement;
-        }).addStatusBarItem();
-        this.render("idle");
+    constructor(deps: StatusBarDeps) {
+        this.item = deps.item;
+        this.t = deps.t;
+        this.render();
     }
 
     /** 更新底层仓库状态并重绘。传 undefined 表示「还不是仓库」等信息不可得。 */
     update(status: RepoStatus | undefined): void {
         this.status = status;
-        this.render(this.activity);
+        this.render();
     }
 
     /** 标记一次瞬时动作；动作结束后调用 `update()` 恢复。 */
     setActivity(activity: StatusBarActivity): void {
         this.activity = activity;
-        this.render(activity);
+        this.render();
     }
 
-    private render(activity: StatusBarActivity): void {
-        const t = this.ctx.t;
+    private render(): void {
+        const t = this.t;
 
         try {
-            if (activity !== "idle") {
+            if (this.activity !== "idle") {
                 this.item.setText(
                     `OBSync: ${
-                        activity === "pulling"
+                        this.activity === "pulling"
                             ? t.sync.statusPulling
-                            : activity === "pushing"
+                            : this.activity === "pushing"
                               ? t.sync.statusPushing
                               : t.sync.statusCommitting
                     }`

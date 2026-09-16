@@ -37,6 +37,8 @@ export interface SyncDeps {
     secretStore: SecretStore;
     getSettings(): ObsyncSettings;
     getT(): LocaleStrings;
+    /** `plugin.addStatusBarItem()` —— 该 API 在 Plugin 类上，不在 workspace 上。 */
+    createStatusBarItem(): HTMLElement;
 }
 
 export function createSyncModule(deps: SyncDeps): SyncModule | undefined {
@@ -52,7 +54,7 @@ export function createSyncModule(deps: SyncDeps): SyncModule | undefined {
         secretStore: deps.secretStore,
     });
 
-    const statusBar = new StatusBar({ app: deps.app, t: deps.getT() });
+    const statusBar = new StatusBar({ item: deps.createStatusBarItem(), t: deps.getT() });
 
     const service = new SyncService(git, {
         app: deps.app,

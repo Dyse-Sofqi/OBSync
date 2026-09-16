@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { App } from "obsidian";
 import { __setApiVersion } from "../stubs/obsidian";
 import { Notifier } from "../../src/core/notice";
 import { normalizeSettings } from "../../src/core/settings";
@@ -127,24 +126,20 @@ function makeService(git: FakeGit, fake: FakeApp) {
     notifier.error = (message: string) => notices.push(message);
     notifier.warn = (message: string) => notices.push(message);
 
-    const app = {
-        vault: fake.app.vault,
-        workspace: {
-            addStatusBarItem: () => ({ setText: () => {} }),
-        },
-    } as unknown as App;
+    // 状态栏元素直接给个假 DOM 节点 —— StatusBar 只会调 setText。
+    const fakeItem = { setText: () => {} } as unknown as HTMLElement;
 
     const settings = normalizeSettings({});
     settings.sync.commitMessage = "backup {{numFiles}}";
 
     const service = new SyncService(git, {
-        app,
+        app: fake.app,
         notifier,
         getT: () => zhCN,
         getCommitTemplate: () => settings.sync.commitMessage,
         getStrategy: () => "merge",
         getConflictGuideName: () => zhCN.sync.conflictGuideFile,
-    }, new StatusBar({ app, t: zhCN }));
+    }, new StatusBar({ item: fakeItem, t: zhCN }));
 
     return { service, notices };
 }
