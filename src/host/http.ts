@@ -53,7 +53,9 @@ function sleep(ms: number): Promise<void> {
  */
 function isRetryableStatus(status: number): boolean {
     return status === 408 || (status >= 500 && status <= 599);
-}function withTimeout<T>(promise: Promise<T>, ms: number, url: string): Promise<T> {
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, url: string): Promise<T> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_, reject) => {
         timer = setTimeout(
@@ -94,12 +96,24 @@ export async function httpRequest(options: HttpRequestOptions): Promise<HttpResp
     const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     let lastError: unknown;
 
+    /**
+     * 实际发出去的请求次数。
+     *
+     * **不能用 `retries + 1` 反推** —— 传输层失败会立刻 `break`（见下面的说明），
+     * 所以发出去几次取决于失败发生在第几轮。写死 `retries + 1` 会让日志里出现
+     * 「failed after 3 attempt(s)」而实际只发了 1 次，排查网络问题时把人带偏
+     * （去找那两次不存在的重试）。
+     */
+    let attemptsMade = 0;
+
     for (let attempt = 0; attempt <= retries; attempt++) {
         if (attempt > 0) {
             const delay = RETRY_BASE_DELAY_MS * 3 ** (attempt - 1);
             debugLogger?.(`[http] retry ${attempt}/${retries} after ${delay}ms — ${options.url}`);
             await sleep(delay);
         }
+
+        attemptsMade += 1;
 
         try {
             const response = await withTimeout(
@@ -150,7 +164,7 @@ export async function httpRequest(options: HttpRequestOptions): Promise<HttpResp
 
     const detail = lastError instanceof Error ? lastError.message : String(lastError);
     throw new NetworkError(
-        `Request to ${options.url} failed after ${retries + 1} attempt(s): ${detail}`,
+        `Request to ${options.url} failed after ${attemptsMade} attempt(s): ${detail}`,
         { cause: lastError }
     );
 }
