@@ -190,7 +190,21 @@ export const en = {
         openRepo: "Open repository in browser",
         remove: "Remove",
         removeConfirm: (name: string) =>
-            `Remove ${name}?\n\nThe plugin folder will be deleted, including any custom content inside it.`,
+            `Remove ${name}?\n\nThe plugin folder will be deleted, including any custom files inside it.`,
+
+        bindTitle: "Bind installed plugins",
+        bindDesc:
+            "Scans plugins already installed in this vault and resolves their source repository via the official community index. Selected ones join the tracking list for update checks. No plugin files are touched.",
+        bindScanning: "Scanning installed plugins…",
+        bindEmpty: "No new plugins to bind — they are all tracked already, or the vault has no plugins.",
+        bindDetected: (count: number) => `${count} bindable plugin(s) detected`,
+        bindSelectAll: "Select all / none",
+        bindUnresolvedHeading: (count: number) =>
+            `${count} plugin(s) with unrecognized source (not in the official community index):`,
+        bindUnresolved: "Source unknown — add it manually via \"Add plugin repository\"",
+        bindConfirm: (count: number) => `Bind selected (${count})`,
+        bindLoadFailed: "Failed to scan installed plugins",
+        bindDone: (count: number) => `Bound ${count} plugin(s); update checks now cover them.`,
     },
 
     sync: {

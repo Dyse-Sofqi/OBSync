@@ -1,1 +1,25 @@
 /* OBSync — styles are added per-feature as the modules land. */
+
+/* 弹窗里的状态/警告行（AddRepoModal / BindExistingModal 共用） */
+.obsync-modal-status {
+    opacity: 0.8;
+    margin: 0.5em 0;
+}
+
+.obsync-modal-warning {
+    color: var(--text-warning, #b98a00);
+    margin: 0.5em 0;
+    white-space: pre-wrap;
+}
+
+/* 绑定弹窗里「来源未识别」的只读行 */
+.obsync-muted .setting-item-name,
+.obsync-muted .setting-item-description {
+    opacity: 0.55;
+}
+
+/* 空状态提示 */
+.obsync-empty {
+    opacity: 0.7;
+    margin: 0.5em 0;
+}

@@ -194,6 +194,20 @@ export const zhCN = {
         remove: "移除",
         removeConfirm: (name: string) =>
             `确定要移除 ${name} 吗？\n\n插件目录会被删除，其中的自定义内容也会一并丢失。`,
+
+        bindTitle: "绑定已有插件",
+        bindDesc:
+            "扫描当前库中已安装的插件，通过官方社区索引自动识别来源仓库；勾选后加入跟踪列表，即可接收更新检查。不会改动任何插件文件。",
+        bindScanning: "正在扫描已安装的插件…",
+        bindEmpty: "没有发现可绑定的新插件 —— 可能都已跟踪，或库里还没有插件。",
+        bindDetected: (count: number) => `检测到 ${count} 个可绑定的插件`,
+        bindSelectAll: "全选 / 取消全选",
+        bindUnresolvedHeading: (count: number) =>
+            `另有 ${count} 个插件来源未识别（不在官方社区索引中）：`,
+        bindUnresolved: "来源未识别，请用「添加插件仓库」手动添加",
+        bindConfirm: (count: number) => `绑定所选（${count}）`,
+        bindLoadFailed: "扫描已安装插件失败",
+        bindDone: (count: number) => `已绑定 ${count} 个插件，将纳入更新检查。`,
     },
 
     sync: {

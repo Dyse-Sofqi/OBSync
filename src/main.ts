@@ -160,6 +160,17 @@ export default class ObsyncPlugin extends Plugin {
         });
 
         this.addCommand({
+            id: "bind-installed-plugins",
+            name: this.t.installer.bindTitle,
+            callback: () =>
+                this.installer.openBindExistingModal((count) => {
+                    if (count > 0) {
+                        this.notifier.success(this.t.installer.bindDone(count));
+                    }
+                }),
+        });
+
+        this.addCommand({
             id: "check-plugin-updates",
             name: this.t.installer.checkAll,
             callback: () => void this.checkPluginUpdates(),

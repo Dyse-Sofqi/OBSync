@@ -2,6 +2,7 @@ import type { App } from "obsidian";
 import { CommunityPluginIndex } from "./communityPlugins";
 import { InstallerService, type InstallerHost } from "./installerService";
 import { AddRepoModal } from "./ui/AddRepoModal";
+import { BindExistingModal } from "./ui/BindExistingModal";
 import { UpdateChecker } from "./updateChecker";
 
 /**
@@ -18,6 +19,8 @@ export interface InstallerModule {
     communityIndex: CommunityPluginIndex;
     /** 打开「添加插件仓库」弹窗。 */
     openAddRepoModal(): void;
+    /** 打开「绑定已有插件」弹窗。 */
+    openBindExistingModal(onBound?: (count: number) => void): void;
     /** 启动后的自动更新检查（受设置控制）。 */
     scheduleStartupCheck(): void;
 }
@@ -36,6 +39,16 @@ export function createInstallerModule(host: InstallerHost, app: App): InstallerM
             new AddRepoModal(app, service, communityIndex, host.getT(), () => {
                 // 安装成功后不需要额外动作 —— 设置页下次渲染时自然带上新记录。
             }).open();
+        },
+
+        openBindExistingModal(onBound?: (count: number) => void): void {
+            new BindExistingModal(
+                app,
+                service,
+                communityIndex,
+                host.getT(),
+                (count) => onBound?.(count)
+            ).open();
         },
 
         scheduleStartupCheck(): void {

@@ -55,6 +55,11 @@ export class CommunityPluginIndex {
         return this.plugins.length;
     }
 
+    /** 按官方插件 id 查索引条目（未加载或不存在时为 undefined）。 */
+    byId(id: string): CommunityPlugin | undefined {
+        return this.plugins.find((plugin) => plugin.id === id);
+    }
+
     /** 拉取索引。并发调用只会真正请求一次。 */
     async load(force = false): Promise<CommunityPlugin[]> {
         const fresh = Date.now() - this.fetchedAt < CACHE_TTL_MS;

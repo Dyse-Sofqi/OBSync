@@ -247,6 +247,13 @@ export class ObsyncSettingsTab extends PluginSettingTab {
                     .onClick(() => this.obsync.installer.openAddRepoModal())
             )
             .addButton((button) =>
+                button
+                    .setButtonText(t.installer.bindTitle)
+                    .onClick(() =>
+                        this.obsync.installer.openBindExistingModal(() => this.display())
+                    )
+            )
+            .addButton((button) =>
                 button.setButtonText(t.installer.checkAll).onClick(async () => {
                     button.setDisabled(true);
                     await this.checkAllUpdates();

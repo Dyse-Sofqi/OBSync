@@ -77,6 +77,16 @@ export function createFakeApp(initialFiles: Record<string, string> = {}): FakeAp
         async exists(path: string): Promise<boolean> {
             return files.has(path) || folders.has(path);
         },
+        async list(dir: string): Promise<{ files: string[]; folders: string[] }> {
+            // 与真实 adapter.list 同形：返回 vault 相对路径的直接子项。
+            const prefix = dir.endsWith("/") ? dir : `${dir}/`;
+            const childOf = (path: string): boolean =>
+                path.startsWith(prefix) && !path.slice(prefix.length).includes("/");
+            return {
+                files: [...files.keys()].filter(childOf),
+                folders: [...folders].filter((folder) => folder !== dir && childOf(folder)),
+            };
+        },
         async read(path: string): Promise<string> {
             const content = files.get(path);
             if (content === undefined) throw new Error(`ENOENT: ${path}`);

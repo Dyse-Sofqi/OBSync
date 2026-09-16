@@ -289,6 +289,43 @@ export class InstallerService {
         });
     }
 
+    /**
+     * 绑定库里已安装的插件（来源经社区索引识别）。
+     *
+     * 绑定只是「加入跟踪列表」—— 不写任何文件、不改启用状态。
+     * `installedVersion` 取本地 manifest 的版本（它就是磁盘上的事实），
+     * `requestedVersion` 固定 latest，更新检查从此刻开始生效。
+     *
+     * @returns 实际新增的条数（已在跟踪列表里的会被跳过）。
+     */
+    async bindExisting(
+        candidates: Array<{ pluginId: string; name: string; version: string; repo: RepoRef }>
+    ): Promise<number> {
+        const tracked = this.settings.installer.tracked;
+        let added = 0;
+
+        for (const candidate of candidates) {
+            if (tracked.some((item) => item.pluginId === candidate.pluginId)) continue;
+            tracked.push({
+                host: candidate.repo.host,
+                owner: candidate.repo.owner,
+                repo: candidate.repo.repo,
+                pluginId: candidate.pluginId,
+                name: candidate.name,
+                installedVersion: candidate.version,
+                requestedVersion: "latest",
+                frozen: false,
+                // 历史未知 —— 当作 release 通道，更新检查会按实际回退。
+                channel: "release",
+                installedAt: Date.now(),
+            });
+            added += 1;
+        }
+
+        if (added > 0) await this.deps.saveSettings();
+        return added;
+    }
+
     /** 卸载：先禁用再删目录，最后从跟踪列表移除。 */
     async uninstall(tracked: TrackedPlugin): Promise<void> {
         await disablePlugin(this.app, tracked.pluginId);
