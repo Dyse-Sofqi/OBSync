@@ -36,6 +36,13 @@ pnpm test:live  # 真实 API 测试（需要网络）
   TS 会把 `"obsidian"` 解析到真实的类型包，只有 vitest 运行时才走 alias。
 - stub 的 `requestUrl` 返回的 `json` 必须是**惰性 getter**（真实 Obsidian 就是如此），
   写成立即求值会让非 JSON 响应误抛异常。
+- stub 的 `requestUrl` 在处理器只给 `text` 时必须**从 text 派生 `arrayBuffer`**
+  （真实 Obsidian 两者都反映响应体）。返回空 buffer 会让 release 资产下载静默变空，
+  测试以「manifest 不是合法 JSON」的方式假失败（2026-09-16 踩过）。
+- 单测的 HTTP mock 里，**可选文件也要给 404 路由** —— 否则「无路由抛错 → 重试退避」
+  每个用例白耗 1.6 秒。
+- 本机网络对 `objects.githubusercontent.com`（GitHub 资产 CDN）超时，API 域名正常；
+  Gitee 匿名 API 配额极低（403 后约一分钟不恢复）。live 测试相关用例失败先怀疑环境。
 
 ### host 层设计原则
 - 平台差异**只允许出现在 `host/` 内部**。上层（安装器 / 同步）不得出现 `if (host === "gitee")`。
