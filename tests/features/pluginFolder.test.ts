@@ -13,6 +13,7 @@ import {
 } from "../../src/features/installer/pluginFolder";
 import type { PluginFileName } from "../../src/features/installer/types";
 import { createFakeApp, readPluginFile, seedPlugin, type FakeApp } from "../helpers/fakeApp";
+import { expectInstallerError } from "../helpers/expectInstallerError";
 
 const MANIFEST = JSON.stringify({
     id: "demo",
@@ -76,8 +77,9 @@ describe("writePluginFiles", () => {
         const backup = await createBackup(fake.app, "demo");
         const files = new Map<PluginFileName, string>([["manifest.json", MANIFEST]]);
 
-        await expect(writePluginFiles(fake.app, "demo", files, backup)).rejects.toThrow(
-            /缺少必需文件 main\.js/
+        await expectInstallerError(
+            () => writePluginFiles(fake.app, "demo", files, backup),
+            "folderMissingRequired"
         );
         expect(fake.writes).toEqual([]);
         expect(readPluginFile(fake, "demo", "manifest.json")).toBeUndefined();
@@ -166,9 +168,10 @@ describe("失败回滚（参考项目 BRAT 没有这个能力）", () => {
         // 用一次性故障：真实场景里是瞬时 IO 错误，回滚本身应该能成功。
         fake.failWriteOnceOn = (path) => path.endsWith("styles.css");
 
-        await expect(
-            writePluginFiles(fake.app, "demo", newFiles(), backup)
-        ).rejects.toThrow(/已还原/);
+        await expectInstallerError(
+            () => writePluginFiles(fake.app, "demo", newFiles(), backup),
+            "writeFailedRolledBack"
+        );
 
         // 三个文件都必须回到旧内容，不能留下「新 manifest + 旧 main.js」这种混合态。
         expect(readPluginFile(fake, "demo", "manifest.json")).toBe(OLD_MANIFEST);
@@ -214,9 +217,10 @@ describe("失败回滚（参考项目 BRAT 没有这个能力）", () => {
         const backup = await createBackup(fake.app, "demo");
         fake.failWriteOn = () => true;
 
-        await expect(
-            writePluginFiles(fake.app, "demo", newFiles(), backup)
-        ).rejects.toThrow(/还原失败/);
+        await expectInstallerError(
+            () => writePluginFiles(fake.app, "demo", newFiles(), backup),
+            "writeFailedRollbackFailed"
+        );
     });
 });
 

@@ -6,6 +6,7 @@ import type { Notifier } from "../../core/notice";
 import type { ObsyncSettings } from "../../core/settings";
 import type { SecretStore } from "../../core/secretStore";
 import { getVaultRoot, StatusBar } from "./statusBar";
+import { describeSyncError } from "./errors";
 import { SimpleGitManager } from "./simpleGitManager";
 import { SyncService } from "./syncService";
 import { Automatics } from "./automatics";
@@ -53,6 +54,10 @@ export function createSyncModule(deps: SyncDeps): SyncModule | undefined {
         gitPath: deps.getSettings().sync.gitPath || undefined,
         secretStore: deps.secretStore,
     });
+
+    // 注册本模块的错误翻译器：git 层抛的是技术性描述（它拿不到 t），
+    // 用户能看懂的话在这里按类型拼。注册后所有调用点自动生效，不会漏。
+    deps.notifier.registerErrorTranslator(describeSyncError);
 
     const statusBar = new StatusBar({ item: deps.createStatusBarItem(), t: deps.getT() });
 

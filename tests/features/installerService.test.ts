@@ -6,6 +6,7 @@ import { normalizeSettings, type ObsyncSettings } from "../../src/core/settings"
 import { zhCN } from "../../src/core/i18n/locales/zh-cn";
 import { InstallerService, type InstallerHost } from "../../src/features/installer/installerService";
 import { createFakeApp, readPluginFile, seedPlugin, type FakeApp } from "../helpers/fakeApp";
+import { expectInstallerError } from "../helpers/expectInstallerError";
 
 /** 路由式 HTTP mock：按 URL 正则匹配，返回预设响应。 */
 interface Route {
@@ -338,7 +339,10 @@ describe("install —— 校验与失败路径", () => {
             text: "not found",
         }));
 
-        await expect(service.install({ repo: "owner/demo" })).rejects.toThrow(/main\.js/);
+        await expectInstallerError(
+            () => service.install({ repo: "owner/demo" }),
+            "missingRequiredFiles"
+        );
         expect(readPluginFile(fake, "demo", "manifest.json")).toBeUndefined();
     });
 
@@ -348,7 +352,10 @@ describe("install —— 校验与失败路径", () => {
         const { service } = createService(fake);
         setupReleaseChannel();
 
-        await expect(service.install({ repo: "owner/demo" })).rejects.toThrow(/需要 Obsidian/);
+        await expectInstallerError(
+            () => service.install({ repo: "owner/demo" }),
+            "incompatibleApp"
+        );
         // 兼容性检查必须在写盘之前 —— 写完才发现就得回滚了。
         expect(readPluginFile(fake, "demo", "main.js")).toBeUndefined();
     });

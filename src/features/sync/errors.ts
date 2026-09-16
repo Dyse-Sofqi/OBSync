@@ -1,3 +1,4 @@
+import type { LocaleStrings } from "../../core/i18n";
 import { ObsyncError } from "../../host/errors";
 
 /**
@@ -9,6 +10,15 @@ import { ObsyncError } from "../../host/errors";
  * 这些错误必须从 `gitManager` 的实现里抛出，`syncService` 才能做出正确的
  * 用户引导 —— 比如 `GitBinaryMissingError` 要引导去设置页填 gitPath，
  * `ConflictError` 要引导打开冲突清单，普通 git 失败则展示原始错误。
+ *
+ * ## 消息文案的归属
+ *
+ * 抛错处（`simpleGitManager`）**拿不到 `t`** —— 它是纯逻辑层，不该依赖 i18n。
+ * 所以那里抛的 `message` 是**技术性描述**（英文、给日志和排查用），
+ * 面向用户的话由 `describeSyncError` 在展示层按类型拼出来。
+ *
+ * 不做这层的话，症状是**英文界面下冒出一句中文错误** —— 因为早期实现把
+ * 中文文案直接烘焙进了 `message`，而 `Notifier` 对 `ObsyncError` 是原样返回。
  */
 
 /** 当前 vault 不是 git 仓库（或 git 目录损坏）。引导用户执行「初始化仓库」。 */
@@ -33,3 +43,34 @@ export class GitAuthError extends ObsyncError {}
 
 /** 远端拒绝推送（本地落后，需要先 pull）。 */
 export class PushRejectedError extends ObsyncError {}
+
+/**
+ * 当前分支没有跟踪的远端分支，无法拉取。
+ *
+ * 单独一个类型而不是复用 `GitNotRepoError`：那是「压根不是 git 仓库」，
+ * 提示语是「请先初始化仓库」—— 用在这里会让用户去初始化一个已经存在的仓库，
+ * 完全指错方向。**错误类型用错比没有类型更糟**。
+ */
+export class NoUpstreamError extends ObsyncError {}
+
+/** 处于游离 HEAD 状态（没有指向任何分支），无法推送。 */
+export class DetachedHeadError extends ObsyncError {}
+
+/**
+ * 把 git 层的错误翻译成用户可读文案。
+ *
+ * 在 `createSyncModule` 里注册进 `Notifier`，这样任何调用点
+ * （命令、状态栏、视图）报错时都会自动走这里，不会漏。
+ *
+ * @returns 认不出的错误返回 undefined，交回 `Notifier` 的通用规则。
+ */
+export function describeSyncError(err: unknown, t: LocaleStrings): string | undefined {
+    if (err instanceof GitBinaryMissingError) return t.sync.gitNotFound;
+    if (err instanceof GitNotRepoError) return t.sync.notARepo;
+    if (err instanceof GitAuthError) return t.sync.gitAuthFailed;
+    if (err instanceof PushRejectedError) return t.sync.pushRejected;
+    if (err instanceof NoUpstreamError) return t.sync.noUpstream;
+    if (err instanceof DetachedHeadError) return t.sync.detachedHead;
+    if (err instanceof ConflictError) return t.sync.conflictDetected(err.files.length);
+    return undefined;
+}

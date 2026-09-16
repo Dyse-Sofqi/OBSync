@@ -29,6 +29,31 @@ pnpm test:live  # 真实 API 测试（需要网络）
 - 不要给 locale 对象加 `as const` —— 会把字符串收窄成字面量类型，其他语言无法满足。
 - 新增语言的步骤：建 `locales/xx.ts` → 在 `i18n/index.ts` 的 `LOCALES` 注册 → 加进 `LANGUAGE_OPTIONS`。
 
+### 错误与文案的归属（改错误路径前必读）
+**规则：逻辑层抛「类型码 + 参数」，展示层拼「用户能看懂的话」。**
+
+编译期保证只管「locale 之间的结构一致」，**管不住「代码里直接写了一句中文」**。
+而错误路径最容易这么写 —— 因为抛出点（`manifest.ts` / `pluginFiles.ts` /
+`pluginFolder.ts` / `simpleGitManager.ts`）是纯逻辑，拿不到 `t`。
+
+| 层 | 职责 |
+| --- | --- |
+| 逻辑层 | 抛 `InstallerError({ kind, ...params })` 或领域错误类型；`message` 只放**技术性描述**（英文，进日志） |
+| 注册 | `createXxxModule()` 里 `notifier.registerErrorTranslator(...)` |
+| 展示层 | `Notifier.describeError()` 按类型码取 locale 文案 |
+
+- 用**可辨识联合 + `switch` 穷尽检查**（`const exhaustive: never = detail`）：
+  新增类型码却忘了加文案会**编译报错**，不会留到运行时。
+- `Notifier` 用**注册制**而非 `import` 各功能的错误类型 —— `core/` 不该知道 `features/`。
+- **断言错误的类型码，不要断言消息文本**（助手 `tests/helpers/expectInstallerError.ts`）。
+- **错误类型用错比没有类型更糟**：曾把「没有上游分支」「游离 HEAD」都抛成
+  `GitNotRepoError`，提示语变成「请先初始化仓库」，把用户指错方向。
+
+### 自查脚本（`.probe/`，已 gitignore）
+- `check_hardcoded_cjk.py`：扫 locale 之外的硬编码中文。当前只剩 4 处且都合理
+  （语言标签 + Gitee 限流检测词）。**新增的中文都该是可疑的。**
+- `check_css_classes.py`：比对代码用到的 `obsync-*` 类与 `styles.css` 定义的类。
+
 ### 测试
 - `tests/live/**` 默认被 `vitest.config.ts` 排除，靠 `OBSYNC_LIVE=1` 开启。
 - **`testTimeout` 是 30 秒不是默认的 5 秒**。本机进程创建约 340ms，

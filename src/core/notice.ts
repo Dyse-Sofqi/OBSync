@@ -26,6 +26,13 @@ import type { RepoRef } from "../host/types";
 
 const ERROR_NOTICE_TIMEOUT_MS = 8000;
 
+/**
+ * 错误翻译器：把某个功能模块自己的错误类型翻译成用户可读文案。
+ *
+ * 返回 `undefined` 表示「不是我认识的错误」，交给下一个翻译器或兜底逻辑。
+ */
+export type ErrorTranslator = (err: unknown, t: LocaleStrings) => string | undefined;
+
 export interface NotifierHost {
     /** 读当前设置。 */
     getShowNotices(): boolean;
@@ -34,7 +41,25 @@ export interface NotifierHost {
 }
 
 export class Notifier {
+    /**
+     * 已注册的翻译器，按注册顺序尝试。
+     *
+     * 为什么做成注册制而不是在这里 `import` 各功能的错误类型：
+     * `core/` 不该知道任何 `features/` 的东西。功能模块在装配时把自己那套
+     * 错误 → 文案的映射注册进来，core 保持无知。
+     *
+     * 这条链路是必需的：像 git 层这种地方拿不到 `t`（它是纯逻辑，不该依赖 i18n），
+     * 只能抛「带类型的错误 + 技术性描述」；用户能看懂的话在展示层才拼出来。
+     * 不做这层的话，症状是**英文界面下冒出一句中文错误**。
+     */
+    private readonly translators: ErrorTranslator[] = [];
+
     constructor(private readonly host: NotifierHost) {}
+
+    /** 功能模块在装配时调用。 */
+    registerErrorTranslator(translator: ErrorTranslator): void {
+        this.translators.push(translator);
+    }
 
     private get showNotices(): boolean {
         return this.host.getShowNotices();
@@ -81,6 +106,12 @@ export class Notifier {
     /** 只做翻译，不展示 —— 供需要自己决定怎么显示的调用方使用。 */
     describeError(err: unknown, fallback?: string): string {
         const t = this.t;
+
+        // 先问各功能模块自己的翻译器 —— 它们比下面的通用规则更懂自己的错误类型。
+        for (const translate of this.translators) {
+            const described = translate(err, t);
+            if (described !== undefined) return described;
+        }
 
         if (err instanceof RateLimitError) {
             const hostName = t.host[err.host];

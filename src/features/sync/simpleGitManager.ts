@@ -8,6 +8,8 @@ import {
     GitAuthError,
     GitBinaryMissingError,
     GitNotRepoError,
+    NoUpstreamError,
+    DetachedHeadError,
     PushRejectedError,
 } from "./errors";
 import type {
@@ -130,7 +132,8 @@ export class SimpleGitManager implements GitManager {
     async status(): Promise<RepoStatus> {
         const git = await this.git();
         if (!(await git.checkIsRepo())) {
-            throw new GitNotRepoError("当前库目录不是 git 仓库。");
+            // 技术性描述，用户文案由 describeSyncError 拼（见 mapError 的说明）。
+            throw new GitNotRepoError("status: not a git repository");
         }
         const raw = await wrap("reading status", () => git.status());
         return mapStatus(raw);
@@ -200,7 +203,8 @@ export class SimpleGitManager implements GitManager {
 
         const status = await wrap("reading status before pull", () => git.status());
         if (!status.current || !status.tracking) {
-            throw new GitNotRepoError("当前分支没有跟踪的远端分支，无法拉取。");
+            // 技术性描述；用户文案由 describeSyncError 按类型拼。
+            throw new NoUpstreamError("pull: current branch has no tracking remote branch");
         }
 
         const localCommit = await wrap("resolving local head", () =>
@@ -228,8 +232,9 @@ export class SimpleGitManager implements GitManager {
         } catch (err) {
             const conflicted = await this.conflictedFiles(git);
             if (conflicted.length > 0) {
+                // 消息是技术性描述；`files` 才是给用户看的（数量与清单）。
                 throw new ConflictError(
-                    `拉取时产生 ${conflicted.length} 个冲突文件。`,
+                    `pull (${strategy}): ${conflicted.length} conflicted file(s)`,
                     conflicted,
                     { cause: err }
                 );
@@ -299,7 +304,7 @@ export class SimpleGitManager implements GitManager {
 
         const status = await wrap("reading status before push", () => git.status());
         if (!status.current) {
-            throw new GitNotRepoError("处于游离 HEAD 状态，无法推送。");
+            throw new DetachedHeadError("push: HEAD is detached");
         }
 
         await wrap("pushing", () => git.push(["-u", "origin", status.current!]));
@@ -453,30 +458,35 @@ function toFileChange(file: FileStatusResult): FileChange | undefined {
  * 只依赖错误文本做分类是无奈之举（git 的退出码不区分鉴权与网络），
  * 所以匹配词表尽量取自 git 各版本的稳定输出，宁漏勿错 ——
  * 认不出来的原样上抛，调用方还能看到原始信息。
+ *
+ * **这里抛的 message 是技术性描述，不是给用户看的话。**
+ * 本层拿不到 `t`（纯逻辑不该依赖 i18n），所以只写清「在做什么时失败了 + git 的原话」，
+ * 面向用户的文案由 `describeSyncError` 在展示层按类型拼。
+ * 早期版本把中文文案直接写在这里，结果英文界面下会冒出中文 —— 别再走回头路。
  */
 function mapError(err: unknown, what: string): Error {
     const message = err instanceof Error ? err.message : String(err);
+    const detail = `${what}: ${message}`;
 
     if (/spawn .* ENOENT|command not found|not recognized as/i.test(message)) {
-        return new GitBinaryMissingError(
-            `找不到 git 可执行文件（${what} 时）。请在设置中指定 git 路径。`,
-            { cause: err }
-        );
+        return new GitBinaryMissingError(`git executable not found (${detail})`, {
+            cause: err,
+        });
     }
     if (/not a git repository/i.test(message)) {
-        return new GitNotRepoError("当前库目录不是 git 仓库。", { cause: err });
+        return new GitNotRepoError(`not a git repository (${detail})`, { cause: err });
     }
     if (
         /authentication failed|could not read username|invalid username or password|access denied|http basic/i.test(
             message
         )
     ) {
-        return new GitAuthError(`远端鉴权失败（${what} 时）。请检查访问令牌。`, {
+        return new GitAuthError(`remote authentication failed (${detail})`, {
             cause: err,
         });
     }
     if (/non-fast-forward|fetch first|updates were rejected|failed to push/i.test(message)) {
-        return new PushRejectedError(`推送被远端拒绝（${what} 时）。请先拉取。`, {
+        return new PushRejectedError(`push rejected by remote (${detail})`, {
             cause: err,
         });
     }

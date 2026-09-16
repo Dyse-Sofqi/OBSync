@@ -56,6 +56,13 @@
 | `registerView` 用了 `this.sync!` 且无平台守卫 | 潜在崩溃：移动端会解引用 undefined | 加守卫，仅桌面注册 |
 | 文档写"整个套件 ~1.5s" | 文档失真 | 改为实测值（该文件单独 ~150s） |
 | `auth.ts` 的验证边界模糊 | 文档没说清"验证到哪一步" | 明确区分已验证（config 传递 + git 发头）与未验证（Gitee 服务端接受度） |
+| **22 处错误文案硬编码中文** | 真缺口：i18n 只保证 locale 之间结构一致，**管不住代码里直接写中文**。英文界面下会冒出中文错误 | 改成「类型码 + 参数」，文案集中在 locale；`Notifier` 支持功能模块注册翻译器 |
+| **7 个 i18n 键写了却没接上** | 同上：`gitNotFound` / `missingManifest` / `missingMainJs` / `noReleaseFallback` / `sourceRelease` / `sourceRaw` / `installing` 全是死键 —— 正是"打算本地化但没接上"的证据 | 前 2 个接上；被取代的删掉；余下的保留待用 |
+| **两处错误类型用错** | 真 bug：「没有上游分支」「游离 HEAD」都抛了 `GitNotRepoError`，提示语是「请先初始化仓库」—— 让用户去初始化一个已存在的仓库，**指错方向** | 新增 `NoUpstreamError` / `DetachedHeadError` |
+| **安装器的命令没有插件名前缀** | UX 缺口：同步命令叫「OBSync：立即同步」，安装器命令却直接用了弹窗标题（「添加插件仓库」）。Obsidian 用户按插件名搜命令，没前缀就搜不到 | 新增 `cmdAddRepo` / `cmdBindExisting` / `cmdCheckUpdates` / `cmdUpdateAll` / `cmdOpenSettings`；弹窗标题保持不带前缀 |
+| 设置页术语混用 | 「已追**踪**插件」（标签）vs「已跟**踪**的插件」（同页标题） | 统一为「跟踪」 |
+| `autoCheckDelay` 的置灰状态不更新 | 小 bug：切换上面的开关后，下面的输入框还是灰的（`commit()` 不重绘） | 持有 `TextComponent` 引用，在开关回调里即时 `setDisabled` |
+| **缺 README** | 发布件缺失（阶段四） | 新增中文优先的 `README.md` |
 
 **验收标准速查**（详见 PLAN.md 第三节）：
 
@@ -119,9 +126,9 @@ src/
 │  ├─ repoRef.ts           # owner/repo 解析（URL / 简写 / scp 形式）
 │  ├─ http.ts              # requestUrl 封装：throw:false、重试退避（400ms*3^n）、20s 超时
 │  └─ statusMapper.ts      # 状态码 → RateLimitError/AuthError/NotFoundError
-├─ features/installer/     # 阶段二产出，见第五节
+├─ features/installer/     # 阶段二产出，见第五节（含 errors.ts：类型码 + 翻译器）
 └─ features/sync/          # 阶段三产出，见第六节
-   ├─ types.ts / errors.ts # 领域类型 + 按应对方式分类的错误
+   ├─ types.ts / errors.ts # 领域类型 + 按应对方式分类的错误（含 describeSyncError）
    ├─ gitManager.ts        # 抽象接口（含状态字符映射 mapStatusChar）
    ├─ simpleGitManager.ts  # simple-git 实现（状态映射/错误收口/reset 策略）
    ├─ auth.ts              # http.extraheader 注入（simple-git config 是字符串数组）
@@ -132,6 +139,42 @@ src/
    ├─ statusBar.ts         # 状态栏（由 service 显式驱动，不跑定时轮询）
    └─ ui/{EditRemoteModal,SourceControlView}.ts
 ```
+
+## 四点五、错误与文案的归属（改错误路径前必读）
+
+**规则：逻辑层抛「类型码 + 参数」，展示层拼「用户能看懂的话」。**
+
+原因很实际：`manifest.ts` / `pluginFiles.ts` / `pluginFolder.ts` / `simpleGitManager.ts`
+都是**纯逻辑**，拿不到 `t`，也不该依赖 i18n。早期实现图省事，把中文文案直接写进
+错误的 `message`，而 `Notifier` 对 `ObsyncError` 是原样返回 —— 于是**英文界面下冒出中文**。
+（当时还留下 7 个写了却没接上的 i18n 键，正是"打算本地化但没接上"的证据。）
+
+现在的做法：
+
+| 层 | 做什么 | 在哪 |
+| --- | --- | --- |
+| 逻辑层 | 抛 `InstallerError({ kind, ...params })` / 领域错误类型；`message` 只放**技术性描述**（英文，进日志） | `features/installer/errors.ts`、`features/sync/errors.ts` |
+| 注册 | 各模块在 `createXxxModule()` 里 `notifier.registerErrorTranslator(...)` | `features/*/index.ts` |
+| 展示层 | `Notifier.describeError()` 按类型/类型码取 locale 文案 | `core/notice.ts` |
+
+两个设计点值得保持：
+
+1. **可辨识联合 + `switch` 穷尽检查**（`InstallerErrorDetail`）。新增一个类型码却忘了
+   加文案，`describeInstallerError` 里的 `const exhaustive: never = detail` 会**编译报错**。
+   这是"漏翻译留到运行时"的解药。
+2. **`Notifier` 用注册制而不是 `import` 各功能的错误类型** —— `core/` 不该知道任何
+   `features/` 的东西。功能模块自己把「错误 → 文案」的映射交上来。
+
+**自查手段**（`.probe/` 下，已 gitignore）：
+- `check_hardcoded_cjk.py` —— 扫 `src/` 里 locale 之外字符串字面量中的中文。
+  当前只剩 4 处，都是**合理的**：语言下拉的「简体中文」标签（本就该用母语写）、
+  `giteeHost` 的三个限流**检测词**（不是给用户看的）。**新增的中文都该是可疑的。**
+- `check_css_classes.py` —— 比对代码里用到的 `obsync-*` 类与 `styles.css` 里定义的类。
+
+测试约定：**断言错误的类型码，不要断言消息文本**。文案来自 locale，改文案不该让测试变红。
+助手见 `tests/helpers/expectInstallerError.ts`。
+
+
 
 ## 五、安装器（阶段二）实现要点
 
@@ -181,7 +224,6 @@ src/
   6 小时缓存；统计文件可选；7685 条实测；`byId()` 供绑定功能反查。
 
 ## 六、同步模块（阶段三）实现要点
-
 文件都在 `src/features/sync/`。
 
 **鉴权**（`auth.ts`）：远端是 GitHub/Gitee 且 secretStore 里有令牌时，通过

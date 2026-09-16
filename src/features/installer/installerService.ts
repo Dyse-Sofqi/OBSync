@@ -9,7 +9,7 @@ import { RateLimitError } from "../../host/errors";
 import { getHost } from "../../host/hostRegistry";
 import { formatRepoId, parseRepoRef } from "../../host/repoRef";
 import type { HostKind, Release, RepoRef } from "../../host/types";
-import { InvalidManifestError } from "./manifest";
+import { InstallerError } from "./errors";
 import { findGiteeMirror } from "./mirrorFinder";
 import { fetchPluginFiles } from "./pluginFiles";
 import {
@@ -179,11 +179,13 @@ export class InstallerService {
             // 一个 release 都没有：Gitee 上这是常态，不是异常。
             return { source: { kind: "raw", ref: "HEAD" } };
         } catch (err) {
+            // 这是一条**提示**（不是异常），所以在这里用 `t` 直接拼 ——
+            // 本类持有 `t`，不必绕经错误的翻译器。
+            const e = this.deps.getT().installer.errors;
             const reason =
                 err instanceof RateLimitError
-                    ? `${host.displayName} 接口调用次数已达上限，已改用仓库源码文件安装。` +
-                      `在设置里填入访问令牌可以显著提高额度。`
-                    : `${host.displayName} 接口暂时不可用，已改用仓库源码文件安装。`;
+                    ? e.rateLimitFallback(host.displayName)
+                    : e.apiUnavailableFallback(host.displayName);
             logger.warn(`falling back to source files for ${formatRepoId(repoRef)}`, err);
             return { source: { kind: "raw", ref: "HEAD" }, degradedReason: reason };
         }
@@ -219,10 +221,11 @@ export class InstallerService {
 
         // 兼容性检查放在写盘之前 —— 写完才发现不兼容就要走回滚了。
         if (!requireApiVersion(manifest.minAppVersion)) {
-            throw new InvalidManifestError(
-                `${manifest.name} 需要 Obsidian ${manifest.minAppVersion} 或更高版本，` +
-                    `当前版本过低，已中止安装。`
-            );
+            throw new InstallerError({
+                kind: "incompatibleApp",
+                name: manifest.name,
+                minVersion: manifest.minAppVersion,
+            });
         }
 
         const alreadyInstalled = await readInstalledManifest(this.app, manifest.id);
@@ -231,9 +234,11 @@ export class InstallerService {
         // 插件目录名可能和用户输入的仓库不一致（仓库名 ≠ manifest id），
         // 这种情况下如果 id 已经装了别的插件，就是冲突，必须拦下。
         if (alreadyInstalled && alreadyInstalled.id !== manifest.id) {
-            throw new InvalidManifestError(
-                `插件 id "${manifest.id}" 已被另一个插件占用，无法安装 ${repoLabel}。`
-            );
+            throw new InstallerError({
+                kind: "pluginIdConflict",
+                pluginId: manifest.id,
+                repo: repoLabel,
+            });
         }
 
         const backup = await createBackup(this.app, manifest.id);

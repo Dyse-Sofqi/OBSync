@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { __setRequestUrlHandler } from "../stubs/obsidian";
 import { CommunityPluginIndex } from "../../src/features/installer/communityPlugins";
+import { expectInstallerError } from "../helpers/expectInstallerError";
 
 /**
  * 官方社区插件索引的解析与检索。
@@ -71,7 +72,8 @@ describe("CommunityPluginIndex.load", () => {
         __setRequestUrlHandler(async () => ({ status: 404, text: "not found" }));
 
         const index = new CommunityPluginIndex();
-        await expect(index.load()).rejects.toThrow(/索引失败/);
+        // 断言类型码而不是消息文本 —— 文案来自 locale，改文案不该让测试变红。
+        await expectInstallerError(() => index.load(), "communityIndexFailed");
     });
 
     it("并发 load 只发一轮请求", async () => {

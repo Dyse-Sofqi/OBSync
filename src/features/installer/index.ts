@@ -1,5 +1,6 @@
 import type { App } from "obsidian";
 import { CommunityPluginIndex } from "./communityPlugins";
+import { describeInstallerError } from "./errors";
 import { InstallerService, type InstallerHost } from "./installerService";
 import { AddRepoModal } from "./ui/AddRepoModal";
 import { BindExistingModal } from "./ui/BindExistingModal";
@@ -29,6 +30,11 @@ export function createInstallerModule(host: InstallerHost, app: App): InstallerM
     const service = new InstallerService(host);
     const checker = new UpdateChecker(service);
     const communityIndex = new CommunityPluginIndex();
+
+    // 注册本模块的错误翻译器：逻辑层（manifest / pluginFiles / pluginFolder）
+    // 抛的是「类型码 + 参数」，用户能看懂的话在这里按类型拼。
+    // 不注册的话英文界面下会冒出中文错误（早期就是这么错的）。
+    host.notifier.registerErrorTranslator(describeInstallerError);
 
     const module: InstallerModule = {
         service,

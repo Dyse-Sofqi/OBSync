@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { InvalidManifestError, parseManifest, versionsLookEquivalent } from "../../src/features/installer/manifest";
+import { parseManifest, versionsLookEquivalent } from "../../src/features/installer/manifest";
+import { InstallerError } from "../../src/features/installer/errors";
+import { expectInstallerError } from "../helpers/expectInstallerError";
 
 const VALID = JSON.stringify({
     id: "glimpse",
@@ -27,31 +29,36 @@ describe("parseManifest", () => {
     it("缺必需字段时报错并指出是哪个字段", () => {
         for (const field of ["id", "name", "version", "minAppVersion"]) {
             const raw = JSON.stringify({ ...JSON.parse(VALID), [field]: undefined });
-            expect(() => parseManifest(raw, "test")).toThrow(InvalidManifestError);
-            expect(() => parseManifest(raw, "test")).toThrow(field);
+            expectInstallerError(() => parseManifest(raw, "test"), "manifestMissingField");
+            // 参数里要带上具体是哪个字段，否则用户不知道该补什么
+            try {
+                parseManifest(raw, "test");
+            } catch (err) {
+                expect((err as InstallerError).detail).toMatchObject({ field });
+            }
         }
     });
 
     it("字段是空字符串也算缺失", () => {
         const raw = JSON.stringify({ ...JSON.parse(VALID), version: "  " });
-        expect(() => parseManifest(raw, "test")).toThrow(InvalidManifestError);
+        expectInstallerError(() => parseManifest(raw, "test"), "manifestMissingField");
     });
 
     it("非法 JSON 报错", () => {
-        expect(() => parseManifest("{not json", "test")).toThrow(InvalidManifestError);
+        expectInstallerError(() => parseManifest("{not json", "test"), "manifestNotJson");
     });
 
     it("顶层不是对象时报错", () => {
-        expect(() => parseManifest("[]", "test")).toThrow(InvalidManifestError);
-        expect(() => parseManifest("null", "test")).toThrow(InvalidManifestError);
-        expect(() => parseManifest('"text"', "test")).toThrow(InvalidManifestError);
+        expectInstallerError(() => parseManifest("[]", "test"), "manifestNotObject");
+        expectInstallerError(() => parseManifest("null", "test"), "manifestNotObject");
+        expectInstallerError(() => parseManifest('"text"', "test"), "manifestNotObject");
     });
 
     it("拒绝非法的插件 id —— 它会被用作目录名", () => {
         // id 直接拼进路径，含 `../` 之类的字符会造成目录穿越。
         for (const id of ["../evil", "My Plugin", "UPPER", "a/b", "a\\b"]) {
             const raw = JSON.stringify({ ...JSON.parse(VALID), id });
-            expect(() => parseManifest(raw, "test")).toThrow(InvalidManifestError);
+            expectInstallerError(() => parseManifest(raw, "test"), "manifestBadId");
         }
     });
 

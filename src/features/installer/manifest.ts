@@ -1,5 +1,5 @@
-import { ObsyncError } from "../../host/errors";
 import type { PluginManifest } from "./types";
+import { InstallerError } from "./errors";
 
 /**
  * manifest.json 的解析与校验。
@@ -12,8 +12,6 @@ import type { PluginManifest } from "./types";
 
 const REQUIRED_FIELDS = ["id", "name", "version", "minAppVersion"] as const;
 
-export class InvalidManifestError extends ObsyncError {}
-
 /** Obsidian 的插件 id 规则：小写字母、数字、连字符。 */
 const PLUGIN_ID_RE = /^[a-z0-9-]+$/;
 
@@ -22,13 +20,11 @@ export function parseManifest(raw: string, context: string): PluginManifest {
     try {
         data = JSON.parse(raw);
     } catch (cause) {
-        throw new InvalidManifestError(`${context} 的 manifest.json 不是合法的 JSON。`, {
-            cause,
-        });
+        throw new InstallerError({ kind: "manifestNotJson", context }, { cause });
     }
 
     if (typeof data !== "object" || data === null || Array.isArray(data)) {
-        throw new InvalidManifestError(`${context} 的 manifest.json 不是对象。`);
+        throw new InstallerError({ kind: "manifestNotObject", context });
     }
 
     const record = data as Record<string, unknown>;
@@ -36,18 +32,14 @@ export function parseManifest(raw: string, context: string): PluginManifest {
     for (const field of REQUIRED_FIELDS) {
         const value = record[field];
         if (typeof value !== "string" || value.trim() === "") {
-            throw new InvalidManifestError(
-                `${context} 的 manifest.json 缺少必需字段 "${field}"。`
-            );
+            throw new InstallerError({ kind: "manifestMissingField", context, field });
         }
     }
 
     const id = record.id as string;
     if (!PLUGIN_ID_RE.test(id)) {
         // id 会被用作目录名，非法字符会造成路径问题，必须在写入前拦下。
-        throw new InvalidManifestError(
-            `${context} 的插件 id "${id}" 不合法（只允许小写字母、数字和连字符）。`
-        );
+        throw new InstallerError({ kind: "manifestBadId", context, id });
     }
 
     return {

@@ -166,13 +166,13 @@ export default class ObsyncPlugin extends Plugin {
     private registerInstallerCommands(): void {
         this.addCommand({
             id: "add-plugin-repo",
-            name: this.t.installer.modalTitle,
+            name: this.t.installer.cmdAddRepo,
             callback: () => this.installer.openAddRepoModal(),
         });
 
         this.addCommand({
             id: "bind-installed-plugins",
-            name: this.t.installer.bindTitle,
+            name: this.t.installer.cmdBindExisting,
             callback: () =>
                 this.installer.openBindExistingModal((count) => {
                     if (count > 0) {
@@ -183,19 +183,19 @@ export default class ObsyncPlugin extends Plugin {
 
         this.addCommand({
             id: "check-plugin-updates",
-            name: this.t.installer.checkAll,
+            name: this.t.installer.cmdCheckUpdates,
             callback: () => void this.checkPluginUpdates(),
         });
 
         this.addCommand({
             id: "update-all-plugins",
-            name: this.t.installer.updateAll,
+            name: this.t.installer.cmdUpdateAll,
             callback: () => void this.updateAllPlugins(),
         });
 
         this.addCommand({
             id: "open-settings",
-            name: this.t.settings.title,
+            name: this.t.settings.cmdOpenSettings,
             callback: () => this.openSettings(),
         });
     }

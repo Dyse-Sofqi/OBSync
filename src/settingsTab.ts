@@ -1,4 +1,4 @@
-import { PluginSettingTab, Setting, type App } from "obsidian";
+import { PluginSettingTab, Setting, type App, type TextComponent } from "obsidian";
 import { LANGUAGE_OPTIONS, type LanguageSetting } from "./core/i18n";
 import { shouldCheckOnSettingsOpen } from "./features/installer/updateChecker";
 import { renderTrackedPlugins } from "./features/installer/ui/TrackedPluginsList";
@@ -384,12 +384,18 @@ export class ObsyncSettingsTab extends PluginSettingTab {
                 })
             );
 
+        // 「启动检查」关着时延迟项没有意义 —— 置灰比藏起来更少困惑（用户能看到它还在）。
+        // 但置灰状态必须跟着开关**即时**变：只在渲染时算一次的话，
+        // 用户打开开关后会发现下面的输入框还是灰的，得切走再切回来。
+        let delayField: TextComponent | undefined;
+
         new Setting(this.containerEl)
             .setName(t.settings.installer.autoCheck)
             .setDesc(t.settings.installer.autoCheckDesc)
             .addToggle((toggle) =>
                 toggle.setValue(settings.autoCheckOnStartup).onChange(async (value) => {
                     settings.autoCheckOnStartup = value;
+                    delayField?.setDisabled(!value);
                     await this.commit();
                 })
             );
@@ -408,11 +414,11 @@ export class ObsyncSettingsTab extends PluginSettingTab {
             .setName(t.settings.installer.autoCheckDelay)
             .setDesc(t.settings.installer.autoCheckDelayDesc)
             .addText((text) => {
+                delayField = text;
                 text.inputEl.type = "number";
                 text.inputEl.min = "0";
                 text.inputEl.max = "3600";
                 text.setValue(String(settings.autoCheckDelaySeconds));
-                // 启动检查关着时这项没有意义 —— 置灰比藏起来更少困惑（用户能看到它还在）。
                 text.setDisabled(!settings.autoCheckOnStartup);
                 text.onChange(async (value) => {
                     const parsed = Number.parseInt(value, 10);

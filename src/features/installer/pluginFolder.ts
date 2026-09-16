@@ -1,6 +1,6 @@
 import { normalizePath, type App } from "obsidian";
 import { logger } from "../../core/logger";
-import { ObsyncError } from "../../host/errors";
+import { InstallerError } from "./errors";
 import { parseManifest } from "./manifest";
 import { PLUGIN_FILES, REQUIRED_FILES, type PluginFileName, type PluginManifest } from "./types";
 
@@ -185,7 +185,7 @@ export async function writePluginFiles(
 ): Promise<void> {
     for (const file of REQUIRED_FILES) {
         if (!files.has(file)) {
-            throw new ObsyncError(`插件 ${pluginId} 缺少必需文件 ${file}，已中止安装。`);
+            throw new InstallerError({ kind: "folderMissingRequired", pluginId, file });
         }
     }
 
@@ -209,12 +209,12 @@ export async function writePluginFiles(
         } catch (restoreError) {
             // 回滚也失败了 —— 这是最坏情况，必须让用户知道。
             logger.error(`rollback for ${pluginId} also failed`, restoreError);
-            throw new ObsyncError(
-                `写入 ${pluginId} 失败，且还原失败。请手动检查插件目录。`,
+            throw new InstallerError(
+                { kind: "writeFailedRollbackFailed", pluginId },
                 { cause }
             );
         }
-        throw new ObsyncError(`写入 ${pluginId} 失败，已还原到安装前的状态。`, { cause });
+        throw new InstallerError({ kind: "writeFailedRolledBack", pluginId }, { cause });
     }
 
     logger.debug(`wrote ${written.length} file(s) for ${pluginId}`);
@@ -240,7 +240,7 @@ export function isPluginEnabled(app: App, pluginId: string): boolean {
 export async function enablePlugin(app: App, pluginId: string): Promise<void> {
     const manager = pluginManager(app);
     if (!manager?.enablePluginAndSave) {
-        throw new ObsyncError("当前 Obsidian 版本不支持通过插件启用其他插件。");
+        throw new InstallerError({ kind: "cannotEnablePlugin" });
     }
 
     // loadManifest 要的是**目录**，enablePluginAndSave 要的是**插件 id** ——

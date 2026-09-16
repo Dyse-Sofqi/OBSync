@@ -1,4 +1,5 @@
 import { logger } from "../../core/logger";
+import { InstallerError } from "./errors";
 import { httpJson } from "../../host/http";
 
 /**
@@ -85,10 +86,10 @@ export class CommunityPluginIndex {
         ]);
 
         if (pluginsResponse.status !== 200 || !Array.isArray(pluginsResponse.data)) {
-            throw new Error(
-                `拉取社区插件索引失败（HTTP ${pluginsResponse.status}）。` +
-                    `该索引托管在 GitHub，网络不通时无法使用。`
-            );
+            throw new InstallerError({
+                kind: "communityIndexFailed",
+                status: pluginsResponse.status,
+            });
         }
 
         const stats = statsResponse?.data;

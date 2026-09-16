@@ -59,6 +59,11 @@ export function shouldCheckOnSettingsOpen(input: {
 export class UpdateChecker {
     constructor(private readonly service: InstallerService) {}
 
+    /** 本模块有 `t` 的访问路径（经 service 的依赖），提示文案直接在这里拼。 */
+    private get t() {
+        return this.service.deps.getT();
+    }
+
     /**
      * 检查所有非冻结的已跟踪插件。
      *
@@ -116,7 +121,9 @@ export class UpdateChecker {
                 hasUpdate: false,
                 error:
                     err instanceof RateLimitError
-                        ? `${getHost(plugin.host).displayName} 接口调用次数已达上限`
+                        ? this.t.installer.errors.rateLimited(
+                              getHost(plugin.host).displayName
+                          )
                         : err instanceof Error
                           ? err.message
                           : String(err),

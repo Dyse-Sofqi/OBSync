@@ -65,6 +65,7 @@ export const en = {
 
     settings: {
         title: "OBSync settings",
+        cmdOpenSettings: "OBSync: Open settings",
 
         tabs: {
             tracked: "Tracked plugins",
@@ -72,7 +73,6 @@ export const en = {
             sync: "Vault sync",
             general: "General",
         },
-
         language: {
             heading: "Language",
             name: "Interface language",
@@ -147,6 +147,16 @@ export const en = {
     },
 
     installer: {
+        /**
+         * Command palette names. Deliberately separate from the modal title:
+         * the modal does not need a plugin-name prefix, but the command palette
+         * does — Obsidian users search commands by plugin name.
+         */
+        cmdAddRepo: "OBSync: Add plugin repository",
+        cmdBindExisting: "OBSync: Bind plugins already installed in this vault",
+        cmdCheckUpdates: "OBSync: Check for plugin updates",
+        cmdUpdateAll: "OBSync: Update all plugins",
+
         modalTitle: "Add plugin repository",
         repoLabel: "Repository",
         repoDesc: "Enter owner/repo, or paste a full GitHub / Gitee repository URL.",
@@ -171,8 +181,49 @@ export const en = {
         sourceRaw: "Source: repository source file",
         mirrorFound: (repo: string) => `Found Gitee mirror ${repo}; downloading from it instead.`,
         noReleaseFallback: "This repository publishes no releases; installing from source files instead.",
-        missingManifest: (repo: string) => `No valid manifest.json found in ${repo} — it may not be an Obsidian plugin repository.`,
-        missingMainJs: (repo: string) => `No main.js found in ${repo}; cannot install.`,
+        /**
+         * Error messages.
+         *
+         * These used to be hard-coded in the logic layer, which is why English
+         * users saw Chinese error text. Errors now carry a typed code plus
+         * parameters; the prose lives here.
+         */
+        errors: {
+            manifestNotJson: (context: string) =>
+                `${context}: manifest.json is not valid JSON.`,
+            manifestNotObject: (context: string) =>
+                `${context}: manifest.json is not an object.`,
+            manifestMissingField: (context: string, field: string) =>
+                `${context}: manifest.json is missing the required field "${field}".`,
+            manifestBadId: (context: string, id: string) =>
+                `${context}: the plugin id "${id}" is invalid (lowercase letters, digits and hyphens only).`,
+            missingManifest: (repo: string) =>
+                `No manifest.json found in ${repo} — it may not be an Obsidian plugin repository.`,
+            missingRequiredFiles: (repo: string, files: string) =>
+                `Could not find ${files} in ${repo}; cannot install.`,
+            missingBuildArtifacts:
+                "If this is a source repository, the author may not have committed the build output.",
+            incompatibleApp: (name: string, minVersion: string) =>
+                `${name} requires Obsidian ${minVersion} or newer. Your version is too old, so the install was aborted.`,
+            pluginIdConflict: (pluginId: string, repo: string) =>
+                `The plugin id "${pluginId}" is already taken by another plugin; cannot install ${repo}.`,
+            folderMissingRequired: (pluginId: string, file: string) =>
+                `Plugin ${pluginId} is missing the required file ${file}; install aborted.`,
+            writeFailedRolledBack: (pluginId: string) =>
+                `Writing ${pluginId} failed. The previous state has been restored.`,
+            writeFailedRollbackFailed: (pluginId: string) =>
+                `Writing ${pluginId} failed, and restoring the previous state also failed. Please check the plugin folder manually.`,
+            cannotEnablePlugin:
+                "This version of Obsidian does not allow a plugin to enable other plugins.",
+            communityIndexFailed: (status: number) =>
+                `Could not fetch the community plugin index (HTTP ${status}). That index is hosted on GitHub, so it is unavailable when the network cannot reach it.`,
+            rateLimitFallback: (host: string) =>
+                `${host} API rate limit reached; falling back to installing from source files. ` +
+                `Adding an access token in settings raises the limit significantly.`,
+            apiUnavailableFallback: (host: string) =>
+                `The ${host} API is temporarily unavailable; falling back to installing from source files.`,
+            rateLimited: (host: string) => `${host} API rate limit reached.`,
+        },
 
         browse: "Browse community plugins",
         communitySearchPlaceholder: "Search by plugin name, author or description…",
@@ -227,6 +278,14 @@ export const en = {
         statusCommitting: "Committing…",
         notARepo: "This vault is not a git repository yet.",
         gitNotFound: "Could not find the git executable. Set its path in settings.",
+        gitAuthFailed:
+            "Remote authentication failed. Check that the access token for this platform is valid and has the required scope.",
+        pushRejected:
+            "The push was rejected by the remote. It likely has commits you do not have locally — pull first, then push.",
+        noUpstream:
+            "The current branch has no tracked remote branch, so it cannot be pulled. Set an upstream branch or push once first.",
+        detachedHead:
+            "HEAD is detached (not pointing at any branch), so pushing is not possible. Switch to a branch first.",
         nothingToCommit: "Nothing to commit.",
         noRemote: "No remote repository configured. Set the remote URL in settings.",
         conflictDetected: (count: number) =>

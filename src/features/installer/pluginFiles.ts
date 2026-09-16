@@ -1,5 +1,5 @@
 import type { IRepoHost } from "../../host/IRepoHost";
-import { ObsyncError } from "../../host/errors";
+import { InstallerError } from "./errors";
 import { logger } from "../../core/logger";
 import { parseManifest } from "./manifest";
 import {
@@ -193,14 +193,13 @@ export async function fetchPluginFiles(
         // 分开报错：没有 manifest.json 说明这多半不是插件仓库；
         // 没有 main.js 说明是插件仓库但作者没提交构建产物。
         if (missing.includes("manifest.json")) {
-            throw new ObsyncError(
-                `${repoLabel} 里找不到 manifest.json，它可能不是 Obsidian 插件仓库。`
-            );
+            throw new InstallerError({ kind: "missingManifest", repo: repoLabel });
         }
-        throw new ObsyncError(
-            `${repoLabel} 里找不到 ${missing.join("、")}，无法安装。` +
-                `如果这是源码仓库，作者可能没有把构建产物提交进仓库。`
-        );
+        throw new InstallerError({
+            kind: "missingRequiredFiles",
+            repo: repoLabel,
+            files: missing.join("、"),
+        });
     }
 
     const manifest = parseManifest(files.get("manifest.json")!, repoLabel);

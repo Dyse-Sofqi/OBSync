@@ -66,9 +66,12 @@ export const zhCN = {
 
     settings: {
         title: "OBSync 设置",
+        cmdOpenSettings: "OBSync：打开设置",
 
         tabs: {
-            tracked: "已追踪插件",
+            // 统一用「跟踪」而不是「追踪」—— 同页标题用的是「已跟踪的插件」，
+            // 混用会让用户以为指的是两样东西。
+            tracked: "已跟踪插件",
             installer: "插件安装器",
             sync: "仓库同步",
             general: "通用",
@@ -148,6 +151,18 @@ export const zhCN = {
     },
 
     installer: {
+        /**
+         * 命令面板里的名字。
+         *
+         * 刻意与弹窗标题分开：弹窗标题不该带插件名前缀（用户已经在弹窗里了），
+         * 但命令面板里**必须**带 —— Obsidian 用户是按插件名搜索命令的，
+         * 一串没有前缀的「添加插件仓库 / 检查全部更新」在面板里根本找不着。
+         */
+        cmdAddRepo: "OBSync：添加插件仓库",
+        cmdBindExisting: "OBSync：绑定库里已安装的插件",
+        cmdCheckUpdates: "OBSync：检查插件更新",
+        cmdUpdateAll: "OBSync：更新全部插件",
+
         modalTitle: "添加插件仓库",
         repoLabel: "仓库地址",
         repoDesc: "填写 owner/repo 简写，或粘贴完整的 GitHub / Gitee 仓库链接。",
@@ -172,9 +187,48 @@ export const zhCN = {
         sourceRaw: "来源：仓库源码文件",
         mirrorFound: (repo: string) => `发现 Gitee 镜像：${repo}，将改用镜像源下载。`,
         noReleaseFallback: "该仓库没有发布 Release，将直接从源码文件安装。",
-        missingManifest: (repo: string) =>
-            `${repo} 中找不到有效的 manifest.json，可能不是 Obsidian 插件仓库。`,
-        missingMainJs: (repo: string) => `${repo} 中找不到 main.js，无法安装。`,
+        /**
+         * 错误文案。
+         *
+         * 这些字符串以前是硬编码在逻辑层里的（manifest.ts / pluginFiles.ts /
+         * pluginFolder.ts / installerService.ts），所以英文界面下会冒出中文。
+         * 现在错误只携带类型码与参数，文案集中在这里。
+         */
+        errors: {
+            manifestNotJson: (context: string) =>
+                `${context} 的 manifest.json 不是合法的 JSON。`,
+            manifestNotObject: (context: string) =>
+                `${context} 的 manifest.json 不是一个对象。`,
+            manifestMissingField: (context: string, field: string) =>
+                `${context} 的 manifest.json 缺少必需字段「${field}」。`,
+            manifestBadId: (context: string, id: string) =>
+                `${context} 的插件 id「${id}」不合法（只允许小写字母、数字和连字符）。`,
+            missingManifest: (repo: string) =>
+                `${repo} 里找不到 manifest.json，它可能不是 Obsidian 插件仓库。`,
+            missingRequiredFiles: (repo: string, files: string) =>
+                `${repo} 里找不到 ${files}，无法安装。`,
+            missingBuildArtifacts:
+                "如果这是源码仓库，作者可能没有把构建产物提交进仓库。",
+            incompatibleApp: (name: string, minVersion: string) =>
+                `${name} 需要 Obsidian ${minVersion} 或更高版本，当前版本过低，已中止安装。`,
+            pluginIdConflict: (pluginId: string, repo: string) =>
+                `插件 id「${pluginId}」已被另一个插件占用，无法安装 ${repo}。`,
+            folderMissingRequired: (pluginId: string, file: string) =>
+                `插件 ${pluginId} 缺少必需文件 ${file}，已中止安装。`,
+            writeFailedRolledBack: (pluginId: string) =>
+                `写入 ${pluginId} 失败，已还原到安装前的状态。`,
+            writeFailedRollbackFailed: (pluginId: string) =>
+                `写入 ${pluginId} 失败，且还原也失败。请手动检查插件目录。`,
+            cannotEnablePlugin: "当前 Obsidian 版本不支持通过插件启用其他插件。",
+            communityIndexFailed: (status: number) =>
+                `拉取社区插件索引失败（HTTP ${status}）。该索引托管在 GitHub，网络不通时无法使用。`,
+            rateLimitFallback: (host: string) =>
+                `${host} 接口调用次数已达上限，已改用仓库源码文件安装。` +
+                `在设置里填入访问令牌可以显著提高额度。`,
+            apiUnavailableFallback: (host: string) =>
+                `${host} 接口暂时不可用，已改用仓库源码文件安装。`,
+            rateLimited: (host: string) => `${host} 接口调用次数已达上限。`,
+        },
 
         browse: "浏览社区插件",
         communitySearchPlaceholder: "搜索插件名称、作者或描述…",
@@ -230,6 +284,10 @@ export const zhCN = {
         statusCommitting: "正在提交…",
         notARepo: "当前仓库尚未初始化 git。",
         gitNotFound: "找不到 git 可执行文件，请在设置中指定路径。",
+        gitAuthFailed: "远端鉴权失败。请检查该平台的访问令牌是否有效、是否有所需权限。",
+        pushRejected: "推送被远端拒绝。远端可能有你本地没有的提交，请先拉取再推送。",
+        noUpstream: "当前分支没有跟踪的远端分支，无法拉取。请先设置上游分支或推送一次。",
+        detachedHead: "当前处于游离 HEAD 状态（没有指向任何分支），无法推送。请先切换到一个分支。",
         nothingToCommit: "没有需要提交的更改。",
         noRemote: "还没有配置远端仓库，请在设置中填写远端地址。",
         conflictDetected: (count: number) =>
