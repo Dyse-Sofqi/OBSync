@@ -41,6 +41,20 @@ export class ConflictError extends ObsyncError {
 /** 鉴权失败：令牌缺失 / 无效 / 权限不足。引导用户去设置页填令牌。 */
 export class GitAuthError extends ObsyncError {}
 
+/**
+ * 平台不接受凭据里的**用户名** —— 与令牌本身无关。
+ *
+ * 为什么不并进 `GitAuthError`：**应对方式不同**。
+ * `GitAuthError` 引导用户去查令牌，那是对的（令牌确实可能是问题）；
+ * 但这一条里令牌是好的，问题在插件填的用户名 —— 并进前者会让用户
+ * 去反复检查一个没问题的令牌。**错误类型用错比没有类型更糟。**
+ *
+ * 实测依据：Gitee 只接受 账号名 / `oauth2` / `gitee.com` 三种用户名，
+ * 其余一律拒绝（服务端原文见 `docs/reference-analysis.md` 差异 6）。
+ * 症状极隐蔽：公开仓库照常能读，只有推送失败。
+ */
+export class GitCredentialUsernameRejectedError extends ObsyncError {}
+
 /** 远端拒绝推送（本地落后，需要先 pull）。 */
 export class PushRejectedError extends ObsyncError {}
 
@@ -67,6 +81,9 @@ export class DetachedHeadError extends ObsyncError {}
 export function describeSyncError(err: unknown, t: LocaleStrings): string | undefined {
     if (err instanceof GitBinaryMissingError) return t.sync.gitNotFound;
     if (err instanceof GitNotRepoError) return t.sync.notARepo;
+    if (err instanceof GitCredentialUsernameRejectedError) {
+        return t.sync.gitCredentialUsernameRejected;
+    }
     if (err instanceof GitAuthError) return t.sync.gitAuthFailed;
     if (err instanceof PushRejectedError) return t.sync.pushRejected;
     if (err instanceof NoUpstreamError) return t.sync.noUpstream;

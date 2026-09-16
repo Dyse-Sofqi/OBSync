@@ -6,6 +6,7 @@ import {
     ConflictError,
     GitAuthError,
     GitBinaryMissingError,
+    GitCredentialUsernameRejectedError,
     GitNotRepoError,
     PushRejectedError,
     describeSyncError,
@@ -40,9 +41,27 @@ describe("describeSyncError", () => {
         expect(describeSyncError(new GitAuthError("remote auth failed"), zhCN)).toBe(
             zhCN.sync.gitAuthFailed
         );
+        expect(
+            describeSyncError(new GitCredentialUsernameRejectedError("bad username"), zhCN)
+        ).toBe(zhCN.sync.gitCredentialUsernameRejected);
         expect(describeSyncError(new PushRejectedError("push rejected"), zhCN)).toBe(
             zhCN.sync.pushRejected
         );
+    });
+
+    it("**用户名被拒与令牌失效给出不同文案**（并进一条会把用户指去查令牌）", () => {
+        // 令牌是好的、问题在用户名时，若复用 gitAuthFailed，用户会去反复检查
+        // 一个没问题的令牌 —— 这就是「错误类型用错比没有类型更糟」。
+        const usernameRejected = describeSyncError(
+            new GitCredentialUsernameRejectedError("x"),
+            zhCN
+        );
+        const tokenBad = describeSyncError(new GitAuthError("x"), zhCN);
+
+        expect(usernameRejected).not.toBe(tokenBad);
+        expect(usernameRejected).toContain("用户名");
+        // 且必须说清「令牌没问题」，否则用户还是会去查令牌
+        expect(usernameRejected).toContain("令牌");
     });
 
     it("冲突错误带上文件数量", () => {

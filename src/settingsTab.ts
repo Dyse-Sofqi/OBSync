@@ -646,6 +646,17 @@ export class ObsyncSettingsTab extends PluginSettingTab {
             cls: report.ok ? "obsync-diag-ok" : "obsync-diag-failed",
         });
 
+        // 通过时**必须**说清验到了哪一步。否则「全部通过」会被读成
+        // 「推送也没问题」，而这个检查走的是 ls-remote —— 推送路径根本不在范围内
+        // （实测：Gitee 的凭据用户名规则只在 push 路径执行，这里发现不了）。
+        // 失败时不显示：那时用户手上已经有待处理的条目了。
+        if (report.ok) {
+            container.createEl("p", {
+                text: t.sync.diagnoseScopeNote,
+                cls: "obsync-diag-skipped",
+            });
+        }
+
         const list = container.createEl("ul", { cls: "obsync-diag-list" });
         for (const check of report.checks) {
             const mark = check.status === "ok" ? "✓" : check.status === "failed" ? "✗" : "–";

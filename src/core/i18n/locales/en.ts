@@ -267,6 +267,12 @@ export const en = {
         gitNotFound: "Could not find the git executable. Set its path in settings.",
         gitAuthFailed:
             "Remote authentication failed. Check that the access token for this platform is valid and has the required scope.",
+        /**
+         * Deliberately separate from the line above: the token is fine, the
+         * problem is the username the plugin sent.
+         */
+        gitCredentialUsernameRejected:
+            "The platform rejected the username in the credential — the token itself is valid. This is a plugin configuration error (the platform only accepts specific usernames). Please report this.",
         pushRejected:
             "The push was rejected by the remote. It likely has commits you do not have locally — pull first, then push.",
         noUpstream:
@@ -343,7 +349,13 @@ export const en = {
             "Check whether the sync configuration works and verify the access token. Read-only — nothing is modified.",
         diagnoseRun: "Test connection",
         diagnoseRunning: "Testing…",
-        diagnoseAllPassed: "All checks passed; sync is ready.",
+        // Wording is deliberately limited to read access: this test uses
+        // ls-remote, so it cannot verify the push path. Saying "sync is ready"
+        // would imply push was checked too (measured: Gitee's credential
+        // username rule is only enforced on the push path).
+        diagnoseAllPassed: "All checks passed — the remote is readable.",
+        diagnoseScopeNote:
+            "Only read access (ls-remote) was verified. Push permission and credential rules can only be confirmed by an actual push.",
         diagnoseHasFailures: "Problems found — see below.",
         diagnoseCheck: {
             git: "git executable",

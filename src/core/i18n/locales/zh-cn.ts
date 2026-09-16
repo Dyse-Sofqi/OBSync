@@ -273,6 +273,12 @@ export const zhCN = {
         notARepo: "当前仓库尚未初始化 git。",
         gitNotFound: "找不到 git 可执行文件，请在设置中指定路径。",
         gitAuthFailed: "远端鉴权失败。请检查该平台的访问令牌是否有效、是否有所需权限。",
+        /**
+         * 与上一条**刻意分开**：令牌是好的，问题在插件填的用户名。
+         * 并进上一条会把用户指去查令牌 —— 那是个没问题的东西。
+         */
+        gitCredentialUsernameRejected:
+            "平台不接受凭据中的用户名，令牌本身是有效的。这是插件的配置错误（该平台只接受特定用户名），请把此提示反馈给插件作者。",
         pushRejected: "推送被远端拒绝。远端可能有你本地没有的提交，请先拉取再推送。",
         noUpstream: "当前分支没有跟踪的远端分支，无法拉取。请先设置上游分支或推送一次。",
         detachedHead: "当前处于游离 HEAD 状态（没有指向任何分支），无法推送。请先切换到一个分支。",
@@ -347,7 +353,12 @@ export const zhCN = {
             "检查同步配置是否可用，并验证访问令牌。只读操作，不会改动任何东西。",
         diagnoseRun: "测试连接",
         diagnoseRunning: "正在测试…",
-        diagnoseAllPassed: "全部通过，同步配置可用。",
+        // 措辞刻意限定在「读取」：这个测试走 ls-remote，验不了推送路径。
+        // 说成「同步配置可用」会让人以为推送也验过了（实测：Gitee 的凭据用户名
+        // 规则只在 push 路径执行，ls-remote 发现不了）。
+        diagnoseAllPassed: "全部通过：远端可读取。",
+        diagnoseScopeNote:
+            "本次只验证了读取（ls-remote）。推送权限与凭据规则要真正推送一次才能确认。",
         diagnoseHasFailures: "发现问题，详见下方。",
         diagnoseCheck: {
             git: "git 可执行文件",

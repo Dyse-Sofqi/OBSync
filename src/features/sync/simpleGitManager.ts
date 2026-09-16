@@ -7,6 +7,7 @@ import {
     ConflictError,
     GitAuthError,
     GitBinaryMissingError,
+    GitCredentialUsernameRejectedError,
     GitNotRepoError,
     NoUpstreamError,
     DetachedHeadError,
@@ -488,7 +489,14 @@ function toFileChange(file: FileStatusResult): FileChange | undefined {
  * 面向用户的文案由 `describeSyncError` 在展示层按类型拼。
  * 早期版本把中文文案直接写在这里，结果英文界面下会冒出中文 —— 别再走回头路。
  */
-function mapError(err: unknown, what: string): Error {
+/**
+ * 把 git 的失败翻译成领域错误。
+ *
+ * 导出是为了能单独测这些正则 —— 它们只能靠**真实的 git 输出**校准，
+ * 而靠真实仓库去触发每一条代价很高（有些还要私有仓库和令牌）。
+ * 用真实输出当 fixture 直接测分类，比等集成测试偶发覆盖可靠得多。
+ */
+export function mapError(err: unknown, what: string): Error {
     const message = err instanceof Error ? err.message : String(err);
     const detail = `${what}: ${message}`;
 
@@ -499,6 +507,16 @@ function mapError(err: unknown, what: string): Error {
     }
     if (/not a git repository/i.test(message)) {
         return new GitNotRepoError(`not a git repository (${detail})`, { cause: err });
+    }
+    // 放在鉴权判断**之前**：某些平台会把「用户名不被支持」和
+    // 「Authentication failed」一起打出来，此时更具体的这条应当胜出
+    // （用例锁着这个顺序，见 gitErrorMapping.test.ts）。
+    // 另外它绝不能落进 GitAuthError —— 那会让用户去反复检查一个没问题的令牌。
+    if (/supported as username/i.test(message)) {
+        return new GitCredentialUsernameRejectedError(
+            `platform rejected the credential username (${detail})`,
+            { cause: err }
+        );
     }
     if (
         /authentication failed|could not read username|invalid username or password|access denied|http basic/i.test(
