@@ -1,4 +1,4 @@
-import { normalizePath, type App } from "obsidian";
+import type { App } from "obsidian";
 import { logger } from "../../core/logger";
 import type { LocaleStrings } from "../../core/i18n";
 import type { RepoStatus } from "./types";
@@ -24,18 +24,27 @@ export type StatusBarActivity = "idle" | "pulling" | "pushing" | "committing";
 export interface StatusBarDeps {
     /** `plugin.addStatusBarItem()` 的返回值。 */
     item: HTMLElement;
-    t: LocaleStrings;
+    /**
+     * **每次渲染时取**，不要传 `t` 本身。
+     *
+     * 状态栏元素由 `addStatusBarItem()` 创建、**只知道这么一份**，
+     * 所以它不会被重建（重建等于在状态栏上多挂一个条目），也就没有机会
+     * 在语言变化时换成新的翻译。把它取成 `() => LocaleStrings` 是这块唯一
+     * 能跟上语言切换的做法 —— 也是项目里其它地方（`SyncService` / `Notifier`）
+     * 一贯的做法，状态栏曾经是唯一的例外。
+     */
+    getT: () => LocaleStrings;
 }
 
 export class StatusBar {
     private readonly item: HTMLElement;
-    private readonly t: LocaleStrings;
+    private readonly getT: () => LocaleStrings;
     private status: RepoStatus | undefined;
     private activity: StatusBarActivity = "idle";
 
     constructor(deps: StatusBarDeps) {
         this.item = deps.item;
-        this.t = deps.t;
+        this.getT = deps.getT;
         this.render();
     }
 
@@ -52,7 +61,7 @@ export class StatusBar {
     }
 
     private render(): void {
-        const t = this.t;
+        const t = this.getT();
 
         try {
             if (this.activity !== "idle") {
@@ -101,9 +110,37 @@ export class StatusBar {
     }
 }
 
-/** 从 Obsidian 的 vault 适配器拿文件系统路径（git 的 baseDir）。 */
+/**
+ * 从 Obsidian 的 vault 适配器拿文件系统路径（git 的 `baseDir`）。
+ *
+ * ## 这里**不能**用 `normalizePath`
+ *
+ * `normalizePath` 是给 **vault 相对路径**用的。它的实现（从真实的 Obsidian
+ * 产物里扣出来的）是「折叠重复斜杠，再**剥掉前导与结尾斜杠**」：
+ *
+ * ```
+ * e.replace(/([\\/])+/g, "/").replace(/(^\/+|\/+$)/g, "")
+ * ```
+ *
+ * 而 `getBasePath()` 给的是**文件系统的绝对路径** —— 前导斜杠就是根目录本身。
+ * 剥掉之后 `/Users/sofi/Documents/Vault` 变成了一个**相对路径**，而相对路径按
+ * **进程 cwd** 解析：目标不存在时 simple-git 会直接抛
+ * 「Cannot use simple-git on a directory that does not exist」（实测确认）。
+ *
+ * 在 macOS 上这个错可能**歪打正着** —— 若进程 cwd 恰好是 `/`，
+ * 相对路径又被还原成同一个绝对路径。这大概就是它一直没被发现的原因；
+ * 换个启动方式（比如 Linux 上从终端启动，cwd 是终端所在目录）就没有这个巧合了。
+ *
+ * 这个错**在 Windows 上测不出来**：`C:\...` 不以斜杠开头，`normalizePath`
+ * 对它是恒等变换，测试全绿。所以 `tests/features/statusBar.test.ts` 里那组用例
+ * 是**显式喂 POSIX 路径**的，不依赖宿主机的形态。
+ *
+ * 因此：**原样返回**（不折叠斜杠、也不换分隔符）。这个路径不是我们构造的，
+ * 就不该由我们改写 —— 任何「顺手归一」都要先能证明它对所有平台都安全，
+ * 而这次的教训正是有人觉得「前导斜杠多余」。参考项目 obsidian-git 也是直接取
+ * `getBasePath()` 原文，`normalizePath` 只用在 vault 相对路径的设置项上。
+ * （两种分隔符都能被 simple-git 正确解析，实测过，所以原样传没有风险。）
+ */
 export function getVaultRoot(app: App): string {
-    return normalizePath(
-        (app.vault.adapter as unknown as { getBasePath(): string }).getBasePath()
-    );
+    return (app.vault.adapter as unknown as { getBasePath(): string }).getBasePath();
 }

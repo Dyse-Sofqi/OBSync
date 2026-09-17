@@ -59,7 +59,7 @@ export function createSyncModule(deps: SyncDeps): SyncModule | undefined {
     // 用户能看懂的话在这里按类型拼。注册后所有调用点自动生效，不会漏。
     deps.notifier.registerErrorTranslator(describeSyncError);
 
-    const statusBar = new StatusBar({ item: deps.createStatusBarItem(), t: deps.getT() });
+    const statusBar = new StatusBar({ item: deps.createStatusBarItem(), getT: deps.getT });
 
     const service = new SyncService(git, {
         app: deps.app,

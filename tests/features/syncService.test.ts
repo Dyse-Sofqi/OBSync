@@ -148,7 +148,7 @@ function makeService(git: FakeGit, fake: FakeApp) {
     const settings = normalizeSettings({});
     settings.sync.commitMessage = "backup {{numFiles}}";
 
-    const statusBar = new StatusBar({ item: fakeItem, t: zhCN });
+    const statusBar = new StatusBar({ item: fakeItem, getT: () => zhCN });
     // 记录活动状态变化 —— 「整条链路都显示正在提交」那个 bug 就靠这个断言。
     const activities: string[] = [];
     const realSetActivity = statusBar.setActivity.bind(statusBar);
