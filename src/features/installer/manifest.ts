@@ -53,19 +53,6 @@ export function parseManifest(raw: string, context: string): PluginManifest {
 }
 
 /**
- * 校验 manifest 是否与当前 Obsidian 版本兼容。
- *
- * 只做「太低」的判断，不做「太高」的猜测 —— `requireApiVersion` 由调用方
- * 在能访问 Obsidian API 的地方调用（便于测试）。
- */
-export function isManifestCompatible(
-    manifest: PluginManifest,
-    requireApiVersion: (version: string) => boolean
-): boolean {
-    return requireApiVersion(manifest.minAppVersion);
-}
-
-/**
  * 判断两个版本号是否等价。
  *
  * manifest 里的 version 与 release tag 经常不一致（tag 带 `v` 前缀、

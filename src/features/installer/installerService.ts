@@ -8,7 +8,7 @@ import type { SecretStore } from "../../core/secretStore";
 import { RateLimitError } from "../../host/errors";
 import { getHost } from "../../host/hostRegistry";
 import { formatRepoId, parseRepoRef } from "../../host/repoRef";
-import type { HostKind, Release, RepoRef } from "../../host/types";
+import type { HostKind, RepoRef } from "../../host/types";
 import { InstallerError } from "./errors";
 import { findGiteeMirror } from "./mirrorFinder";
 import { fetchPluginFiles } from "./pluginFiles";
@@ -412,22 +412,6 @@ export class InstallerService {
         if (!record) return;
         record.frozen = frozen;
         await this.deps.saveSettings();
-    }
-
-    /** 检查单个插件是否有新版本。 */
-    async checkForUpdate(tracked: TrackedPlugin): Promise<Release | undefined> {
-        const repoRef: RepoRef = {
-            host: tracked.host,
-            owner: tracked.owner,
-            repo: tracked.repo,
-        };
-        const host = getHost(tracked.host);
-        const token = this.tokenFor(tracked.host);
-
-        const latest = await host.getLatestRelease(repoRef, token);
-        if (!latest) return undefined;
-
-        return latest.tag === tracked.requestedVersion ? undefined : latest;
     }
 
     /**

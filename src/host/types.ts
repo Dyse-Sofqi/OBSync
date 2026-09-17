@@ -6,8 +6,20 @@
  * （见 docs/reference-analysis.md 3.1），所以这里可以用同一组类型。
  */
 
-/** 受支持的代码托管平台。 */
-export type HostKind = "github" | "gitee";
+/**
+ * 受支持的代码托管平台 —— **这是唯一的事实来源**，`HostKind` 由它推导。
+ *
+ * 为什么非得是数组而不是只写联合类型：这个「有哪些平台」的事实原本散在四处
+ * （`settings` 的持久化校验、`secretStore` 的快照循环、设置页的两个令牌输入框、
+ * 这里）。四处各写一份的后果不是「不好看」—— `settings` 那份漏掉某个平台时，
+ * 用户在**那个平台**上装的插件会在下次加载 `data.json` 时被当成非法条目
+ * **无声丢弃**，列表里就没了。
+ *
+ * 加一个平台要动的地方（`hostRegistry.ts` 的说明里有完整清单）从这条开始。
+ */
+export const SUPPORTED_HOSTS = ["github", "gitee"] as const;
+
+export type HostKind = (typeof SUPPORTED_HOSTS)[number];
 
 /** 一个仓库的结构化标识。这是整个插件里传递仓库的唯一形式。 */
 export interface RepoRef {

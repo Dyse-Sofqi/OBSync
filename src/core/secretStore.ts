@@ -1,5 +1,5 @@
 import type { App, SecretStorage } from "obsidian";
-import type { HostKind } from "../host/types";
+import { SUPPORTED_HOSTS, type HostKind } from "../host/types";
 
 /**
  * 访问令牌存储。
@@ -74,10 +74,10 @@ export class SecretStore {
         this.setToken(host, "");
     }
 
-    /** 一次性取出两个平台的令牌，供 host 层调用。 */
+    /** 一次性取出所有平台的令牌，供 host 层调用。 */
     snapshot(): Partial<Record<HostKind, string>> {
         const result: Partial<Record<HostKind, string>> = {};
-        for (const host of ["github", "gitee"] as const) {
+        for (const host of SUPPORTED_HOSTS) {
             const token = this.getToken(host);
             if (token) result[host] = token;
         }

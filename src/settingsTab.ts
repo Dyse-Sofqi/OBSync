@@ -8,7 +8,7 @@ import { shouldCheckOnSettingsOpen } from "./features/installer/updateChecker";
 import { renderTrackedPlugins } from "./features/installer/ui/TrackedPluginsList";
 import type ObsyncPlugin from "./main";
 import { getHost } from "./host/hostRegistry";
-import type { HostKind } from "./host/types";
+import { SUPPORTED_HOSTS, type HostKind } from "./host/types";
 
 /**
  * 设置页的四个标签页。
@@ -240,8 +240,9 @@ export class ObsyncSettingsTab extends PluginSettingTab {
             text: t.settings.token.desc,
         });
 
-        this.renderTokenField("github");
-        this.renderTokenField("gitee");
+        // 由 `SUPPORTED_HOSTS` 驱动 —— 之前是两个写死的平台名，
+        // 加平台时这里会静默漏掉一个输入框。
+        for (const host of SUPPORTED_HOSTS) this.renderTokenField(host);
     }
 
     private renderTokenField(host: HostKind): void {

@@ -1,3 +1,4 @@
+import { SUPPORTED_HOSTS } from "../host/types";
 import type { TrackedPlugin } from "../features/installer/types";
 import type { LanguageSetting } from "./i18n";
 import { isValidPluginId } from "./pluginId";
@@ -204,7 +205,14 @@ export function normalizeSettings(loaded: unknown): ObsyncSettings {
     return merged;
 }
 
-const VALID_HOSTS = new Set(["github", "gitee"]);
+/**
+ * 从 `SUPPORTED_HOSTS` 派生 —— **不要**在这里再列一遍平台名。
+ *
+ * 这份名单决定 `data.json` 里哪些跟踪条目能活下来：漏掉一个平台的后果是
+ * 用户在**那个平台**上装的插件下次加载时被当成非法条目**无声丢弃**
+ * （不是报错，是列表里就没了）。它和「有哪些平台」本来就是同一个事实。
+ */
+const VALID_HOSTS = new Set<string>(SUPPORTED_HOSTS);
 const VALID_CHANNELS = new Set(["release", "raw"]);
 
 /**

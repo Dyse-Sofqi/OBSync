@@ -69,6 +69,8 @@
 | **既是「令牌上屏」的另两条路，也是自相矛盾的 UI** | 真问题（安全）：① `SyncService.diagnose` 的 `detail` 会**渲染在设置页上**，而它带的正是远端地址原文 —— 库的远端本来就写着带令牌的地址时（用户从前配的），令牌直接显示出来；② 「远端已设置 …」的成功提示也回显整条地址；③ 更要紧的是**设计自相矛盾**：`auth.ts` 明确论证过不能把令牌写进 remote URL（会落进 `.git/config`、`git remote -v` 一眼可见、随配置文件泄漏，实测确认），而「编辑远端地址」弹窗对这样的地址**一句提示都没有**，默默照写 | 脱敏收口到 `diagnose` 的 `add()`（报告的唯一写入点）+ `main.ts` 的回显；弹窗新增凭据警告（`classifyRemoteUrl` 抽成纯函数，判定与渲染分离，第一次有测试）；新增 `tests/features/editRemoteModal.test.ts`、扩充 `syncService.test.ts` 与 `redact.test.ts` |
 | **`data.json` 里的 `pluginId` 没查内容 → 卸载会删出插件目录** | 真 bug（路径逃逸）：`tracked[].pluginId` 最终会变成**路径的一截** —— 卸载时 `resolvePluginFolder()` 找不到同名目录就回落到 `{configDir}/plugins/{pluginId}`，紧接 `rmdir(folder, true)` **递归**删（路径算术与「真的发出这个调用」见 `tests/features/pluginFolder.test.ts`）。而 `sanitizeTrackedPlugins` 只检查「是不是非空字符串」：`"../../evil"` 会拼出 `.obsidian/plugins/../../evil`。`data.json` 恰恰是这个字段**唯一**不经过 `parseManifest` 的来源（可手改，也会随笔记仓库同步到别的设备） | 抽出 `core/pluginId.ts`（`PLUGIN_ID_RE` / `isValidPluginId`）作为**单一事实来源**，`manifest.ts` 与 `settings.ts` 共用；新增 `tests/core/pluginId.test.ts`，其中两条是**防漂移**——「`parseManifest` 放行的，`normalizeSettings` 一个都不能丢」及反向 |
 | **更新检查比安装路径「少做了两件事」→ 永远报「已是最新」** | 真 bug：`checkOne`（检查）本应是 `resolveSource`（安装）的镜像，却有两处退化。① **不带令牌** —— 私有仓库在未鉴权时两个平台都返回 **404**（刻意不泄漏「仓库是否存在」），检查把它读成「这个仓库没有 release」；② **不回退** —— `/releases/latest` 只给正式版，「只发预发布版」的仓库返回 404，而安装路径在这一级会往下看预发布版。两处症状相同：**装得上、却永远收不到更新提示**。附带代价：不带令牌走的是**匿名配额**（Gitee 极低，项目为此专门做过节流），等于自己制造那些 403 | `checkOne` 带上 `service.tokenForHost(plugin.host)`（新增带文档的公开出口），并在 404 后对齐 `resolveSource` 的第二级（`listReleases` 取首个）；`updateChecker.test.ts` +6，含两条反向守卫（令牌不串平台、没配令牌不造鉴权头）与一条「回退只在 404 后发生」 |
+| **「有哪些平台」有 4 份副本，其中 1 份决定用户数据的生死** | 真缺口（漂移风险）：`SUPPORTED_HOSTS` 声明自己是平台列表，却**没有任何调用方**；同一个事实另写了三份 —— `settings` 的 `VALID_HOSTS`（持久化校验）、`secretStore.snapshot` 的循环、设置页的两个 `renderTokenField("github"/"gitee")`。第一份的后果不是「不好看」：**漏掉某个平台时，用户在那个平台上装的插件会在下次加载 `data.json` 时被当成非法条目无声丢弃**（不报错，列表里就没了）。而 `hostRegistry` 自己的注释写着「将来加 GitLab / Bitbucket 只需要在这里注册一项」—— 那句话不成立 | 平台列表移入 `host/types.ts` 并让 `HostKind` 由它**推导**（加平台 = 改那一行），三个使用点全部改为派生；`hostRegistry` 的注释改成「加平台要动哪些地方」的完整清单；新增 `tests/host/hostRegistry.test.ts`（5 条，让四个使用点互相印证而非各列一份平台名） |
+| **重复实现里躺着的那一份是错的** | 真缺口：`InstallerService.checkForUpdate` 是「有没有更新」的**第二份实现**，无任何调用方，且判据用的是 `requestedVersion` —— 跟踪最新版的插件那个值是字符串 `"latest"`，于是它几乎恒返回 release。谁把它当成现成的工具接上，谁就得到一个**恒报「有更新」**的功能。同类还有 `isManifestCompatible`（兼容性判断的第二份），它声明的存在理由「注入 `requireApiVersion` 便于测试」已被 obsidian stub 的 `__setApiVersion` 取代 | 两处删除（其余死导出清点见第七节「死代码清点」） |
 | 设置页术语混用 | 「已追**踪**插件」（标签）vs「已跟**踪**的插件」（同页标题） | 统一为「跟踪」 |
 | `autoCheckDelay` 的置灰状态不更新 | 小 bug：切换上面的开关后，下面的输入框还是灰的（`commit()` 不重绘） | 持有 `TextComponent` 引用，在开关回调里即时 `setDisabled` |
 | **缺 README** | 发布件缺失（阶段四） | 新增中文优先的 `README.md` |
@@ -553,6 +555,36 @@ simple-git 的 config 传递（不碰网络、不需令牌）。
     表现为「用例卡满 45 秒（execFile 超时）」，看起来像网络慢，实则是在等一个
     永远不会来的输入。跑需要触发 401 的 git 命令时，加
     `-c credential.helper=`（**空值会重置助手链**，这个语义在 git 文档里很隐晦）。
+
+### 死代码清点（2026-09-16）
+
+方法：扫 `src/**` 里所有 `export function|const|class` 声明，统计该名字在**整个
+`src` 树**里的出现次数（先剥掉注释，再剥掉 barrel 的 `export { … } from` ——
+否则 `hostRegistry` 那种集中再导出会把死导出全盖住）。只剩下声明处那一次 =
+没有任何生产调用方。
+
+**已删**（都是「重复实现里躺着的那一份」，理由见第二节缺陷表）：
+
+- `InstallerService.checkForUpdate` —— 判据用 `requestedVersion`，几乎恒报有更新；
+- `hostRegistry.hostFor` —— 与 `getHost(ref.host)` 等价，后者已在 10 处使用；
+- `manifest.isManifestCompatible` —— 纯转发；它声明的「注入 `requireApiVersion`
+  便于测试」已被 obsidian stub 的 `__setApiVersion` 取代。
+
+**保留但未接线** —— 这些不是垃圾，是**只做了一半的功能**。按
+`fileWebUrl` / `commitWebUrl` 那次的先例（当时也记作「死代码」，实际是漏做的功能）：
+
+| 名字 | 现状 | 缺什么 |
+| --- | --- | --- |
+| `remoteLinks.commitOnRemoteUrl` | 已实现，但**无调用方、无测试**（同文件的 `fileOnRemoteUrl` / `fileHistoryOnRemoteUrl` 各有命令 + 文件右键菜单） | 「查看某个提交」的入口 —— 而提交列表已在下面那条里躺着 |
+| `GitManager.log()` / `CommitInfo` | 有实现体，**没有任何调用方** | 同上，UI 侧 |
+| `settingsTab.createSettingsTab` | 注释写「供测试与将来复用」，实际没有测试用它；且实现是 `void app` —— **参数是摆设，签名会误导** | 要么删，要么真的用起来 |
+| `pluginFolder.isPluginInstalled`、`repoRef.isSameRepo` / `formatRemoteUrl` | 只有测试引用，生产路径没有调用方 | 判断是「模块的公开行为」还是残留 |
+
+> 用这套方法加平台那条还有一层要在**测试**里记住：那些用例都是「遍历
+> `SUPPORTED_HOSTS`」，所以**从数组里删掉一个平台它们照样全绿**（循环体少跑
+> 一次而已）。那个方向由 `tsc` 兜住 —— 实测删掉 `"gitee"` 会报 **31 个**类型错误
+> （`Record<HostKind, IRepoHost>` 的多余属性、`"gitee"` 与 `"github"` 无重叠的比较等）。
+> 两个方向由两种机制分别覆盖，别以为测试覆盖了全部。
 
 ## 八、交接习惯（沿用 WorkBuddy 的做法）
 
