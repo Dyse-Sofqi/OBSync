@@ -146,4 +146,84 @@ describe("normalizeSettings", () => {
             kept: { latestVersion: "v2.0.0", checkedAt: 42 },
         });
     });
+
+    /**
+     * `pluginId` 的**内容**必须校验，不能只校验「是不是非空字符串」。
+     *
+     * 理由不是洁癖：`manifest.ts` 对同一个字段有严格校验，注释写着
+     * 「id 会被用作目录名，非法字符会造成路径问题，必须在写入前拦下」。
+     * 而 `data.json` 是**可以手改、也会随笔记仓库同步到多设备**的东西 ——
+     * 它是这个字段唯一不经过 `parseManifest` 的来源。
+     *
+     * 下游拿它干什么：卸载时 `resolvePluginFolder()` 找不到同名目录就回落到
+     * `{configDir}/plugins/{pluginId}`，然后 `rmdir(folder, true)` **递归**删。
+     *
+     * 下面按**实际后果**分两组 —— 这两组的严重程度不一样，
+     * 别把「不合法」当成「一模一样危险」：
+     */
+    describe("tracked 里的 pluginId 内容校验", () => {
+        function trackedWith(pluginId: string) {
+            return {
+                installer: {
+                    tracked: [
+                        {
+                            host: "github",
+                            owner: "owner",
+                            repo: "repo",
+                            pluginId,
+                            name: "X",
+                        },
+                    ],
+                },
+            };
+        }
+
+        /**
+         * 这组会**逃出 `plugins/`** —— 路径算术在
+         * `tests/features/pluginFolder.test.ts` 里用 `resolvePluginFolder` 实测过
+         * （含「那个路径存在时真的会发出递归删除调用」一条），这里不重复算。
+         */
+        it.each([
+            ["..", "上跳一级 → .obsidian 本身"],
+            ["../..", "上跳两级 → 库根目录"],
+            ["../../evil", "上跳后进别的目录 → 库根下的 evil"],
+        ])("丢弃 %s 的条目（%s）", (pluginId) => {
+            const settings = normalizeSettings(trackedWith(pluginId));
+            expect(settings.installer.tracked).toEqual([]);
+        });
+
+        /**
+         * 这组**不会**逃出 `plugins/` —— 别把它们和上面那组混为一谈。
+         * 但同样要丢：这些值都不可能是真 manifest 的 id（那必须先过
+         * `/^[a-z0-9-]+$/`），留着只会让卸载/更新去操作一个错的目录。
+         *
+         * 顺带记两个容易被想当然的点（都实算过）：
+         * - `/abs` 的**前导斜杠会被 `normalizePath` 吃掉**，结果落在
+         *   `plugins/abs`，不是绝对路径 —— 所以它不逃逸；
+         * - `a\b` 的反斜杠会被换成 `/`，与 `a/b` 等价。
+         */
+        it.each([
+            ["a/b", "注入子目录（归一后仍在 plugins/ 内）"],
+            ["a\\b", "反斜杠归一成斜杠，同 a/b"],
+            ["/abs", "前导斜杠被吃掉 → plugins/abs"],
+            ["has space", "含空格"],
+            ["UPPER", "含大写"],
+            ["dot.name", "含点"],
+        ])("丢弃 %s 的条目（不是合法 id：%s）", (pluginId) => {
+            const settings = normalizeSettings(trackedWith(pluginId));
+            expect(settings.installer.tracked).toEqual([]);
+        });
+
+        it("合法的 id 一个都不能丢", () => {
+            // 这条是上面那组的安全网：收紧校验时最容易连合法值一起误伤，
+            // 而那些 id 会带着用户的跟踪列表一起消失。
+            const valid = ["demo", "obsidian-git", "my-plugin-2", "a", "9", "x-1-2"];
+            for (const pluginId of valid) {
+                const settings = normalizeSettings(trackedWith(pluginId));
+                expect(settings.installer.tracked.map((item) => item.pluginId)).toEqual([
+                    pluginId,
+                ]);
+            }
+        });
+    });
 });

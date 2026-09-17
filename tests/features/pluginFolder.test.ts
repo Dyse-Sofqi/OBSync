@@ -8,6 +8,7 @@ import {
     readInstalledManifest,
     reloadPlugin,
     removePluginFolder,
+    resolvePluginFolder,
     restoreBackup,
     writePluginFiles,
 } from "../../src/features/installer/pluginFolder";
@@ -283,5 +284,46 @@ describe("removePluginFolder", () => {
 
     it("目录不存在时不报错", async () => {
         await expect(removePluginFolder(fake.app, "nothing")).resolves.toBeUndefined();
+    });
+
+    /**
+     * 目录名的来源不只是 manifest —— `data.json` 里的 `tracked[].pluginId`
+     * 同样会走到这里（卸载按钮直接把它交给 `removePluginFolder`）。
+     *
+     * 而找不到匹配目录时 `resolvePluginFolder` 会回落到
+     * `{configDir}/plugins/{pluginId}`，紧接着 `rmdir(folder, true)` **递归**执行。
+     * `pluginId` 里只要出现 `..`，删的就不再是插件目录 ——
+     * `"../.."` 正好指向库根目录（它当然存在）。
+     *
+     * 修法不在这里（`removePluginFolder` 只拿到一个 id 字符串，无从判断它从哪来），
+     * 而在读取 `data.json` 时按 `manifest.ts` 的同一套规则校验 ——
+     * 见 `tests/core/settings.test.ts` 的「tracked 里的 pluginId 内容校验」。
+     * 这两条留在这里作为**后果的证明**。
+     */
+    it("pluginId 含 `..` 时解析出的目录已逃出 plugins/（路径计算）", async () => {
+        // 先看纯路径计算：这一步不需要任何「目录存在」的前提。
+        expect(await resolvePluginFolder(fake.app, "../..")).toBe(
+            ".obsidian/plugins/../.."
+        );
+        expect(await resolvePluginFolder(fake.app, "../../evil")).toBe(
+            ".obsidian/plugins/../../evil"
+        );
+    });
+
+    it("那个路径存在时，真的会发出递归删除调用", async () => {
+        // 假的 adapter 只做字符串前缀匹配、不解析路径（真机上是文件系统解析的），
+        // 所以这里把「解析后的目标」直接标成存在，等价于库根目录确实在那儿。
+        fake.folders.add(".obsidian/plugins/../..");
+
+        const removed: Array<{ path: string; recursive: boolean }> = [];
+        const originalRmdir = fake.app.vault.adapter.rmdir.bind(fake.app.vault.adapter);
+        fake.app.vault.adapter.rmdir = async (path: string, recursive: boolean) => {
+            removed.push({ path, recursive });
+            return originalRmdir(path, recursive);
+        };
+
+        await removePluginFolder(fake.app, "../..");
+
+        expect(removed).toEqual([{ path: ".obsidian/plugins/../..", recursive: true }]);
     });
 });

@@ -1,3 +1,4 @@
+import { PLUGIN_ID_RE } from "../../core/pluginId";
 import type { PluginManifest } from "./types";
 import { InstallerError } from "./errors";
 
@@ -11,9 +12,6 @@ import { InstallerError } from "./errors";
  */
 
 const REQUIRED_FIELDS = ["id", "name", "version", "minAppVersion"] as const;
-
-/** Obsidian 的插件 id 规则：小写字母、数字、连字符。 */
-const PLUGIN_ID_RE = /^[a-z0-9-]+$/;
 
 export function parseManifest(raw: string, context: string): PluginManifest {
     let data: unknown;

@@ -1,5 +1,6 @@
 import type { TrackedPlugin } from "../features/installer/types";
 import type { LanguageSetting } from "./i18n";
+import { isValidPluginId } from "./pluginId";
 
 /**
  * 插件设置。
@@ -211,6 +212,23 @@ const VALID_CHANNELS = new Set(["release", "raw"]);
  *
  * 这里的取舍是「宁可少一个条目，也不要一个半坏的条目」：
  * 一个缺 `pluginId` 的记录会让卸载功能删错目录，风险远大于重新添加一次。
+ *
+ * ## `pluginId` 为什么必须查内容，不能只查「是非空字符串」
+ *
+ * 这个字段最终会变成**路径的一截**：卸载时 `resolvePluginFolder()` 先按 id
+ * 找同名目录，找不到就回落到 `{configDir}/plugins/{pluginId}`，
+ * 然后 `rmdir(folder, true)` **递归**执行。于是 `"../../evil"` 这样的 id
+ * 会让删除目标跑出 `plugins/`（路径算术与「真的会发出这个 rmdir」的证明见
+ * `tests/features/pluginFolder.test.ts`）。
+ *
+ * > 有一处**没有**验证：真机上 Obsidian 的 adapter 会不会主动拒绝越界路径。
+ * > 所以要守的是「卸载只碰插件目录」这条不变量本身 —— 至于它是靠
+ * > 这里拦住、还是靠 adapter 兜住，不该由我们来赌。
+ *
+ * 而 `data.json` 恰恰是这个字段**唯一**不经过 `parseManifest` 的来源 ——
+ * 它可以被手改，也会随笔记仓库同步到别的设备（包括那些设备上版本更旧的
+ * 插件写出来的旧格式）。别处所有赋值点（安装、更新、绑定已有插件）
+ * 都先过了 `parseManifest`，所以这条规则收紧了不会误伤合法条目。
  */
 function sanitizeTrackedPlugins(value: unknown): TrackedPlugin[] {
     if (!Array.isArray(value)) return [];
@@ -225,7 +243,7 @@ function sanitizeTrackedPlugins(value: unknown): TrackedPlugin[] {
         if (typeof host !== "string" || !VALID_HOSTS.has(host)) continue;
         if (typeof owner !== "string" || !owner) continue;
         if (typeof repo !== "string" || !repo) continue;
-        if (typeof pluginId !== "string" || !pluginId) continue;
+        if (!isValidPluginId(pluginId)) continue;
 
         // 同一个插件 id 只保留第一条 —— 重复记录会让更新检查跑两遍。
         if (seen.has(pluginId)) continue;
