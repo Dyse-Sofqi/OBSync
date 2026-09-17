@@ -19,22 +19,55 @@ import { createFakeApp, type FakeApp } from "../helpers/fakeApp";
  * - 没有 release 的仓库（Gitee 常态）不算错误，报"无更新"。
  */
 
-let routes: Array<{ match: RegExp; respond: () => { status: number; text?: string; headers?: Record<string, string> } }>;
+let routes: Array<{
+    match: RegExp;
+    respond: (request: {
+        url: string;
+        headers?: Record<string, string>;
+    }) => { status: number; text?: string; headers?: Record<string, string> };
+}>;
 
-function route(match: RegExp, respond: () => { status: number; text?: string; headers?: Record<string, string> }): void {
+function route(
+    match: RegExp,
+    respond: (request: { url: string; headers?: Record<string, string> }) => {
+        status: number;
+        text?: string;
+        headers?: Record<string, string>;
+    }
+): void {
     routes.push({ match, respond });
 }
 
-function releaseJson(tag: string): string {
-    return JSON.stringify({
+/**
+ * release 的**对象**形态。
+ *
+ * 单独拆出来是因为列表接口返回的是数组 —— `JSON.stringify([releaseJson(tag)])`
+ * 会得到「数组里装着一个字符串」，`mapRelease` 读不到 `tag_name`，
+ * 于是 `latest.tag` 是 undefined（症状是 `isNewerVersion` 里 `.trim()` 报错）。
+ */
+function releaseObject(tag: string, prerelease = false) {
+    return {
         id: 1,
         tag_name: tag,
         name: tag,
-        prerelease: false,
+        prerelease,
         draft: false,
         created_at: "2026-01-01T00:00:00Z",
         assets: [],
-    });
+    };
+}
+
+function releaseJson(tag: string, prerelease = false): string {
+    return JSON.stringify(releaseObject(tag, prerelease));
+}
+
+/** 列表接口的响应体：一个 release 数组。 */
+function releaseListJson(...tags: Array<string | [string, true]>): string {
+    return JSON.stringify(
+        tags.map((entry) =>
+            Array.isArray(entry) ? releaseObject(entry[0], true) : releaseObject(entry)
+        )
+    );
 }
 
 function makeTracked(overrides: Partial<TrackedPlugin> = {}): TrackedPlugin {
@@ -55,15 +88,16 @@ function makeTracked(overrides: Partial<TrackedPlugin> = {}): TrackedPlugin {
 
 function createContext(fake: FakeApp) {
     const settings: ObsyncSettings = normalizeSettings({});
+    const secretStore = new SecretStore(fake.app);
     const service = new InstallerService({
         app: fake.app,
         notifier: new Notifier({ getShowNotices: () => true, getT: () => zhCN }),
-        secretStore: new SecretStore(fake.app),
+        secretStore,
         getSettings: () => settings,
         getT: () => zhCN,
         saveSettings: async () => {},
     });
-    return { checker: new UpdateChecker(service), settings };
+    return { checker: new UpdateChecker(service), settings, secretStore };
 }
 
 beforeEach(() => {
@@ -71,7 +105,7 @@ beforeEach(() => {
     __setRequestUrlHandler(async (request) => {
         for (const candidate of routes) {
             if (candidate.match.test(request.url)) {
-                const result = candidate.respond();
+                const result = candidate.respond(request);
                 return { status: result.status, text: result.text ?? "", headers: result.headers };
             }
         }
@@ -111,6 +145,7 @@ describe("checkOne", () => {
         const fake = createFakeApp();
         const { checker } = createContext(fake);
         route(/releases\/latest$/, () => ({ status: 404, text: '{"message":"Not Found"}' }));
+        route(/releases\?per_page=/, () => ({ status: 200, text: "[]" }));
 
         const result = await checker.checkOne(makeTracked());
 
@@ -132,6 +167,140 @@ describe("checkOne", () => {
 
         expect(result.hasUpdate).toBe(false);
         expect(result.error).toContain("调用次数已达上限");
+    });
+});
+
+describe("检查路径必须是安装路径的**完整**镜像", () => {
+    /**
+     * 这一组守的是一条不变式：**安装能得到的东西，检查必须能报出来**。
+     *
+     * 两条路径在同一件事上做了不同选择，而症状是同一个：
+     * 用户看到「已是最新」，但其实有得更新 —— 他只能靠手动重装才发现。
+     *
+     * | | 安装（`resolveSource`） | 检查（`checkOne`） |
+     * |---|---|---|
+     * | 凭据 | 传 token | **不传** |
+     * | 回退 | 正式版 → 预发布 → 源码 | **只认正式版** |
+     *
+     * 凭据那条还多一层代价：不带令牌走的是**匿名配额**。Gitee 的匿名配额极低
+     * （超限后约一分钟不恢复），项目为此专门加了「进入设置页 10 分钟节流」——
+     * 而这里白白把那些额度花掉了，正是它想避免的 403。
+     */
+
+    it("带上用户的令牌（GitHub）—— 私有仓库不带令牌会被当成 404", async () => {
+        const fake = createFakeApp();
+        const { checker, secretStore } = createContext(fake);
+        secretStore.setToken("github", "ghp_seeded");
+
+        // 真实行为：私有仓库在未鉴权时返回 404（而不是 403）——
+        // 平台刻意不泄漏「这个仓库存在」。于是检查会把它读成「没有 release」。
+        route(/releases\/latest$/, (request) => {
+            const authorized = request.headers?.Authorization === "Bearer ghp_seeded";
+            return authorized
+                ? { status: 200, text: releaseJson("v2.0.0") }
+                : { status: 404, text: '{"message":"Not Found"}' };
+        });
+
+        const result = await checker.checkOne(makeTracked({ installedVersion: "1.0.0" }));
+
+        expect(result.hasUpdate).toBe(true);
+        expect(result.latestVersion).toBe("v2.0.0");
+    });
+
+    it("带上用户的令牌（Gitee）—— 令牌走查询串", async () => {
+        // Gitee 的令牌只能放查询串（见 IRepoHost.applyAuth），所以这条要单独验。
+        const fake = createFakeApp();
+        const { checker, secretStore } = createContext(fake);
+        secretStore.setToken("gitee", "gitee_tok");
+
+        route(/releases\/latest/, (request) =>
+            request.url.includes("access_token=gitee_tok")
+                ? { status: 200, text: releaseJson("v2.0.0") }
+                : { status: 403, text: '{"message":"rate limit"}' }
+        );
+
+        const result = await checker.checkOne(
+            makeTracked({ host: "gitee", installedVersion: "1.0.0" })
+        );
+
+        expect(result.hasUpdate).toBe(true);
+        expect(result.error).toBeUndefined();
+    });
+
+    it("令牌按平台各走各的，不会串台", async () => {
+        // 反向守卫：修「不带令牌」时最省事的错法是随手取一个令牌 ——
+        // 那会把 GitHub 的令牌发给 Gitee（等于把凭据交给另一个平台）。
+        const fake = createFakeApp();
+        const { checker, secretStore } = createContext(fake);
+        secretStore.setToken("github", "gh_token");
+        secretStore.setToken("gitee", "gitee_token");
+
+        const seen: Array<{ url: string; authorization?: string }> = [];
+        route(/releases\/latest/, (request) => {
+            seen.push({ url: request.url, authorization: request.headers?.Authorization });
+            return { status: 200, text: releaseJson("v2.0.0") };
+        });
+
+        await checker.checkOne(makeTracked({ host: "github" }));
+        await checker.checkOne(makeTracked({ host: "gitee" }));
+
+        const [githubReq, giteeReq] = seen;
+        expect(githubReq!.authorization).toBe("Bearer gh_token");
+        expect(githubReq!.url).not.toContain("access_token");
+
+        // Gitee 的令牌只能放查询串（见 IRepoHost.applyAuth）
+        expect(giteeReq!.url).toContain("access_token=gitee_token");
+        expect(giteeReq!.authorization).toBeUndefined();
+    });
+
+    it("没配令牌时不凭空造一个鉴权头", async () => {
+        const fake = createFakeApp();
+        const { checker } = createContext(fake);
+
+        let authorization: string | undefined = "unset";
+        route(/releases\/latest$/, (request) => {
+            authorization = request.headers?.Authorization;
+            return { status: 200, text: releaseJson("v2.0.0") };
+        });
+
+        await checker.checkOne(makeTracked({ host: "github" }));
+
+        expect(authorization).toBeUndefined();
+    });
+
+    it("只有预发布版时也要报出来 —— 安装路径装得到它", async () => {
+        // `/releases/latest` 只给正式版（GitHub 的定义：非 draft、非 prerelease）。
+        // 全是预发布版时它返回 404，而 resolveSource 正是在这里往下走了
+        // 「看看有没有预发布版」那一级 —— 检查路径也得走同一级。
+        const fake = createFakeApp();
+        const { checker } = createContext(fake);
+        route(/releases\/latest$/, () => ({ status: 404, text: '{"message":"Not Found"}' }));
+        route(/releases\?per_page=/, () => ({
+            status: 200,
+            text: releaseListJson(["v2.0.0-beta.1", true]),
+        }));
+
+        const result = await checker.checkOne(makeTracked({ installedVersion: "1.0.0" }));
+
+        expect(result.hasUpdate).toBe(true);
+        expect(result.latestVersion).toBe("v2.0.0-beta.1");
+        expect(result.error).toBeUndefined();
+    });
+
+    it("有正式版时不会被预发布版抢走（只在 404 之后才回退）", async () => {
+        // 回退条件的守卫：若哪天改成「先列 release 再挑」，就会把预发布版
+        // 报给一个只想用正式版的用户。
+        const fake = createFakeApp();
+        const { checker } = createContext(fake);
+        route(/releases\/latest$/, () => ({ status: 200, text: releaseJson("v2.0.0") }));
+        route(/releases\?per_page=/, () => ({
+            status: 200,
+            text: releaseListJson(["v3.0.0-beta.1", true]),
+        }));
+
+        const result = await checker.checkOne(makeTracked({ installedVersion: "1.0.0" }));
+
+        expect(result.latestVersion).toBe("v2.0.0");
     });
 });
 

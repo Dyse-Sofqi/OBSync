@@ -96,11 +96,29 @@ export class UpdateChecker {
 
         try {
             const host = getHost(plugin.host);
-            const latest = await host.getLatestRelease(repoRef);
+            // 与安装路径同一套凭据 —— 理由见 `InstallerService.tokenForHost`。
+            const token = this.service.tokenForHost(plugin.host);
+            let latest = await host.getLatestRelease(repoRef, token);
 
             if (!latest) {
-                // 没有 release 的仓库（Gitee 上很常见）无法判断版本 ——
+                // `/releases/latest` 只给**正式版**（GitHub 的定义：非 draft、
+                // 非 prerelease），所以「只发预发布版」的仓库在这里是 404。
+                //
+                // 而安装路径是会往下走的（`resolveSource` 的第二级：
+                // 「没有正式版 —— 看看有没有预发布版」）。两条路不一致的后果是
+                // **永远报「已是最新」**：这种仓库装得上，只是再也收不到更新提示。
+                // 这里对齐第二级，`limit` 也照抄安装路径的值。
+                latest = (await host.listReleases(repoRef, { token, limit: 20 }))[0];
+            }
+
+            if (!latest) {
+                // 一个 release 都没有（Gitee 上很常见）无法判断版本 ——
                 // 这不是错误，只是「无从比较」。
+                //
+                // 这里的边界是**真实存在**的，不是没往下想：安装路径此时会退到
+                // 源码 HEAD（第三级），而「HEAD 上是不是更新」要多读一次
+                // manifest.json —— 每个插件每次检查都多一次请求，与上面刚说过的
+                // 配额顾虑直接冲突。所以停在这里，把缺口如实记下。
                 return {
                     tracked: plugin,
                     latestVersion: plugin.installedVersion,

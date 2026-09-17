@@ -90,6 +90,22 @@ export class InstallerService {
         return this.deps.secretStore.getToken(kind);
     }
 
+    /**
+     * 取某个平台的访问令牌。**给同模块的协作者用**（`UpdateChecker`）。
+     *
+     * 公开它是因为「检查更新」和「安装」必须用同一套凭据，而这两条路曾经不一致：
+     * `resolveSource` 传令牌、`checkOne` 不传。后果有两层 ——
+     *
+     * 1. 私有仓库在不带令牌时两个平台都返回 **404**（刻意不泄漏「仓库存在与否」），
+     *    于是检查会把它读成「这个仓库没有 release」→ 永远报「已是最新」，
+     *    而用户其实装得上、也有得更新（安装路径带令牌，一切正常）；
+     * 2. 不带令牌走的是**匿名配额**。Gitee 的匿名配额极低，项目为此专门做了
+     *    「进入设置页 10 分钟节流」—— 在这里花掉它，等于自己制造那些 403。
+     */
+    tokenForHost(kind: HostKind): string | undefined {
+        return this.tokenFor(kind);
+    }
+
     // ── 解析 ──────────────────────────────────────────────────────────────
 
     /**
