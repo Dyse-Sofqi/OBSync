@@ -443,6 +443,119 @@ function checkMobileSafety() {
     };
 }
 
+// ── 6. 设置项无人读取 ───────────────────────────────────────────────────────
+
+/**
+ * 找出「声明了、持久化了、设置页也渲染了，但功能代码从不读」的设置项。
+ *
+ * 由来：`sync.enabled`（设置页的「启用笔记同步」）曾经就是这样 —— 有开关、
+ * `data.json` 里存着值、README 也列着它，而 `src` 里**没有一处读它**。于是用户
+ * 关掉同步之后，自动提交照样每 N 分钟把笔记推上远端：他做了 UI 提供给他的动作，
+ * 却没有效果。这比没有那个开关更糟。
+ *
+ * 为什么非要有这个检查 —— **类型和测试都抓不到**：
+ *   - 类型上 `true` 也是 `boolean`，接错线看不出来；
+ *   - 测试里 `Automatics` 直接注入设置对象，看不见装配层那一行。
+ *     实测：把 `enabled: deps.getSettings().sync.enabled` 改成 `enabled: true`，
+ *     全量测试**全绿**（12/12）。
+ * 这和第 3 项「未使用的 i18n 键」是同一类信号，只是载体不同。
+ *
+ * ## 判据（保守：只认「读」，宁可漏报不误报）
+ *
+ * 只扫两个嵌套容器 `installer.*` / `sync.*` —— 它们的限定前缀没有歧义。
+ * 顶层 `ObsyncSettings` 的字段（language / showNotices / …）读起来形如
+ * `this.settings.language`，容器名与局部变量名混在一起扫不准，故不扫。
+ *
+ * 一个文件算「读过」某字段，满足其一即可：
+ *   - 限定访问：`.sync.enabled`（后面跟 `=` 的是写，不算读）
+ *   - 提升访问：文件里先 `const x = …getSettings().installer`，再读 `x.enabled`
+ *     （`installer.enabled` 用的就是这个写法，只看限定访问会误报）
+ *
+ * `settingsTab.ts` **不在扫描范围**：它读设置是为了渲染与持久化，不是消费。
+ * 正是这一点让检查有意义 —— 否则每个字段都会被设置页自己「读」到。
+ */
+function checkUnreadSettings() {
+    const settingsPath = path.join(SRC, "core/settings.ts");
+    if (!fs.existsSync(settingsPath)) return { name: "设置项无人读取", skipped: true };
+
+    /**
+     * 例外：确实有消费方，但上面的判据扫不到。**每加一条都要写清理由** ——
+     * 这个列表天生是盲区，一旦变成「看到报错就加进来」的垃圾桶，
+     * 检查就只会给人虚假的安心。
+     *
+     * 目前两条同源：走的是「settingsTab 组一个参数对象 → 消费方读参数属性」，
+     * 读取点在 settingsTab（范围外），消费点拿到的是**参数**而不是设置对象
+     * （其中一条还改了名：`lastUpdateCheckAt` → `lastCheckAt`，静态规则接不上）。
+     *
+     * 别为了消掉这两条去放宽判据 —— 试过「属性名在参数类型里出现就算用过」，
+     * 后果是 `AutomaticsSettings.enabled` 会把 `sync.enabled` 也算成用过，
+     * 检查对真正的漏接线（`enabled: true`）就彻底失效了。
+     */
+    const EXEMPT = new Map([
+        [
+            "installer.autoCheckOnSettingsOpen",
+            "settingsTab 读它并交给 shouldCheckOnSettingsOpen(input)，" +
+                "消费点在 updateChecker 的参数属性上",
+        ],
+        [
+            "installer.lastUpdateCheckAt",
+            "同上，且在参数对象里改了名（lastCheckAt），静态规则无法关联",
+        ],
+    ]);
+
+    const settingsSource = stripComments(read(settingsPath));
+    const containers = { InstallerSettings: "installer", SyncSettings: "sync" };
+
+    const fields = [];
+    for (const [name, container] of Object.entries(containers)) {
+        const body = new RegExp(`interface ${name}\\s*\\{([\\s\\S]*?)\\n\\}`).exec(settingsSource);
+        if (!body) continue;
+        for (const line of body[1].split("\n")) {
+            const match = /^\s*(\w+)\s*[?:]/.exec(line);
+            if (match) fields.push([container, match[1]]);
+        }
+    }
+
+    const candidates = walk(SRC, ".ts")
+        .map((file) => [relative(file), stripComments(read(file))])
+        // 声明与反序列化（settings.ts）、渲染与持久化（settingsTab.ts）都不算消费方。
+        .filter(([name]) => name !== "src/core/settings.ts" && name !== "src/settingsTab.ts");
+
+    const unread = [];
+    for (const [container, field] of fields) {
+        if (EXEMPT.has(`${container}.${field}`)) continue;
+
+        const isRead = candidates.some(([, source]) => {
+            if (new RegExp(`\\.${container}\\.${field}\\b(?!\\s*=(?!=))`).test(source)) return true;
+
+            const hoisted =
+                source.match(
+                    new RegExp(`(?:const|let|var)\\s+(\\w+)\\s*=[^;\\n]*\\.${container}\\b`, "g")
+                ) ?? [];
+            return hoisted.some((statement) => {
+                const localName = /(?:const|let|var)\s+(\w+)/.exec(statement)[1];
+                // 前面不能是 `.` 或词字符：`!s.enabled` 要算读到，`other.s.enabled` 不算。
+                return new RegExp(`(?<![\\w.])${localName}\\.${field}\\b`).test(source);
+            });
+        });
+
+        if (!isRead) unread.push(`${container}.${field}`);
+    }
+
+    if (unread.length > 0) {
+        failures.push(
+            `有 ${unread.length} 个设置项从没被功能代码读过（用户改了它不会有任何效果）：\n      ` +
+                unread.join("\n      ") +
+                `\n      设置页能改、data.json 里也存着，但 src 里没有消费方（settingsTab 的渲染不算）。` +
+                `\n      要么接上线（把它注入到真正用它的地方，参考 installer.enabled 的接法），` +
+                `要么把这个设置项删掉 —— 一个改了没作用的开关比没有开关更糟。` +
+                `\n      确实有消费方、只是判据扫不到时，往 EXEMPT 里加一条并写明理由。`
+        );
+    }
+
+    return { name: "设置项无人读取", detail: `${unread.length} 个未接线` };
+}
+
 // ── 跑 ──────────────────────────────────────────────────────────────────────
 
 const results = [
@@ -451,6 +564,7 @@ const results = [
     checkUnusedI18nKeys(),
     checkCssClasses(),
     checkMobileSafety(),
+    checkUnreadSettings(),
 ];
 
 console.log("OBSync 项目自查\n");

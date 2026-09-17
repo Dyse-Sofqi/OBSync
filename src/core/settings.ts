@@ -51,8 +51,27 @@ export interface InstallerSettings {
 }
 
 export interface SyncSettings {
+    /**
+     * 总开关。**由 `SyncModule` 的装配读走**（注入 `Automatics`），
+     * 关掉后后台自动动作全部停表。
+     *
+     * 这一行是给下一个人的提醒：这个字段曾经**只被写、从没被读过** ——
+     * 设置页有开关、`data.json` 里存着值、README 也列着它，但代码里没有
+     * 任何一处读它，于是「关掉同步」之后自动提交照样每 N 分钟把笔记推到远端。
+     * 加字段时顺手确认一下有没有读取方（`installer.enabled` 是正例）。
+     *
+     * 边界：只管后台自动动作，不管命令面板里的显式命令（与 `installer.enabled`
+     * 同一个边界 —— 那一份管的是「启动时自动检查」，手动入口始终可用）。
+     */
     enabled: boolean;
-    /** 自动提交间隔（分钟）。0 表示关闭。 */
+    /**
+     * 自动提交**并同步**间隔（分钟）。0 表示关闭。
+     *
+     * 名字里的「并同步」是有信息量的：到点执行的是完整链路
+     * `提交 → 拉取 → 推送`，而不是只提交。所以 `autoPushMinutes` /
+     * `autoPullMinutes` 设为 0 **不会**阻止推送与拉取 —— 它们只是
+     * 在此之上额外多加的定时器。
+     */
     autoCommitMinutes: number;
     autoPushMinutes: number;
     autoPullMinutes: number;

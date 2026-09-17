@@ -115,14 +115,23 @@ export const en = {
         sync: {
             heading: "Vault sync",
             enabled: "Enable vault sync",
-            enabledDesc: "Sync this vault with system git. Desktop only.",
+            enabledDesc:
+                "Let OBSync sync this vault in the background. Turning it off stops the " +
+                "automatic commit / push / pull timers; the sync commands stay available " +
+                "(those are started by you).",
             desktopOnly: "Vault sync needs system git and is only available on desktop.",
-            autoCommit: "Auto commit interval (minutes)",
-            autoCommitDesc: "Set to 0 to disable.",
+            autoCommit: "Auto commit-and-sync interval (minutes)",
+            autoCommitDesc:
+                "Set to 0 to disable. This is not commit-only: each run does " +
+                "commit -> pull -> push, the same chain as the \"Sync now\" command.",
             autoPush: "Auto push interval (minutes)",
-            autoPushDesc: "Set to 0 to disable.",
+            autoPushDesc:
+                "Set to 0 to disable. This is an additional push timer; even at 0, " +
+                "pushes still happen as part of the commit-and-sync timer above.",
             autoPull: "Auto pull interval (minutes)",
-            autoPullDesc: "Set to 0 to disable.",
+            autoPullDesc:
+                "Set to 0 to disable. This is an additional pull timer; even at 0, " +
+                "pulls still happen as part of the commit-and-sync timer above.",
             commitMessage: "Commit message template",
             commitMessageDesc: "Supports {{date}}, {{hostname}}, {{numFiles}} and {{files}}.",
             strategy: "Pull integration strategy",

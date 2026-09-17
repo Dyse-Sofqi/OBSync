@@ -119,14 +119,22 @@ export const zhCN = {
         sync: {
             heading: "仓库同步",
             enabled: "启用笔记同步",
-            enabledDesc: "使用系统 git 同步当前仓库。此功能仅在桌面端可用。",
+            enabledDesc:
+                "允许 OBSync 在后台自动同步这个库。关掉后自动提交 / 推送 / 拉取都会停止；" +
+                "命令面板里的同步命令仍然可用（那是你主动发起的）。",
             desktopOnly: "笔记同步依赖系统 git，仅在桌面端可用。",
-            autoCommit: "自动提交间隔（分钟）",
-            autoCommitDesc: "设为 0 表示关闭。",
+            autoCommit: "自动提交并同步间隔（分钟）",
+            autoCommitDesc:
+                "设为 0 表示关闭。这一项不只是提交：到点执行的是「提交 → 拉取 → 推送」" +
+                "整条链路，与命令面板里的「立即同步」同一条。",
             autoPush: "自动推送间隔（分钟）",
-            autoPushDesc: "设为 0 表示关闭。",
+            autoPushDesc:
+                "设为 0 表示关闭。这一项是额外的推送定时器；即使设为 0，只要上面" +
+                "「自动提交并同步」开着，推送仍会随它一起发生。",
             autoPull: "自动拉取间隔（分钟）",
-            autoPullDesc: "设为 0 表示关闭。",
+            autoPullDesc:
+                "设为 0 表示关闭。这一项是额外的拉取定时器；即使设为 0，只要上面" +
+                "「自动提交并同步」开着，拉取仍会随它一起发生。",
             commitMessage: "提交信息模板",
             commitMessageDesc: "支持 {{date}}、{{hostname}}、{{numFiles}}、{{files}} 变量。",
             strategy: "拉取整合策略",

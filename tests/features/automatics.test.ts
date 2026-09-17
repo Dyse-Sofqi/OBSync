@@ -48,6 +48,13 @@ function harness(options: { onSync?: () => Promise<void> } = {}): Harness {
         async push(): Promise<void> {
             calls.push("push");
         },
+        /**
+         * 单独记一笔，用来断言「自动提交」那一档走的**不是**它 ——
+         * 见「自动提交触发的是完整同步」那条。
+         */
+        async commitAll(): Promise<void> {
+            calls.push("commitAll");
+        },
     };
 
     return {
@@ -62,6 +69,7 @@ function harness(options: { onSync?: () => Promise<void> } = {}): Harness {
 }
 
 const EVERY_MINUTE: AutomaticsSettings = {
+    enabled: true,
     autoCommitMinutes: 1,
     autoPushMinutes: 0,
     autoPullMinutes: 0,
@@ -90,6 +98,7 @@ describe("起表与周期", () => {
     it("间隔为 0 时不起表", async () => {
         const { service, calls } = harness();
         const automatics = new Automatics(service, () => ({
+            enabled: true,
             autoCommitMinutes: 0,
             autoPushMinutes: 0,
             autoPullMinutes: 0,
@@ -99,6 +108,26 @@ describe("起表与周期", () => {
         await vi.advanceTimersByTimeAsync(MINUTE_MS * 5);
 
         expect(calls).toEqual([]);
+    });
+
+    /**
+     * 这条守的是**文案与行为对齐**，不是实现细节。
+     *
+     * `commit` 这一档触发 `service.sync()`（提交 → 拉取 → 推送），设置页那一项
+     * 也因此写成「自动提交**并同步**间隔」。两者的关系是双向的：改实现要改文案，
+     * 改文案要改实现。所以这里把「调的是 sync」钉住 ——
+     * 若有人只看着名字把它改成 `commitAll()`（让名字相符），这条会失败并把人
+     * 引到这里；同时设置页那句「并同步」也得跟着改，否则就变成新的谎。
+     */
+    it("「自动提交」那一档触发的是完整同步，不是仅提交", async () => {
+        const { service, calls } = harness();
+        const automatics = new Automatics(service, () => EVERY_MINUTE);
+
+        automatics.start();
+        await vi.advanceTimersByTimeAsync(MINUTE_MS);
+
+        expect(calls).toEqual(["sync"]);
+        expect(calls).not.toContain("commitAll");
     });
 
     it("到点触发，并按完整间隔继续（周期运行）", async () => {
@@ -136,6 +165,60 @@ describe("起表与周期", () => {
         // 跳过之后仍要按周期继续，不能就此停摆
         setBusy(false);
         await vi.advanceTimersByTimeAsync(MINUTE_MS);
+        expect(calls).toEqual(["sync"]);
+    });
+});
+
+describe("总开关（sync.enabled）", () => {
+    /**
+     * 这一组守的是一个真出过的问题：这个开关**只被写、从没被读过** ——
+     * 设置页有开关、`data.json` 里存着值、README 也列着它，但没有一处代码读它。
+     * 后果是「关掉同步」之后定时器照跑：自动提交照样每 N 分钟把笔记**推上远端**。
+     * 用户做了 UI 提供给他的那个动作，却没有效果 —— 这比没有那个开关更糟。
+     */
+    it("关掉时一个定时器都不起", async () => {
+        const { service, calls } = harness();
+        const automatics = new Automatics(service, () => ({
+            ...EVERY_MINUTE,
+            enabled: false,
+        }));
+
+        automatics.start();
+        await vi.advanceTimersByTimeAsync(MINUTE_MS * 5);
+
+        expect(calls).toEqual([]);
+    });
+
+    it("运行中关掉：restart() 立即停表（不用重启 Obsidian）", async () => {
+        const { service, calls } = harness();
+        let settings: AutomaticsSettings = { ...EVERY_MINUTE };
+        const automatics = new Automatics(service, () => settings);
+
+        automatics.start();
+        await vi.advanceTimersByTimeAsync(MINUTE_MS);
+        expect(calls).toEqual(["sync"]);
+
+        // 设置页拨开关 → commit() → applyDerivedSettings() → reload() → restart()
+        settings = { ...settings, enabled: false };
+        automatics.restart();
+        await vi.advanceTimersByTimeAsync(MINUTE_MS * 5);
+
+        expect(calls).toEqual(["sync"]); // 只剩关掉之前那一次
+    });
+
+    it("再打开能恢复（不会把定时器永久关死）", async () => {
+        const { service, calls } = harness();
+        let settings: AutomaticsSettings = { ...EVERY_MINUTE, enabled: false };
+        const automatics = new Automatics(service, () => settings);
+
+        automatics.start();
+        await vi.advanceTimersByTimeAsync(MINUTE_MS * 2);
+        expect(calls).toEqual([]);
+
+        settings = { ...settings, enabled: true };
+        automatics.restart();
+        await vi.advanceTimersByTimeAsync(MINUTE_MS);
+
         expect(calls).toEqual(["sync"]);
     });
 });

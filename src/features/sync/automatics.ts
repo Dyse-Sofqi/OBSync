@@ -24,6 +24,20 @@ const MAX_TIMEOUT_MS = 2_147_483_647;
 type AutoKind = "commit" | "push" | "pull";
 
 export interface AutomaticsSettings {
+    /**
+     * 总开关（设置页的「启用笔记同步」）。**关掉时一个定时器都不起。**
+     *
+     * 这个字段必须在这里也有一份，而不是只在设置页判一下：定时器是插件
+     * **自己**发起的后台动作，会提交、拉取、**推送到远端**。用户关掉总开关，
+     * 意思就是「别在背后动我的仓库」—— 而在这个字段出现之前，那个开关写了
+     * 从来没人读，于是关掉之后「自动提交」照样每 N 分钟把笔记推上远端：
+     * 用户做了 UI 提供给他的那个动作，却没有效果。
+     *
+     * 边界（照 `installer.enabled` 的先例）：它**只管后台自动动作**。
+     * 命令面板里的同步命令仍然可用 —— 那是用户当下主动发起的意图，
+     * 与「插件自己到点就跑」不是一回事，拦下来只会让人以为插件坏了。
+     */
+    enabled: boolean;
     autoCommitMinutes: number;
     autoPushMinutes: number;
     autoPullMinutes: number;
@@ -57,6 +71,18 @@ export class Automatics {
         this.stop();
 
         const current = this.settings();
+
+        // 总开关关掉：`stop()` 已经清完表，到此为止。
+        //
+        // 不需要在 `fire()` 里再判一次：`stop()` 同时把世代号自增了，所以
+        // 那一刻正在跑的 `fire()` 回来时不会重新起表（见 `generation` 的说明）。
+        // 而设置页每次改动都会走 `commit()` → `applyDerivedSettings()` →
+        // `sync.reload()` → 这里，所以用户拨开关是**立刻**生效的，不用重启。
+        if (!current.enabled) {
+            logger.debug("automatics disabled: no timers scheduled");
+            return;
+        }
+
         if (current.autoCommitMinutes > 0) {
             this.schedule("commit", remaining(this.lastRan("commit"), current.autoCommitMinutes));
         }
@@ -99,6 +125,19 @@ export class Automatics {
         }
 
         try {
+            // `commit` 这一档走的是**完整同步**（提交 → 拉取 → 推送），
+            // 不是 `commitAll()`。
+            //
+            // 这是刻意的，与参考项目一致（obsidian-git 的定时器叫
+            // `autoSaveInterval`，做的事情是 `commitAndSync`，界面上也写明
+            // 叫 "Auto commit-and-sync interval"）。所以设置页那一项必须
+            // 写成「自动提交**并同步**」：只写「自动提交」会让人以为
+            // 「自动推送 / 自动拉取设为 0」就能拦住网络动作 —— 拦不住，
+            // 推送与拉取会随这条链路一起发生。
+            //
+            // 反过来也别把它改成 `commitAll()`「让名字相符」：那样「只发预发布
+            // 版」「只在本地备份」这类用户就再也得不到推送了，且改的人多半
+            // 不会同时改文案。
             const outcome =
                 kind === "pull"
                     ? await this.service.pull()

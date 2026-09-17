@@ -72,6 +72,7 @@ export function createSyncModule(deps: SyncDeps): SyncModule | undefined {
     }, statusBar);
 
     const automatics = new Automatics(service, () => ({
+        enabled: deps.getSettings().sync.enabled,
         autoCommitMinutes: deps.getSettings().sync.autoCommitMinutes,
         autoPushMinutes: deps.getSettings().sync.autoPushMinutes,
         autoPullMinutes: deps.getSettings().sync.autoPullMinutes,
