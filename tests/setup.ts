@@ -35,6 +35,9 @@ if (typeof globalThis.document === "undefined") {
             setAttribute() {},
             setText() {},
             remove() {},
+            // 弹窗会在 setTimeout 里对输入框调 focus()，缺失会变成未捕获异常
+            focus() {},
+            blur() {},
         };
         return element;
     };

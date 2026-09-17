@@ -162,11 +162,179 @@ export function debounce<T extends (...args: never[]) => unknown>(
     };
 }
 
-/** 设置项构建器的最小可用版本 —— 只够让设置页代码跑起来不报错。 */
+/**
+ * `Setting` 里各控件的替身。
+ *
+ * 为什么不能是空实现：真实 `addText` / `addButton` 会把组件实例交给回调，回调里
+ * 链式设置属性并注册事件。替身若不真的调用回调、不真的记住状态，那么「输入之后
+ * 按钮才可用」这类**交互逻辑在测试里根本跑不到** —— AddRepoModal 的「识别」按钮
+ * 一直置灰的缺陷，正是从这个盲区漏过去的（渲染一次算死，没有测试能发现）。
+ *
+ * 因此这里让替身保存真实状态，并提供 `type()` / `click()` 这样的「模拟用户操作」
+ * 入口，使弹窗类代码可以在纯 Node 环境里被驱动与断言。
+ */
+
+export class TextComponent {
+    value: string;
+    disabled = false;
+    placeholder = "";
+    readonly inputEl = document.createElement("input");
+    private changeHandler: ((value: string) => unknown) | undefined;
+
+    constructor(value = "") {
+        this.value = value;
+    }
+    setValue(value: string): this {
+        this.value = value;
+        return this;
+    }
+    getValue(): string {
+        return this.value;
+    }
+    setPlaceholder(value: string): this {
+        this.placeholder = value;
+        return this;
+    }
+    setDisabled(value: boolean): this {
+        this.disabled = value;
+        return this;
+    }
+    onChange(callback: (value: string) => unknown): this {
+        this.changeHandler = callback;
+        return this;
+    }
+    /** 模拟用户输入：同步 value 并触发 onChange（等价于真实 input 事件）。 */
+    type(value: string): this {
+        this.value = value;
+        this.changeHandler?.(value);
+        return this;
+    }
+}
+
+export class ButtonComponent {
+    text = "";
+    disabled = false;
+    cta = false;
+    tooltip = "";
+    icon = "";
+    clicks = 0;
+    private clickHandler: (() => unknown) | undefined;
+
+    setButtonText(value: string): this {
+        this.text = value;
+        return this;
+    }
+    setDisabled(value: boolean): this {
+        this.disabled = value;
+        return this;
+    }
+    setTooltip(value: string): this {
+        this.tooltip = value;
+        return this;
+    }
+    setIcon(value: string): this {
+        this.icon = value;
+        return this;
+    }
+    setCta(): this {
+        this.cta = true;
+        return this;
+    }
+    onClick(callback: () => unknown): this {
+        this.clickHandler = callback;
+        return this;
+    }
+    /** 模拟点击，返回回调结果以便 await 异步流程。 */
+    click(): unknown {
+        this.clicks += 1;
+        return this.clickHandler?.();
+    }
+}
+
+export class ToggleComponent {
+    value = false;
+    disabled = false;
+    private changeHandler: ((value: boolean) => unknown) | undefined;
+
+    setValue(value: boolean): this {
+        this.value = value;
+        return this;
+    }
+    getValue(): boolean {
+        return this.value;
+    }
+    setDisabled(value: boolean): this {
+        this.disabled = value;
+        return this;
+    }
+    onChange(callback: (value: boolean) => unknown): this {
+        this.changeHandler = callback;
+        return this;
+    }
+    /** 模拟用户切换。 */
+    toggle(value: boolean): this {
+        this.value = value;
+        this.changeHandler?.(value);
+        return this;
+    }
+}
+
+export class DropdownComponent {
+    value = "";
+    options: Array<{ value: string; label: string }> = [];
+    private changeHandler: ((value: string) => unknown) | undefined;
+
+    addOption(value: string, label: string): this {
+        this.options.push({ value, label });
+        return this;
+    }
+    addOptions(record: Record<string, string>): this {
+        for (const [value, label] of Object.entries(record)) this.addOption(value, label);
+        return this;
+    }
+    setValue(value: string): this {
+        this.value = value;
+        return this;
+    }
+    getValue(): string {
+        return this.value;
+    }
+    onChange(callback: (value: string) => unknown): this {
+        this.changeHandler = callback;
+        return this;
+    }
+    /** 模拟用户选择。 */
+    select(value: string): this {
+        this.value = value;
+        this.changeHandler?.(value);
+        return this;
+    }
+}
+
+/**
+ * 测试用：按创建顺序记录所有 `Setting`。
+ *
+ * 弹窗的 `render()` 会在 `contentEl` 上直接 `new Setting(...)`，调用方拿不到引用，
+ * 所以由替身集中登记。注意 `render()` 会重建内容区，因此断言时应取**最后一条**
+ * 匹配项（或先 `resetCreatedSettings()`）。
+ */
+export const createdSettings: Setting[] = [];
+
+export function resetCreatedSettings(): void {
+    createdSettings.length = 0;
+}
+
+/** 设置项构建器的最小可用版本 —— 只够让设置页/弹窗代码跑起来并被驱动。 */
 export class Setting {
     settingEl = document.createElement("div");
+    readonly texts: TextComponent[] = [];
+    readonly buttons: ButtonComponent[] = [];
+    readonly toggles: ToggleComponent[] = [];
+    readonly dropdowns: DropdownComponent[] = [];
+
     constructor(public containerEl: HTMLElement) {
         containerEl.appendChild(this.settingEl);
+        createdSettings.push(this);
     }
     setName(): this {
         return this;
@@ -180,19 +348,31 @@ export class Setting {
     setClass(): this {
         return this;
     }
-    addText(): this {
+    addText(callback?: (text: TextComponent) => unknown): this {
+        const component = new TextComponent();
+        this.texts.push(component);
+        callback?.(component);
         return this;
     }
-    addToggle(): this {
+    addButton(callback?: (button: ButtonComponent) => unknown): this {
+        const component = new ButtonComponent();
+        this.buttons.push(component);
+        callback?.(component);
         return this;
     }
-    addDropdown(): this {
+    addExtraButton(callback?: (button: ButtonComponent) => unknown): this {
+        return this.addButton(callback);
+    }
+    addToggle(callback?: (toggle: ToggleComponent) => unknown): this {
+        const component = new ToggleComponent();
+        this.toggles.push(component);
+        callback?.(component);
         return this;
     }
-    addButton(): this {
-        return this;
-    }
-    addExtraButton(): this {
+    addDropdown(callback?: (dropdown: DropdownComponent) => unknown): this {
+        const component = new DropdownComponent();
+        this.dropdowns.push(component);
+        callback?.(component);
         return this;
     }
     then(callback: (value: this) => unknown): this {
@@ -284,9 +464,16 @@ export class ItemView {
 
 export class Modal {
     containerEl = document.createElement("div");
+    readonly titleEl = document.createElement("div");
+    readonly contentEl = document.createElement("div");
     constructor(public app: unknown) {}
-    open(): void {}
-    close(): void {}
+    /** 与真实行为一致：open 触发 onOpen（弹窗的渲染都挂在它上面）。 */
+    open(): void {
+        this.onOpen();
+    }
+    close(): void {
+        this.onClose();
+    }
     onOpen(): void {}
     onClose(): void {}
 }

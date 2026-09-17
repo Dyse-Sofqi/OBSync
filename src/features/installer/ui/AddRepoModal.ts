@@ -1,4 +1,4 @@
-import { Modal, Setting, type App } from "obsidian";
+import { Modal, Setting, type App, type ButtonComponent } from "obsidian";
 import type { LocaleStrings } from "../../../core/i18n";
 import { logger } from "../../../core/logger";
 import { formatRepoId } from "../../../host/repoRef";
@@ -33,6 +33,14 @@ export class AddRepoModal extends Modal {
      * 还是「正在安装…」，笼统的「加载中…」会让用户不知道卡在哪一步。
      */
     private busy: "resolving" | "installing" | undefined;
+    /**
+     * 「识别」按钮的实例。
+     *
+     * 按钮可用性取决于输入内容，但输入变化时**不能**调 `render()` —— 它会
+     * `contentEl.empty()` 重建整个内容区，输入框随之销毁，用户每敲一个字就丢
+     * 焦点与光标。所以留住实例，在 onChange 里就地改禁用态。
+     */
+    private resolveButton: ButtonComponent | undefined;
 
     constructor(
         app: App,
@@ -57,6 +65,8 @@ export class AddRepoModal extends Modal {
         const t = this.t;
         const { contentEl } = this;
         contentEl.empty();
+        // 内容区已重建，旧按钮实例作废 —— 否则 onChange 会改到已脱离文档的元素上
+        this.resolveButton = undefined;
 
         new Setting(contentEl)
             .setName(t.installer.repoLabel)
@@ -67,6 +77,7 @@ export class AddRepoModal extends Modal {
                     .setDisabled(this.busy !== undefined);
                 text.onChange((value) => {
                     this.repoInput = value;
+                    this.syncResolveButton();
                 });
                 text.inputEl.addEventListener("keydown", (event) => {
                     if (event.key === "Enter") {
@@ -77,12 +88,13 @@ export class AddRepoModal extends Modal {
                 // 让用户一进来就能直接粘贴
                 window.setTimeout(() => text.inputEl.focus(), 0);
             })
-            .addButton((button) =>
+            .addButton((button) => {
+                this.resolveButton = button;
                 button
                     .setButtonText(t.installer.resolve)
-                    .setDisabled(this.busy !== undefined || this.repoInput.trim().length === 0)
-                    .onClick(() => void this.resolve())
-            )
+                    .setDisabled(this.resolveDisabled())
+                    .onClick(() => void this.resolve());
+            })
             .addButton((button) =>
                 button
                     .setButtonText(t.installer.browse)
@@ -163,6 +175,16 @@ export class AddRepoModal extends Modal {
                 .setCta()
                 .onClick(() => void this.install())
         );
+    }
+
+    /** 空地址没有可识别的东西；识别中也不该重复触发。 */
+    private resolveDisabled(): boolean {
+        return this.busy !== undefined || this.repoInput.trim().length === 0;
+    }
+
+    /** 输入变化后就地刷新按钮可用性（不重建内容区，保住焦点与光标）。 */
+    private syncResolveButton(): void {
+        this.resolveButton?.setDisabled(this.resolveDisabled());
     }
 
     /** 识别仓库地址，并顺带拉取可选版本。 */
