@@ -192,6 +192,10 @@ export class ObsyncSettingsTab extends PluginSettingTab {
             // 键是 `<kind>:<id>`（见 availableUpdateKey）—— 插件 id 与主题目录名
             // 是两个命名空间，用裸 id 会让两者互相覆盖。
             getUpdateFor: (key) => this.obsync.settings.installer.availableUpdates[key],
+            // 疑似镜像的提议：**列出来等用户确认**，绝不自动采用（见
+            // installer.mirrorSuggestions 的注释与 ConfirmMirrorModal 的警告）。
+            getMirrorSuggestion: (key) =>
+                this.obsync.settings.installer.mirrorSuggestions[key],
             refresh: () => this.display(),
         });
     }

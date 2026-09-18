@@ -194,10 +194,44 @@ export const en = {
         removed: (name: string) => `Unbound ${name}; its files are untouched`,
         removeFailed: "Failed to unbind",
         sourceRaw: "Source: repository source file",
-        mirrorFound: (repo: string) => `Found Gitee mirror ${repo}; downloading from it instead.`,
+        mirrorUnused: (host: string, repo: string) =>
+            `Found a possible ${host} mirror: ${repo}. It is not used by default — check the box above to switch to it.`,
         mirrorSource: (host: string) => `${host} mirror`,
         mirrorLine: (host: string, repo: string) =>
             `${host} mirror · ${repo} · used for downloads`,
+        /** The confirm-a-mirror flow. Mirrors are never adopted without these screens. */
+        mirrorSuggestionLine: (host: string, repo: string) =>
+            `Possible ${host} mirror · ${repo} · not in use yet, needs confirmation`,
+        mirrorConfirmTitle: "Confirm mirror source",
+        mirrorConfirmDesc:
+            "This item currently follows the source repository below. Another repository was found that looks like its mirror — please confirm whether downloads should switch to it.",
+        mirrorConfirmSource: (host: string, repo: string) =>
+            `Source repository (in use): ${host} · ${repo}`,
+        mirrorConfirmCandidate: (host: string, repo: string) =>
+            `Possible mirror: ${host} · ${repo}`,
+        mirrorWarnHeading: "Check these two addresses yourself before confirming",
+        mirrorWarnChecks:
+            "The only evidence for calling this a mirror is that both manifests declare the same id. " +
+            "That proves it is the same plugin — it does **not** prove it is the same code, the same " +
+            "author, or that it keeps up with the source: a fork, or anyone re-uploading under the same " +
+            "id, passes this check too.",
+        mirrorWarnRisk:
+            "Plugin code can read and write your entire vault. After you confirm, both downloads and " +
+            "update checks go to the mirror — if it is not maintained by the original author, you are " +
+            "not just changing a download source, you are changing who you trust.",
+        mirrorWarnHowTo:
+            "How to check: open the mirror repository and see whether its author, homepage or README " +
+            "points back at the source repository; the latest version numbers should also be close. " +
+            "If in doubt, leave it as is — nothing breaks by keeping the current source.",
+        mirrorConfirmUse: (host: string) => `Use the ${host} mirror`,
+        mirrorConfirmKeep: "Keep the current source",
+        mirrorConfirmTooltip: "Confirm mirror source",
+        mirrorConfirmed: (host: string, repo: string) =>
+            `Now using the ${host} mirror ${repo}; the next update downloads from it`,
+        mirrorDismissed: (repo: string) => `Dismissed the mirror suggestion for ${repo}`,
+        mirrorToggleDesc:
+            "When checked, downloads use this mirror. The only evidence is that both manifests declare " +
+            "the same id, which does not prove it is the same code — only check it if you trust the address.",
         /**
          * Error messages.
          *

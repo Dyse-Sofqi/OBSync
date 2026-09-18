@@ -1,11 +1,13 @@
 import { Setting, type App } from "obsidian";
 import type { LocaleStrings } from "../../../core/i18n";
 import { availableUpdateKey } from "../../../core/settings";
-import { repoWebUrl } from "../../../host/repoRef";
+import { formatRepoId, repoWebUrl } from "../../../host/repoRef";
+import type { RepoRef } from "../../../host/types";
 import { downloadSourceLabel, hostLabel } from "../downloadSource";
 import type { InstallerService } from "../installerService";
 import type { UpdateChecker } from "../updateChecker";
 import { itemRepoRef, type TrackedItem } from "../types";
+import { ConfirmMirrorModal } from "./ConfirmMirrorModal";
 
 /**
  * 设置页里的「已跟踪的插件与主题」列表。
@@ -41,6 +43,13 @@ export interface TrackedItemsContext {
      * 是两个命名空间，不能混用一张表。
      */
     getUpdateFor(key: string): { latestVersion: string; checkedAt: number } | undefined;
+    /**
+     * **待用户确认**的疑似镜像（无则 undefined）。
+     *
+     * 镜像发现从不自动采用：命中只写进 `installer.mirrorSuggestions`，由这一行
+     * 列出来请用户拍板（见 `ConfirmMirrorModal` 里那段警告的由来）。
+     */
+    getMirrorSuggestion(key: string): RepoRef | undefined;
     /** 重新渲染设置页（列表变化后调用）。 */
     refresh(): void;
 }
@@ -115,6 +124,20 @@ function renderRow(
                 `${mirror.owner}/${mirror.repo}`
             ),
             cls: "obsync-mirror-line",
+        });
+    }
+
+    // **疑似镜像**：地址列出来等用户确认。刻意与上面那行「已在使用」的镜像文案
+    // 用不同措辞（「尚未使用，待确认」）—— 两者长得像但含义相反，混淆的代价是
+    // 用户以为已经在走镜像了。
+    const suggestion = ctx.getMirrorSuggestion(availableUpdateKey(item));
+    if (suggestion) {
+        setting.descEl.createDiv({
+            text: t.installer.mirrorSuggestionLine(
+                hostLabel(t, suggestion.host),
+                formatRepoId(suggestion)
+            ),
+            cls: "obsync-mirror-line obsync-mirror-pending",
         });
     }
 
@@ -252,6 +275,24 @@ function renderRow(
             })
     );
 
+    // 确认镜像来源（**只在有提议时出现** —— 正常行不多一个没用的按钮）
+    if (suggestion) {
+        setting.addExtraButton((button) =>
+            button
+                .setIcon("git-compare")
+                .setTooltip(t.installer.mirrorConfirmTooltip)
+                .onClick(() => {
+                    new ConfirmMirrorModal(
+                        ctx.app,
+                        t,
+                        item,
+                        suggestion,
+                        (useMirror) => void confirmMirror(ctx, item, suggestion, useMirror)
+                    ).open();
+                })
+        );
+    }
+
     // 取消绑定（不删文件）
     setting.addExtraButton((button) =>
         button
@@ -271,4 +312,36 @@ function renderRow(
                 }
             })
     );
+}
+
+/**
+ * 用户在弹窗里拍板之后要做的事。
+ *
+ * 两条路都要给**明确反馈**：这是个「换掉信任对象」的动作，静默生效的话用户
+ * 无从知道自己刚才同意了什么。
+ */
+async function confirmMirror(
+    ctx: TrackedItemsContext,
+    item: TrackedItem,
+    suggestion: RepoRef,
+    useMirror: boolean
+): Promise<void> {
+    const t = ctx.t;
+    try {
+        if (useMirror) {
+            await ctx.service.confirmMirror(item, suggestion);
+            ctx.service.deps.notifier.success(
+                t.installer.mirrorConfirmed(
+                    hostLabel(t, suggestion.host),
+                    formatRepoId(suggestion)
+                )
+            );
+        } else {
+            await ctx.service.dismissMirrorSuggestion(item);
+            ctx.service.deps.notifier.info(t.installer.mirrorDismissed(formatRepoId(suggestion)));
+        }
+        ctx.refresh();
+    } catch (err) {
+        ctx.service.deps.notifier.reportError(err, t.installer.installFailed);
+    }
 }

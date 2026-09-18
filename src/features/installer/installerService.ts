@@ -113,13 +113,18 @@ export interface VersionOption {
 /**
  * 仓库地址的解析结果。
  *
- * `ref` 与 `origin` 是两个不同的地址，别再合并回一个：`ref` 是**实际使用**的
- * 来源（命中镜像时就是镜像，下载与更新检查都走它），`origin` 是**用户填**的那个
- * （只在走了镜像时才有）。跟踪列表要把两个都摆出来，所以两者都得活着到落库。
+ * 三个字段说的是三件事，别合并：
+ * - `ref`：**这次要用**的地址（`acceptMirror` 时为镜像，否则就是用户填的那个）；
+ * - `origin`：用户填的地址 —— 只在 `ref` 是镜像时才有值（列表要同时显示两个地址）；
+ * - `mirror`：**疑似镜像**（通过了 manifest `id` 校验但**没有被采用**）。
+ *
+ * `mirror` 存在才是常态：镜像发现**从不自动采用**，它只提出候选，由用户确认
+ * （见 `InstallerService.confirmMirror` 与 `mirrorSuggestions` 的注释）。
  */
 export interface ResolvedRepo {
     ref: RepoRef;
     origin?: RepoRef;
+    mirror?: RepoRef;
 }
 
 /** 安装目标的解析结果，带上「是否降级」的信息。 */
@@ -137,6 +142,11 @@ interface FetchedItem<M, N extends string> {
     repoRef: RepoRef;
     /** 走了镜像时的源地址；见 `ResolvedRepo`。 */
     origin?: RepoRef;
+    /**
+     * **疑似镜像**（通过了 `id` 校验但没被采用）。
+     * 调用方负责把它记成「待用户确认」，见 `InstallerService.confirmMirror`。
+     */
+    mirror?: RepoRef;
 }
 
 export class InstallerService {
@@ -184,12 +194,23 @@ export class InstallerService {
      * 镜像发现用 manifest 的 `id` 做二次校验，而不是只比仓库名 ——
      * 同名不同项目在 Gitee 上很常见，只比名字会装错插件。
      *
-     * 返回的 `origin`（源地址）**必须在后续步骤里一路带到 `recordItem`**：
-     * `ref` 命中镜像后就被镜像占了，源地址只此一份，丢了就只能等用户重新发现。
+     * ## 发现了也**不自动采用**（`acceptMirror` 是唯一的采用方式）
+     *
+     * `id` 一致只说明「是同一个插件」，说明不了「是同一份代码、同一个作者、
+     * 同样的新鲜度」—— fork、或者别人用同一个 `id` 重新上传都能过这一关，而插件
+     * 是能读写整个库的代码。候选地址又常常来自「猜 owner」（同名、或你 Gitee 账号
+     * 名的同名仓库），所以**采用必须由人拍板**：默认只把候选放在结果里
+     * （`mirror`），由界面列出来请用户确认。
      */
     async resolveRepo(
         input: string,
-        options: { allowMirror?: boolean; defaultHost?: HostKind; origin?: RepoRef } = {}
+        options: {
+            allowMirror?: boolean;
+            defaultHost?: HostKind;
+            origin?: RepoRef;
+            /** 用户已经确认过这个镜像（弹窗里勾了「使用镜像」）—— 只有这时才采用。 */
+            acceptMirror?: boolean;
+        } = {}
     ): Promise<ResolvedRepo> {
         const ref = parseRepoRef(input, options.defaultHost ?? "github");
 
@@ -212,9 +233,18 @@ export class InstallerService {
                 this.tokenFor("github"),
                 await this.mirrorOwnerCandidates(ref)
             );
-            if (mirror) {
+            if (mirror && options.acceptMirror) {
                 logger.info(`using Gitee mirror ${formatRepoId(mirror)} for ${formatRepoId(ref)}`);
-                return { ref: mirror, origin: ref };
+                // `origin`（用户填的地址）**必须一路带到 `recordItem`**：`ref` 这时
+                // 已经被镜像占了，源地址只此一份，丢了就只能等用户重新发现。
+                return { ref: mirror, origin: ref, mirror };
+            }
+            if (mirror) {
+                logger.info(
+                    `found a possible Gitee mirror ${formatRepoId(mirror)} for ` +
+                        `${formatRepoId(ref)} — waiting for the user to confirm it`
+                );
+                return { ref, mirror };
             }
         } catch (err) {
             // 镜像发现是「锦上添花」，任何失败都不该阻断安装。
@@ -336,9 +366,14 @@ export class InstallerService {
         spec: FetchSpec<N, M>,
         repoInput: string,
         requestedVersion: string,
-        options: { allowMirror?: boolean; defaultHost?: HostKind; origin?: RepoRef }
+        options: {
+            allowMirror?: boolean;
+            defaultHost?: HostKind;
+            origin?: RepoRef;
+            acceptMirror?: boolean;
+        }
     ): Promise<FetchedItem<M, N>> {
-        const { ref: repoRef, origin } = await this.resolveRepo(repoInput, options);
+        const { ref: repoRef, origin, mirror } = await this.resolveRepo(repoInput, options);
         const { source, degradedReason } = await this.resolveSource(repoRef, requestedVersion);
 
         if (degradedReason) {
@@ -363,7 +398,7 @@ export class InstallerService {
             });
         }
 
-        return { files, manifest, channel, repoRef, origin };
+        return { files, manifest, channel, repoRef, origin, mirror };
     }
 
     // ── 安装（插件） ──────────────────────────────────────────────────────
@@ -371,7 +406,7 @@ export class InstallerService {
     /** 安装或更新一个插件。 */
     async install(request: InstallRequest): Promise<InstallResult> {
         const requestedVersion = request.version ?? "latest";
-        const { files, manifest, channel, repoRef, origin } = await this.fetchItem(
+        const { files, manifest, channel, repoRef, origin, mirror } = await this.fetchItem(
             PLUGIN_SPEC,
             request.repo,
             requestedVersion,
@@ -414,6 +449,10 @@ export class InstallerService {
                 enabled = isPluginEnabled(this.app, manifest.id);
             }
 
+            // 先把「疑似镜像」记下来（写在 recordItem 之前，共用它那次落盘）——
+            // 只提议、不采用，采用与否由用户在界面上拍板（confirmMirror）。
+            this.rememberMirrorSuggestion("plugin", manifest.id, mirror);
+
             await this.recordItem({
                 kind: "plugin",
                 repoRef,
@@ -433,6 +472,7 @@ export class InstallerService {
                 enabled,
                 repoRef,
                 origin,
+                mirror,
             };
         } catch (err) {
             // writeItemFiles 内部已经回滚过一次；这里只处理写盘之后
@@ -735,6 +775,78 @@ export class InstallerService {
         // 用户重新绑定时会先看到一条过期的「可更新」。
         delete settings.installer.availableUpdates[availableUpdateKey(tracked)];
 
+        // 待确认的镜像提议同理：条目都没了，提议自然作废。
+        delete settings.installer.mirrorSuggestions[availableUpdateKey(tracked)];
+
+        await this.deps.saveSettings();
+    }
+
+    // ── 疑似镜像的确认 ────────────────────────────────────────────────────
+
+    /**
+     * 记下一条「疑似镜像」提议（**不采用**）。
+     *
+     * 界面据此在列表里把地址列出来请用户确认。不在这里清理：提议的出口只有三条 ——
+     * 用户确认（`confirmMirror`）、用户忽略（`dismissMirrorSuggestion`）、条目被移除
+     * （`unbind`）；此外 `normalizeSettings` 在读取时还会剪掉「坏值」与「与当前来源
+     * 相同」的条目（见 `sanitizeMirrorSuggestions`）。
+     */
+    private rememberMirrorSuggestion(
+        kind: TrackedKind,
+        id: string,
+        suggestion: RepoRef | undefined
+    ): void {
+        if (!suggestion) return;
+        const current = this.settings.installer.tracked.find(
+            (item) => item.kind === kind && item.id === id
+        );
+        // 已经在用这个地址了就没什么可确认的（也避免列表画出两行一样的地址）。
+        if (current && isSameRepo(itemRepoRef(current), suggestion)) return;
+        this.settings.installer.mirrorSuggestions[availableUpdateKey({ kind, id })] = suggestion;
+    }
+
+    /**
+     * **用户确认**：把这一项的来源改成这个疑似镜像。
+     *
+     * 这是镜像被采用的**唯一**入口。改写的是记录里的 `host/owner/repo`（下载与更新
+     * 检查都读它），原来源挪进 `origin` 保留下来 —— 列表那两行地址就是从这里来的。
+     *
+     * 刻意**不顺手重新下载**：确认是「以后跟这个源走」的决定，不是一次安装动作；
+     * 用户接着点「更新」就会从新源取文件（完成提示会写明来源）。
+     */
+    async confirmMirror(tracked: TrackedItem, mirror: RepoRef): Promise<void> {
+        const settings = this.settings;
+        const record = settings.installer.tracked.find(
+            (item) => item.kind === tracked.kind && item.id === tracked.id
+        );
+        if (!record) return;
+
+        const previous = itemRepoRef(record);
+        // 同一个地址不重复确认（列表那两行会一模一样）。
+        if (isSameRepo(previous, mirror)) return;
+
+        record.host = mirror.host;
+        record.owner = mirror.owner;
+        record.repo = mirror.repo;
+        // 源地址取**原来那条**；但记录里已经有 `origin` 时保留它 —— 那是真正的家。
+        // 场景：记录已经挂在镜像 A 上（origin = GitHub），用户又确认了镜像 B ——
+        // 这时若写成 `previous`（= A），GitHub 那一行就从列表里消失了，
+        // 而用户正是来看「这个插件到底跟谁走」的。
+        record.origin = record.origin ?? previous;
+        // 通道是上一个源的事实（相对路径、版本列表都按它取过），换了源就不成立：
+        // 删掉，等下一次更新重新确定。留着会让列表那句「来源：仓库源码文件」指错。
+        delete (record as { channel?: InstallChannel }).channel;
+
+        // 换了源，之前按旧源查出来的「可更新」也就作废了。
+        delete settings.installer.availableUpdates[availableUpdateKey(record)];
+        delete settings.installer.mirrorSuggestions[availableUpdateKey(record)];
+
+        await this.deps.saveSettings();
+    }
+
+    /** **用户忽略**：丢掉这条提议，别再提（记录本身不动）。 */
+    async dismissMirrorSuggestion(tracked: TrackedItem): Promise<void> {
+        delete this.settings.installer.mirrorSuggestions[availableUpdateKey(tracked)];
         await this.deps.saveSettings();
     }
 

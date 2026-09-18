@@ -159,8 +159,8 @@ function routeGitHubRepo(owner: string, repo: string): void {
     }));
 }
 
-describe("自动发现 Gitee 镜像之后，两个地址都要留在记录里", () => {
-    it("安装：主来源是镜像，源地址另存一份", async () => {
+describe("发现镜像：**只提议，不采用**；用户确认之后才写进记录", () => {
+    it("安装：主来源仍是源仓库，疑似镜像只记成「待确认」", async () => {
         const fake = createFakeApp();
         const { service, settings } = createService(fake, true);
         routeGitHubSource();
@@ -169,19 +169,65 @@ describe("自动发现 Gitee 镜像之后，两个地址都要留在记录里", 
         const result = await service.install({ repo: "owner/demo", enableAfterInstall: true });
 
         const record = settings.installer.tracked[0]!;
-        // 主来源是镜像 —— 下载与更新检查都按它走
-        expect({ host: record.host, owner: record.owner, repo: record.repo }).toEqual(GITEE);
-        expect(record.channel).toBe("raw");
-        // 源地址也在。**这就是列表第二行要显示的东西**
-        expect(record.origin).toEqual(GITHUB);
-        // 返回结果里两个地址都要带出来：完成提示靠它报「这次是从哪拿的」
-        expect(result.repoRef).toEqual(GITEE);
-        expect(result.origin).toEqual(GITHUB);
-
-        // 顺带确认文件真的来自镜像，而不只是记了个字段
-        expect(calls.some((url) => url.startsWith("https://gitee.com/owner/demo/raw/"))).toBe(
+        // 记录里还是源仓库 —— 下载与更新检查都按它走
+        expect({ host: record.host, owner: record.owner, repo: record.repo }).toEqual(GITHUB);
+        expect(record.origin).toBeUndefined();
+        // 提议单独记着，键是 `<kind>:<id>`
+        expect(settings.installer.mirrorSuggestions["plugin:demo"]).toEqual(GITEE);
+        // 结果里也要带上提议，调用方才能提示「发现疑似镜像，去确认」
+        expect(result.mirror).toEqual(GITEE);
+        expect(result.repoRef).toEqual(GITHUB);
+        // 文件也确实来自源仓库（没被悄悄换掉）：探测镜像会去读对方的 manifest，
+        // 那是**探测**；这里要断言的是「没从镜像下载插件文件」。
+        expect(calls.some((url) => url.includes("gitee.com/owner/demo/raw/HEAD/main.js"))).toBe(
+            false
+        );
+        expect(calls.some((url) => url.includes("raw.githubusercontent.com/owner/demo/HEAD/main.js"))).toBe(
             true
         );
+    });
+
+    it("用户确认之后：来源换成镜像、源地址另存一份，提议消失", async () => {
+        const fake = createFakeApp();
+        const { service, settings } = createService(fake, true);
+        routeGitHubSource();
+        routeGiteeMirror();
+
+        await service.install({ repo: "owner/demo" });
+        await service.confirmMirror(settings.installer.tracked[0]!, GITEE);
+
+        const record = settings.installer.tracked[0]!;
+        expect({ host: record.host, owner: record.owner, repo: record.repo }).toEqual(GITEE);
+        // 源地址进 `origin`（列表要同时显示两个地址）
+        expect(record.origin).toEqual(GITHUB);
+        expect(settings.installer.mirrorSuggestions["plugin:demo"]).toBeUndefined();
+    });
+
+    it("忽略提议：记录一动不动，提议消失", async () => {
+        const fake = createFakeApp();
+        const { service, settings } = createService(fake, true);
+        routeGitHubSource();
+        routeGiteeMirror();
+
+        await service.install({ repo: "owner/demo" });
+        await service.dismissMirrorSuggestion(settings.installer.tracked[0]!);
+
+        const record = settings.installer.tracked[0]!;
+        expect(record.host).toBe("github");
+        expect(record.origin).toBeUndefined();
+        expect(settings.installer.mirrorSuggestions).toEqual({});
+    });
+
+    it("移除条目时提议一起清掉（否则列表里留着一条没有对应行的提议）", async () => {
+        const fake = createFakeApp();
+        const { service, settings } = createService(fake, true);
+        routeGitHubSource();
+        routeGiteeMirror();
+
+        await service.install({ repo: "owner/demo" });
+        await service.unbind(settings.installer.tracked[0]!);
+
+        expect(settings.installer.mirrorSuggestions).toEqual({});
     });
 
     it("更新：**源地址被继承**，不是每次都要重新发现", async () => {
@@ -191,6 +237,7 @@ describe("自动发现 Gitee 镜像之后，两个地址都要留在记录里", 
         routeGiteeMirror();
 
         await service.install({ repo: "owner/demo" });
+        await service.confirmMirror(settings.installer.tracked[0]!, GITEE);
         expect(settings.installer.tracked[0]!.origin).toEqual(GITHUB);
 
         // 走「更新到最新」那条路：传进去的地址就是记录里那个（已经是镜像了），
@@ -272,8 +319,9 @@ describe("自动发现 Gitee 镜像之后，两个地址都要留在记录里", 
         routeGitHubSource();
         routeGiteeMirror();
 
-        // 先走镜像装：记录是 { host: gitee, origin: github/owner/demo }
+        // 先确认镜像：记录是 { host: gitee, origin: github/owner/demo }
         await service.install({ repo: "owner/demo" });
+        await service.confirmMirror(settings.installer.tracked[0]!, GITEE);
         expect(settings.installer.tracked[0]!.origin).toEqual(GITHUB);
 
         // 换成另一个 GitHub 仓库装**同一个插件**（manifest id 都是 demo）。
@@ -292,7 +340,7 @@ describe("自动发现 Gitee 镜像之后，两个地址都要留在记录里", 
     });
 });
 
-describe("resolveRepo 的返回", () => {    it("命中镜像时同时给出两个地址，`ref` 是实际要用的那个", async () => {
+describe("resolveRepo 的返回", () => {    it("命中镜像时 `ref` 仍是源仓库，候选放在 `mirror` 里（默认不采用）", async () => {
         const fake = createFakeApp();
         const { service } = createService(fake, true);
         routeGitHubSource();
@@ -300,8 +348,22 @@ describe("resolveRepo 的返回", () => {    it("命中镜像时同时给出两�
 
         const resolved = await service.resolveRepo("owner/demo");
 
+        expect(resolved.ref).toEqual(GITHUB);
+        expect(resolved.mirror).toEqual(GITEE);
+        expect(resolved.origin).toBeUndefined();
+    });
+
+    it("`acceptMirror`（用户已确认）才把 `ref` 换成镜像，并交出源地址", async () => {
+        const fake = createFakeApp();
+        const { service } = createService(fake, true);
+        routeGitHubSource();
+        routeGiteeMirror();
+
+        const resolved = await service.resolveRepo("owner/demo", { acceptMirror: true });
+
         expect(resolved.ref).toEqual(GITEE);
         expect(resolved.origin).toEqual(GITHUB);
+        expect(resolved.mirror).toEqual(GITEE);
     });
 
     it("没命中镜像时只有 `ref`（来源就是它自己，没有第二个地址）", async () => {
@@ -395,7 +457,7 @@ describe("镜像在别的账号下（owner 不同名）", () => {
         }));
     }
 
-    it("用 Gitee 令牌解析账号名当候选，命中后两个地址都记下", async () => {
+    it("用令牌解析账号名当候选 → 提议出现 → 确认后才切过去", async () => {
         const fake = createFakeApp();
         const { service, settings, secretStore } = createService(fake, true);
         secretStore.setToken("gitee", "a-gitee-token");
@@ -403,16 +465,21 @@ describe("镜像在别的账号下（owner 不同名）", () => {
 
         await service.install({ repo: "dyse-sofqi/MDRazor" });
 
+        // 安装这一步仍走源仓库（GitHub），镜像只被提出来等确认
         const record = settings.installer.tracked[0]!;
-        expect({ host: record.host, owner: record.owner, repo: record.repo }).toEqual({
+        expect({ host: record.host, owner: record.owner, repo: record.repo }).toEqual(GITHUB_REF);
+        const suggestion = settings.installer.mirrorSuggestions["plugin:demo"]!;
+        expect(suggestion).toEqual({ host: "gitee", owner: GITEE_ACCOUNT, repo: "MDRazor" });
+
+        await service.confirmMirror(record, suggestion);
+
+        const updated = settings.installer.tracked[0]!;
+        expect({ host: updated.host, owner: updated.owner, repo: updated.repo }).toEqual({
             host: "gitee",
             owner: GITEE_ACCOUNT,
             repo: "MDRazor",
         });
-        expect(record.origin).toEqual(GITHUB_REF);
-        // 下载走的是镜像那条 raw 通道；GitHub 的 release 通道一次都没碰
-        expect(calls.some((url) => url.includes(`${GITEE_ACCOUNT}/MDRazor/raw/`))).toBe(true);
-        expect(calls.some((url) => url.includes("github.com/repos/"))).toBe(false);
+        expect(updated.origin).toEqual(GITHUB_REF);
     });
 
     it("没配 Gitee 令牌时拿不到账号名 —— 只探同名，找不到就不切（不靠猜）", async () => {
@@ -426,5 +493,31 @@ describe("镜像在别的账号下（owner 不同名）", () => {
         expect(record.host).toBe("github");
         expect(record.origin).toBeUndefined();
         expect(calls.some((url) => url.includes(`gitee.com/${GITEE_ACCOUNT}`))).toBe(false);
+    });
+});
+
+/**
+ * 已挂在镜像 A 上时又确认了镜像 B：**原始来源不能被覆盖**。
+ *
+ * `origin` 是「这个插件的家在哪」，而记录里的 `host/owner/repo` 只是「这次跟谁走」。
+ * 第二个镜像若把 `origin` 写成镜像 A，列表上 GitHub 那一行就没了 —— 偏偏用户正是
+ * 来看「它到底跟谁走」的。
+ */
+describe("二次确认镜像", () => {
+    it("origin 保留最初那个源，不会被中间的镜像覆盖", async () => {
+        const fake = createFakeApp();
+        const { service, settings } = createService(fake, true);
+        routeGitHubSource();
+        routeGiteeMirror();
+        const second: RepoRef = { host: "gitee", owner: "someone-else", repo: "demo" };
+
+        await service.install({ repo: "owner/demo" });
+        await service.confirmMirror(settings.installer.tracked[0]!, GITEE);
+        await service.confirmMirror(settings.installer.tracked[0]!, second);
+
+        const record = settings.installer.tracked[0]!;
+        expect({ host: record.host, owner: record.owner, repo: record.repo }).toEqual(second);
+        // 仍然是 GitHub —— 不是中间那个镜像
+        expect(record.origin).toEqual(GITHUB);
     });
 });

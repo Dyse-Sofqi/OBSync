@@ -317,3 +317,57 @@
        justify-content 改成 flex-start / space-between 也照样成立。 */
     margin-right: auto;
 }
+
+/* ── 疑似镜像的确认弹窗 ─────────────────────────────────────────────────── */
+
+/* 两个地址（现在跟的 / 想换成的）并排成一份清单，
+   用等宽字体以便逐字比对 —— 这段界面存在的意义就是让人核对地址。 */
+.obsync-mirror-choices {
+    margin: 0.5em 0;
+    padding-left: 1.2em;
+    font-family: var(--font-monospace);
+    font-size: var(--font-ui-smaller, 0.85em);
+    word-break: break-all;
+}
+
+/* 候选那一行加重一点：用户要判断的是「换不换成这个」。 */
+.obsync-mirror-candidate {
+    font-weight: 600;
+}
+
+/* 警示区。刻意用边框 + 警示色把三段话圈起来 —— 它是用户做判断的全部依据，
+   混在正文里会被跳过。颜色只用主题变量，深浅色主题下都不会读不清。 */
+.obsync-mirror-warning {
+    margin: 0.8em 0;
+    padding: 0.6em 0.8em;
+    border-left: 3px solid var(--text-warning, #b98a00);
+    border-radius: var(--radius-s, 4px);
+    background: var(--background-secondary);
+    font-size: var(--font-ui-smaller, 0.85em);
+    line-height: 1.5;
+}
+
+.obsync-mirror-warning p {
+    margin: 0.4em 0;
+}
+
+.obsync-mirror-warning p:first-child {
+    margin-top: 0;
+}
+
+.obsync-mirror-warning p:last-child {
+    margin-bottom: 0;
+}
+
+.obsync-warning-heading {
+    font-weight: 600;
+    color: var(--text-warning, #b98a00);
+}
+
+/* 列表里「疑似镜像」那一行：与上面「已在使用」的镜像文案（`.obsync-mirror-line`）
+   长得像、含义相反，所以额外用虚线下划线与警示色区分开。 */
+.obsync-settings .obsync-mirror-pending {
+    color: var(--text-warning, #b98a00);
+    opacity: 1;
+    text-decoration: underline dotted;
+}

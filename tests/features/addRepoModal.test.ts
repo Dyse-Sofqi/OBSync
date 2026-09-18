@@ -22,6 +22,8 @@ import type { InstallResult } from "../../src/features/installer/types";
 
 /** 记录被识别过的地址，用于断言按钮点击真的把输入交了出去。 */
 let resolvedInputs: string[] = [];
+/** 记录安装请求，用于断言「用的是源仓库还是镜像」。 */
+let installRequests: Array<{ repo: string; origin?: { host: string } }> = [];
 
 function makeService(): InstallerService {
     const notifier = new Notifier({ getShowNotices: () => false, getT: () => zhCN });
@@ -41,12 +43,27 @@ function makeService(): InstallerService {
     return {
         resolveRepo: async (input: string) => {
             resolvedInputs.push(input);
-            return { ref: { host: "gitee", owner: "sofqi", repo: "Trefoil" } };
+            // 识别到的是源仓库，另外**提出**一个疑似镜像（默认不采用）
+            return {
+                ref: { host: "github", owner: "sofqi", repo: "Trefoil" },
+                mirror: { host: "gitee", owner: "sofqi", repo: "Trefoil" },
+            };
         },
         listVersions: async () => [{ value: "latest", label: zhCN.installer.versionLatest, prerelease: false }],
-        install: async () => result,
+        install: async (request: { repo: string; origin?: { host: string } }) => {
+            installRequests.push(request);
+            return result;
+        },
         deps: { notifier },
     } as unknown as InstallerService;
+}
+
+/** 最近一次打开的弹窗（弹窗的渲染都挂在 contentEl 上，断言要读它）。 */
+let openedModal: AddRepoModal | undefined;
+
+function currentModal(): AddRepoModal {
+    if (!openedModal) throw new Error("还没有打开过弹窗");
+    return openedModal;
 }
 
 function openModal(
@@ -60,6 +77,7 @@ function openModal(
         zhCN,
         onInstalled
     );
+    openedModal = modal;
     modal.open();
     return modal;
 }
@@ -85,6 +103,7 @@ describe("AddRepoModal 的「识别」按钮", () => {
     beforeEach(() => {
         resetCreatedSettings();
         resolvedInputs = [];
+        installRequests = [];
     });
 
     it("地址为空时置灰", () => {
@@ -148,6 +167,7 @@ describe("AddRepoModal 的安装回调", () => {
     beforeEach(() => {
         resetCreatedSettings();
         resolvedInputs = [];
+        installRequests = [];
     });
 
     /** 当前渲染出来的「安装」按钮（识别 → 选版本之后才有这一行）。 */
@@ -208,5 +228,106 @@ describe("AddRepoModal 的安装回调", () => {
         // 失败路径把弹窗重绘回可重试状态，而不是通知调用方「装好了」
         await vi.waitFor(() => expect(installButton().disabled).toBe(false));
         expect(results).toEqual([]);
+    });
+});
+
+/**
+ * 「疑似镜像」在安装弹窗里的样子：**默认不用镜像，勾了才用**。
+ *
+ * 判据只是「两边 manifest 的 id 相同」—— 那只证明是同一个插件，证明不了是同一份
+ * 代码/同一个作者（详见 ConfirmMirrorModal 的警告）。所以采用必须由用户明示，
+ * 而且界面要同时说清「检测到了什么」与「现在会用哪个地址」。
+ */
+describe("AddRepoModal 的镜像开关", () => {
+    beforeEach(() => {
+        resetCreatedSettings();
+        resolvedInputs = [];
+        installRequests = [];
+    });
+
+    async function resolveRepoTarget(): Promise<void> {
+        repoInput().type("sofqi/Trefoil");
+        resolveButton().click();
+        await vi.waitFor(() => expect(installButton()).toBeDefined());
+    }
+
+    function installButton(): ButtonComponent {
+        const row = [...createdSettings]
+            .reverse()
+            .find((setting) =>
+                setting.buttons.some((button) => button.text === zhCN.installer.install)
+            );
+        if (!row) throw new Error("当前内容区里找不到「安装」按钮");
+        return row.buttons.find((button) => button.text === zhCN.installer.install)!;
+    }
+
+    /** 弹窗内容区里所有文本（含 Setting 的名字与描述）。 */
+    function modalTexts(): string[] {
+        const walk = (node: unknown): string[] => {
+            const el = node as { text?: string; children?: unknown[] };
+            const own = el.text ? [el.text] : [];
+            return [...own, ...(el.children ?? []).flatMap(walk)];
+        };
+        return ((currentModal().contentEl.children as unknown) as unknown[]).flatMap(walk);
+    }
+
+    /** 镜像开关所在那一行（名字是「疑似镜像：Gitee · sofqi/Trefoil」）。 */
+    function mirrorToggle() {
+        const row = [...createdSettings]
+            .reverse()
+            .find(
+                (setting) =>
+                    setting.toggles.length > 0 &&
+                    setting.name === zhCN.installer.mirrorConfirmCandidate("Gitee", "sofqi/Trefoil")
+            );
+        if (!row) throw new Error("找不到镜像开关");
+        return row.toggles[0]!;
+    }
+
+    it("检测到镜像就把地址说出来，并且**默认不勾**", async () => {
+        openModal();
+        await resolveRepoTarget();
+
+        expect(mirrorToggle().value).toBe(false);
+        // 「已识别为」那行报的是**实际会用**的地址 —— 默认就是源仓库；
+        // 同时必须说明「检测到了镜像但没用」，否则用户分不清「没探测到」与「探测到没用」
+        const statuses = modalTexts().join("\n");
+        expect(statuses).toContain(zhCN.installer.resolved("GitHub", "sofqi/Trefoil"));
+        expect(statuses).toContain(zhCN.installer.mirrorUnused("Gitee", "sofqi/Trefoil"));
+    });
+
+    it("不勾就装源仓库（不给 origin）", async () => {
+        openModal();
+        await resolveRepoTarget();
+        installButton().click();
+
+        await vi.waitFor(() => expect(installRequests).toHaveLength(1));
+        expect(installRequests[0]!.repo).toBe("sofqi/Trefoil");
+        expect(installRequests[0]!.origin).toBeUndefined();
+    });
+
+    it("勾上之后装镜像，并把源地址交出去", async () => {
+        openModal();
+        await resolveRepoTarget();
+
+        mirrorToggle().toggle(true);
+        installButton().click();
+
+        await vi.waitFor(() => expect(installRequests).toHaveLength(1));
+        expect(installRequests[0]!.repo).toBe("sofqi/Trefoil");
+        expect(installRequests[0]!.origin).toEqual({
+            host: "github",
+            owner: "sofqi",
+            repo: "Trefoil",
+        });
+    });
+
+    it("重新识别时勾选作废（换了地址就是另一件事）", async () => {
+        openModal();
+        await resolveRepoTarget();
+        mirrorToggle().toggle(true);
+
+        resolveButton().click();
+        await vi.waitFor(() => expect(mirrorToggle().value).toBe(false));
     });
 });

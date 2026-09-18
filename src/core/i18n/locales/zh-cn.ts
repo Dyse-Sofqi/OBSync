@@ -207,7 +207,15 @@ export const zhCN = {
         removed: (name: string) => `已取消绑定 ${name}，它的文件未被改动`,
         removeFailed: "取消绑定失败",
         sourceRaw: "来源：仓库源码文件",
-        mirrorFound: (repo: string) => `发现 Gitee 镜像：${repo}，将改用镜像源下载。`,
+        /**
+         * 探测到疑似镜像、但**没有**采用时的那句提示。
+         *
+         * 旧文案是「发现 Gitee 镜像：…，将改用镜像源下载」——「将改用」已经不成立：
+         * 现在采用要用户勾选/确认，所以这句话必须说清「检测到了什么」+「默认不用」，
+         * 否则用户看到的和旧版一样，分不清「没探测到」与「探测到了但没用」。
+         */
+        mirrorUnused: (host: string, repo: string) =>
+            `发现疑似 ${host} 镜像：${repo}。默认不使用它，要改用请勾选上面的开关。`,
         /** 完成提示里报镜像来源时用（与 `mirrorLine` 的「镜像」同一层意思）。 */
         mirrorSource: (host: string) => `${host} 镜像`,
         /**
@@ -217,6 +225,40 @@ export const zhCN = {
          * GitHub、下面一行是 Gitee，无从判断 OBSync 到底在跟谁说话。
          */
         mirrorLine: (host: string, repo: string) => `${host} 镜像 · ${repo} · 下载使用此源`,
+        /**
+         * 疑似镜像的**确认**流程文案。
+         *
+         * 镜像发现从不自动采用一个镜像，只提出候选，由用户在这些文案所在的界面上
+         * 拍板 —— 所以 `mirrorWarn*` 那几条不是客套话，是让用户能判断该不该绑的
+         * 全部依据（判据只有「两边 manifest 的 id 相同」，那只证明是同一个插件）。
+         */
+        mirrorSuggestionLine: (host: string, repo: string) =>
+            `疑似 ${host} 镜像 · ${repo} · 尚未使用，待确认`,
+        mirrorConfirmTitle: "确认镜像来源",
+        mirrorConfirmDesc:
+            "这一项现在跟的是下面的源仓库；另外发现了一个仓库，看起来是它的镜像。请确认是否改用镜像下载。",
+        mirrorConfirmSource: (host: string, repo: string) => `源仓库（现在使用）：${host} · ${repo}`,
+        mirrorConfirmCandidate: (host: string, repo: string) => `疑似镜像：${host} · ${repo}`,
+        mirrorWarnHeading: "确认前请自己核对这两个地址",
+        mirrorWarnChecks:
+            "判断镜像的依据只有一条：两边 manifest 的 id 相同。它只能说明「是同一个插件」，" +
+            "**不能**证明是同一份代码、同一个作者，也不能保证它跟得上源仓库 —— fork、" +
+            "或者别人用同一个 id 重新上传，都会通过这一条。",
+        mirrorWarnRisk:
+            "插件是能读写你整个库的代码。确认之后，下载与更新检查都会改走镜像；" +
+            "如果镜像不是原作者维护的，你不只是在换个下载源，而是在换一个信任对象。",
+        mirrorWarnHowTo:
+            "核对方式：打开镜像仓库，看它的作者、主页或 README 是否指向源仓库；" +
+            "两边的最新版本号也不该差太多。拿不准就别改 —— 保持现状不影响任何功能。",
+        mirrorConfirmUse: (host: string) => `改用 ${host} 镜像`,
+        mirrorConfirmKeep: "保持现状",
+        mirrorConfirmTooltip: "确认镜像来源",
+        mirrorConfirmed: (host: string, repo: string) =>
+            `已改用 ${host} 镜像 ${repo}，下次更新从它下载`,
+        mirrorDismissed: (repo: string) => `已忽略镜像提议 ${repo}`,
+        /** 「添加插件仓库」弹窗里的镜像开关。默认不勾 —— 采用镜像必须由用户明示。 */
+        mirrorToggleDesc:
+            "勾选后改用它下载。判据只是两边 manifest 的 id 相同，不能证明是同一份代码 —— 确认这个地址可信再勾。",
         /**
          * 错误文案。
          *

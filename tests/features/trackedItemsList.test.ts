@@ -42,6 +42,7 @@ function render(
         checker: {} as UpdateChecker,
         getTracked: () => tracked,
         getUpdateFor: (key) => updates[key],
+        getMirrorSuggestion: () => undefined,
         refresh: () => undefined,
     });
 
@@ -92,6 +93,7 @@ function renderWith(
         checker: {} as UpdateChecker,
         getTracked: () => tracked,
         getUpdateFor: () => undefined,
+        getMirrorSuggestion: () => undefined,
         refresh: () => undefined,
     });
     return { rows: createdSettings.filter((setting) => setting.name !== "") };
@@ -333,5 +335,63 @@ describe("完成提示里的来源", () => {
         await clickIcon(rows[0]!, "download");
 
         expect(notices).toEqual([zhCN.installer.updated("Minimal", "2.0.0", "GitHub")]);
+    });
+});
+
+/**
+ * 「疑似镜像」在列表里的样子。
+ *
+ * 这一行与上面那行「已在使用」的镜像文案**长得像、含义相反**（一个是已经在走、
+ * 一个是还没走），所以两条都要钉：措辞不同（「尚未使用，待确认」），
+ * 并且**只有存在提议时才多出那个确认按钮** —— 正常行仍然是六个按钮。
+ */
+describe("疑似镜像的提议", () => {
+    function renderWithSuggestion(
+        suggestion: { host: "github" | "gitee"; owner: string; repo: string } | undefined
+    ): Setting[] {
+        const container = document.createElement("div") as HTMLElement;
+        renderTrackedItems(container, {
+            app: {} as App,
+            t: zhCN,
+            service: {} as InstallerService,
+            checker: {} as UpdateChecker,
+            getTracked: () => [plugin()],
+            getUpdateFor: () => undefined,
+            getMirrorSuggestion: () => suggestion,
+            refresh: () => undefined,
+        });
+        return createdSettings.filter((setting) => setting.name !== "");
+    }
+
+    const SUGGESTION = { host: "gitee", owner: "sofqi", repo: "MDRazor" } as const;
+
+    it("地址列出来，并说明**尚未使用**", () => {
+        const rows = renderWithSuggestion(SUGGESTION);
+
+        const lines = extraLines(rows[0]!);
+        expect(lines).toHaveLength(1);
+        expect(lines[0]).toBe(zhCN.installer.mirrorSuggestionLine("Gitee", "sofqi/MDRazor"));
+        expect(lines[0]).toContain("尚未使用");
+    });
+
+    it("多出「确认镜像来源」按钮（图标 git-compare）", () => {
+        const rows = renderWithSuggestion(SUGGESTION);
+
+        expect(rows[0]!.buttons.map((button) => button.icon)).toEqual([
+            "search",
+            "download",
+            "refresh-cw",
+            "unlock",
+            "external-link",
+            "git-compare",
+            "unlink",
+        ]);
+    });
+
+    it("没有提议时不多这个按钮（正常行仍是六个）", () => {
+        const rows = renderWithSuggestion(undefined);
+
+        expect(rows[0]!.buttons).toHaveLength(6);
+        expect(extraLines(rows[0]!)).toEqual([]);
     });
 });

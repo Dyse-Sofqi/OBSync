@@ -2,6 +2,7 @@ import { isSameRepo } from "../host/repoRef";
 import { SUPPORTED_HOSTS, type HostKind, type RepoRef } from "../host/types";
 import {
     TRACKED_KINDS,
+    itemRepoRef,
     type InstallChannel,
     type TrackedItem,
     type TrackedKind,
@@ -70,6 +71,18 @@ export interface InstallerSettings {
      * 且启动时的自动检查也能写入。更新成功后由 recordInstalled 清除。
      */
     availableUpdates: Record<string, { latestVersion: string; checkedAt: number }>;
+    /**
+     * **待用户确认**的疑似 Gitee 镜像（键同 `availableUpdates`：`<kind>:<id>`）。
+     *
+     * 镜像发现**从不自动采用**一个镜像：它只把「疑似镜像」记在这里，由用户在界面上
+     * 确认（`InstallerService.confirmMirror`）之后才改写记录、把下载与更新检查切过去。
+     *
+     * 为什么值得多这一层：判据只是「两边 manifest 的 `id` 相同」，那只证明**是同一个
+     * 插件**，不证明是同一份代码、同一个作者、同一个新鲜度 —— fork、或者别人用同一个
+     * `id` 重新上传都能通过，而插件是能读写整个库的代码。地址又常常来自「猜 owner」，
+     * 所以这一步必须由人拍板。
+     */
+    mirrorSuggestions: Record<string, RepoRef>;
 }
 
 export interface SyncSettings {
@@ -133,6 +146,7 @@ export const DEFAULT_SETTINGS: ObsyncSettings = {
         pendingRestartVersion: "",
         tracked: [],
         availableUpdates: {},
+        mirrorSuggestions: {},
     },
     sync: {
         enabled: true,
@@ -277,6 +291,13 @@ export function normalizeSettings(loaded: unknown): ObsyncSettings {
     // 可更新记录同理：逐条校验，并剪掉已不在跟踪列表里的条目。
     merged.installer.availableUpdates = sanitizeAvailableUpdates(
         merged.installer.availableUpdates,
+        merged.installer.tracked
+    );
+
+    // 待确认的镜像提议同上一行：值要逐条校验（`data.json` 可以手改），
+    // 键也要剪掉已不跟踪的条目（否则列表里会留下一条没有对应行的提议）。
+    merged.installer.mirrorSuggestions = sanitizeMirrorSuggestions(
+        merged.installer.mirrorSuggestions,
         merged.installer.tracked
     );
 
@@ -514,6 +535,35 @@ function sanitizeAvailableUpdates(
         if (typeof entry.latestVersion !== "string" || !entry.latestVersion) continue;
         if (typeof entry.checkedAt !== "number" || !Number.isFinite(entry.checkedAt)) continue;
         result[key] = { latestVersion: entry.latestVersion, checkedAt: entry.checkedAt };
+    }
+
+    return result;
+}
+
+/**
+ * 校验「待确认的疑似镜像」记录：值逐条校验，键不在跟踪列表里的剪掉。
+ *
+ * 与 `sanitizeAvailableUpdates` 同一套取舍，但多一条**自洽性**检查：
+ * 提议的地址不能与记录当前用的地址相同（那说明它早就被采用了，留着这条提议
+ * 只会在列表上挂一句「疑似镜像」而地址和上面那行一模一样）。
+ */
+function sanitizeMirrorSuggestions(
+    value: unknown,
+    tracked: TrackedItem[]
+): Record<string, RepoRef> {
+    if (!isPlainObject(value)) return {};
+
+    const primary = new Map(tracked.map((item) => [availableUpdateKey(item), itemRepoRef(item)]));
+    const result: Record<string, RepoRef> = {};
+
+    for (const [key, entry] of Object.entries(value)) {
+        const current = primary.get(key);
+        if (!current) continue;
+
+        const suggestion = sanitizeOrigin(entry, current);
+        // sanitizeOrigin 已经把「坏值」与「与主来源相同」两种情况都判成 undefined，
+        // 正好是这里要的两条规则。
+        if (suggestion) result[key] = suggestion;
     }
 
     return result;

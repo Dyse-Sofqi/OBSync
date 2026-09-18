@@ -229,6 +229,13 @@ export interface InstallResult {
      * 与 `TrackedItem.origin` 是同一件事。
      */
     origin?: RepoRef;
+    /**
+     * **疑似镜像**：通过了 manifest `id` 校验、但**没有被采用**的候选
+     * （采用与否由用户确认，见 `InstallerService.confirmMirror`）。
+     *
+     * 调用方拿它提示「发现疑似镜像，去列表里确认」，不要自己切过去。
+     */
+    mirror?: RepoRef;
 }
 
 /** 主题更新的结果。 */

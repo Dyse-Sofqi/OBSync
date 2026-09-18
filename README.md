@@ -99,10 +99,12 @@ Chinese-first UI with an equal English one.
   取消绑定（**只移出列表，不删任何文件**）
 - **绑定库里已装的插件与主题** —— 扫描插件目录与主题目录，按 manifest id / 主题目录名反查官方社区索引，
   一次性纳入跟踪；来源识别不出来的主题可以手填仓库地址
-- **Gitee 镜像发现**（默认关闭）—— 探测 Gitee 上的镜像并用两边 manifest 的 `id` 二次校验
-  （同名不同项目会装错，宁可不用）；命中后跟踪列表会**同时显示源仓库与镜像**，
-  每次下载完成的提示也会报来源。候选仓库有两个：**同名仓库**，以及**你 Gitee 账号下的同名仓库**
-  （镜像常挂在作者自己的 Gitee 账号下、名字与 GitHub 不同；这一条需要先填 Gitee 令牌）
+- **Gitee 镜像发现**（默认关闭，且**必须由你确认才会采用**）—— 探测 Gitee 上的镜像，
+  用两边 manifest 的 `id` 二次校验（同名不同项目会装错，宁可不用）。候选仓库有两个：
+  **同名仓库**，以及**你 Gitee 账号下的同名仓库**（镜像常挂在作者自己的 Gitee 账号下、
+  名字与 GitHub 不同；这一条需要先填 Gitee 令牌）。命中只算**提议**：列表里把两个地址
+  列出来，点确认、看过那段警示（判据只有 `id` 相同，证明不了是同一份代码）之后才改用镜像，
+  之后每次下载完成的提示也会报来源
 - **OBSync 自身更新** —— 设置页「OBSync 自身」一节：检查更新、更新（写新版本文件，重启 Obsidian 生效）
 
 #### 🔐 平台与体验
@@ -287,11 +289,12 @@ Needs the system `git` binary, so it is **desktop-only** (Windows / macOS / Linu
   open repo page, unbind (**removes the entry only, deletes no files**)
 - **Adopt installed plugins and themes** — scans the plugin and theme folders and resolves their source
   repositories through the official community index; themes that cannot be resolved can be bound by URL
-- **Gitee mirror discovery** (off by default) — probes for a Gitee mirror when installing from GitHub and
-  verifies it by comparing manifest `id`s; when it hits, the tracked list shows **both the source repo and
-  the mirror**, and every download reports where it came from. Two candidates are probed: a **same-named
-  repository**, and a **same-named repository under your own Gitee account** (mirrors often live on the
-  author's Gitee account under a different name — this one needs a Gitee token)
+- **Gitee mirror discovery** (off by default, and **never adopted without your confirmation**) — probes for
+  a Gitee mirror when installing from GitHub and verifies it by comparing manifest `id`s. Two candidates are
+  probed: a **same-named repository**, and a **same-named repository under your own Gitee account** (mirrors
+  often live on the author's Gitee account under a different name — this one needs a Gitee token). A hit is
+  only a **proposal**: the tracked list lists both addresses, and the switch happens after you confirm it and
+  read the warning (the `id` match proves the same plugin, not the same code). Downloads then report their source
 - **Self-update** — check and apply new versions of OBSync itself (restart required)
 
 #### 🔐 Platform and UX

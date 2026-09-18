@@ -2,6 +2,7 @@ import { Modal, Setting, type App, type ButtonComponent } from "obsidian";
 import type { LocaleStrings } from "../../../core/i18n";
 import { logger } from "../../../core/logger";
 import { formatRepoId } from "../../../host/repoRef";
+import type { RepoRef } from "../../../host/types";
 import type { CommunityPluginIndex } from "../communityPlugins";
 import { downloadSourceLabel, hostLabel } from "../downloadSource";
 import type { InstallerService, ResolvedRepo, VersionOption } from "../installerService";
@@ -23,6 +24,12 @@ export class AddRepoModal extends Modal {
     private repoInput = "";
     private version = "latest";
     private enableAfterInstall = true;
+    /**
+     * 是否采用探测到的镜像。**默认不采用** —— 镜像发现只是提出候选，
+     * 采用要用户明示（理由见 `ConfirmMirrorModal` 里那段警告与
+     * `installer.mirrorSuggestions` 的注释）。
+     */
+    private useMirror = false;
 
     private resolved: ResolvedRepo | undefined;
     private versions: VersionOption[] = [];
@@ -113,25 +120,54 @@ export class AddRepoModal extends Modal {
         if (this.resolved) this.renderResolved(contentEl);
     }
 
+    /** 这次安装实际会用的地址：勾了镜像才是镜像。 */
+    private targetRef(): RepoRef {
+        const resolved = this.resolved!;
+        return this.useMirror && resolved.mirror ? resolved.mirror : resolved.ref;
+    }
+
     private renderResolved(contentEl: HTMLElement): void {
         const t = this.t;
         const resolved = this.resolved!;
+        const target = this.targetRef();
 
         contentEl.createEl("p", {
-            text: t.installer.resolved(
-                hostLabel(t, resolved.ref.host),
-                formatRepoId(resolved.ref)
-            ),
+            text: t.installer.resolved(hostLabel(t, target.host), formatRepoId(target)),
             cls: "obsync-modal-status",
         });
 
-        if (resolved.origin) {
-            // 「已识别为」那行报的是**实际会用**的地址（镜像），这条再点明它是镜像 ——
-            // 只显示前者的话，用户看着自己输入的 GitHub 地址变成了 Gitee，不知道发生了什么。
-            contentEl.createEl("p", {
-                text: t.installer.mirrorFound(formatRepoId(resolved.ref)),
-                cls: "obsync-modal-status",
-            });
+        // 探测到镜像时**只提出候选**：勾选之前一直用源仓库。开关放这里而不是
+        // 自动采用，是因为判据（两边 manifest 的 id 相同）证明不了「同一份代码」——
+        // 详见 `ConfirmMirrorModal` 里那段警告。
+        if (resolved.mirror) {
+            const mirror = resolved.mirror;
+            new Setting(contentEl)
+                .setName(
+                    t.installer.mirrorConfirmCandidate(
+                        hostLabel(t, mirror.host),
+                        formatRepoId(mirror)
+                    )
+                )
+                .setDesc(t.installer.mirrorToggleDesc)
+                .addToggle((toggle) =>
+                    toggle.setValue(this.useMirror).onChange((value) => {
+                        this.useMirror = value;
+                        // 上面那行「已识别为」要跟着变 —— 它才是安装真正用的地址。
+                        this.render();
+                    })
+                );
+
+            // 检测到但**不采用**时，也必须把「检测到了什么」说出来，
+            // 否则用户以为没探测到（这正是这一整块要修的那个体验问题）。
+            if (!this.useMirror) {
+                contentEl.createEl("p", {
+                    text: t.installer.mirrorUnused(
+                        hostLabel(t, mirror.host),
+                        formatRepoId(mirror)
+                    ),
+                    cls: "obsync-modal-warning",
+                });
+            }
         }
 
         new Setting(contentEl)
@@ -196,6 +232,8 @@ export class AddRepoModal extends Modal {
 
         this.busy = "resolving";
         this.versionError = undefined;
+        // 换了地址就是另一件事了，上一次的镜像勾选作废（新候选必须重新确认）。
+        this.useMirror = false;
         this.render();
 
         try {
@@ -252,15 +290,18 @@ export class AddRepoModal extends Modal {
         this.render();
 
         try {
+            const target = this.targetRef();
+            const usingMirror = target !== this.resolved.ref;
             const result = await this.service.install({
-                repo: formatRepoId(this.resolved.ref),
+                repo: formatRepoId(target),
                 version: this.version,
                 enableAfterInstall: this.enableAfterInstall,
                 // 已经在 resolveRepo 阶段做过镜像发现，这里不要重复做。
                 allowMirror: false,
-                defaultHost: this.resolved.ref.host,
-                // 源地址只能由这里交出去 —— 上面那行的 `repo` 已经是镜像地址了。
-                origin: this.resolved.origin,
+                defaultHost: target.host,
+                // 源地址只能由这里交出去 —— 用镜像时 `repo` 已经是镜像地址了，
+                // 用户填的那个地址没有别的地方可放（列表要同时显示两个地址）。
+                origin: usingMirror ? this.resolved.ref : undefined,
             });
 
             // 两条都报来源：用户看不出「没走镜像」与「没探测镜像」的区别，
