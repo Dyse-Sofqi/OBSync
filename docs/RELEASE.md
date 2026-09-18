@@ -200,6 +200,47 @@ for f in main.js manifest.json styles.css; do
 done
 ```
 
+### Gitee 镜像（`sofqi/OBSync`）：代码与标签会自动同步，**release 不会**
+
+Gitee 那边开了 GitHub 同步镜像，所以**提交与标签会自己过来**
+（实测：`git ls-remote --tags gitee` 里已经有 `0.1.1`，而本地其实从没建过这个 tag），
+但 **release 与附件不会同步** —— 每次发版要手动建一次。
+
+```bash
+# 仓库已经加好了（URL 里不带凭据，凭据只在下面那一次命令里现给）
+git remote -v | grep gitee      # → https://gitee.com/sofqi/OBSync.git
+```
+
+⚠ **Gitee 的「创建发行版」接口没有 `files` 参数**：传 `-F files=@main.js` 会被**静默忽略**
+（返回 201、release 建出来了，附件一个都没有）。附件是**独立接口，且一次只能传一个**。
+
+```bash
+export GITEE_TOKEN="<私人令牌>"      # ⚠ 账号密码走不通：API 基本认证一律 401，必须是 PAT
+Q="access_token=$GITEE_TOKEN"
+API=https://gitee.com/api/v5/repos/sofqi/OBSync
+
+curl -s -X POST "$API/releases" \
+  -F "$Q" -F "tag_name=X.Y.Z" -F "name=X.Y.Z" -F "target_commitish=main" \
+  -F "prerelease=false" -F "body=<发布说明.md"
+
+REL=$(curl -s "$API/releases/tags/X.Y.Z?$Q" | jq .id)
+for f in main.js manifest.json styles.css; do
+  curl -s -X POST "$API/releases/$REL/attach_files" -F "$Q" -F "file=@$f"
+done
+
+# 核对（Gitee 的下载地址**能直连**，不像 github.com 那样被时段性阻断）
+curl -s "$API/releases/$REL/attach_files?$Q" | jq -r '.[] | .browser_download_url'
+```
+
+⚠ **令牌不落盘**：别写进 remote URL（会进 `.git/config`，而 `git remote -v` 一眼就能看到 ——
+这个项目自己论证过这条），也别设成全局 `credential.helper`。推代码用一次性的：
+
+```bash
+git -c credential.helper= \
+    -c 'credential.helper=!f() { echo username=sofqi; echo password="$GITEE_TOKEN"; }; f' \
+    push gitee main
+```
+
 ---
 
 ## 五、校验上传结果
