@@ -110,6 +110,36 @@ git -c credential.helper= \
 ⚠ **`gh auth status` 不可信** —— 它常报「未登录」，但 `gh auth token` 其实能返回有效令牌。
 判断有无凭据一律以 `gh auth token` 为准。
 
+### 当 `github.com:443` 被阻断时：走 api.github.com 推分支
+
+**实测（2026-09-18 发 0.1.1 时）**：`github.com` 整站连不上（`curl` 直接
+`000` / git 报 `OpenSSL SSL_read: Connection was reset`），而 **`api.github.com`
+一直通**（同一时刻 0.7 秒 200）。这时 `git push` 一条路都走不通，但 Git Data API
+能把同一件事做完：blob → tree → commit → 更新 ref。
+
+```bash
+export GH_TOKEN="$(gh auth token)"
+
+# 只推「当前 HEAD 这一个提交」（远端已有它的父提交时用这个）
+node scripts/api-push.mjs Dyse-Sofqi/OBSync main "$(git rev-parse HEAD)"
+
+# 远端落后很多、要把整段历史都推上去时用这个（逐个提交重放）
+node scripts/api-replay.mjs Dyse-Sofqi/OBSync <远端当前 sha> "$(git rev-parse HEAD)"
+```
+
+两个脚本的共同点：**author / committer（含时区）/ message 全部照抄本地提交**，
+并且每个提交的 tree 按 `git ls-tree -r` 完整重建 —— 于是**连 commit SHA 都逐字节相同**
+（实测 49 个提交全部 `SHA 一致`），远端历史与本地严格一致，将来 `git push` 是空操作。
+脚本在写每个 blob / tree 后都会拿服务端返回的 sha 与本地比对，对不上就立刻失败。
+
+⚠ **不要用「只推一个合并后的提交」的偷懒办法**：远端落后很多时那等于把整段开发
+历史压成一条，提交信息全丢，而且本地与远端从此分叉（内容相同、历史不同，
+下次 `git push` 会被拒，pull 又会造出一个重复内容的合并提交）。
+
+⚠ **这台机器到 `api.github.com` 的连接也是间歇性的**：同一个脚本上一次 136 个 blob
+全成、下一次第一个请求就 `Connect Timeout`。所以脚本里**每个请求都有重试**
+（最多 5~6 次、退避 3s 起）；手写 curl 时请自带重试。
+
 ---
 
 ## 四、建 Release 与上传资产
@@ -154,6 +184,21 @@ gh release upload X.Y.Z main.js manifest.json styles.css
 ⚠ **必须用 `gh release upload`，不要用 `gh api --hostname uploads.github.com`** ——
 `gh api` 会在 hostname 前再拼一个 `api.`，请求打到 `api.uploads.github.com`，
 全部返回 `Bad Gateway`。重传同名资产加 `--clobber`。
+
+**`github.com` 被阻断时也能传**（`uploads.github.com` 与 `api.github.com` 是另外的
+主机名，实测仍然通）—— 直接 REST 上传，`curl` 自带重试更省事：
+
+```bash
+export GH_TOKEN="$(gh auth token)"
+REL=$(gh api repos/Dyse-Sofqi/OBSync/releases/tags/X.Y.Z --jq .id)
+for f in main.js manifest.json styles.css; do
+  curl --retry 5 --retry-all-errors -X POST \
+    -H "Authorization: Bearer $GH_TOKEN" \
+    -H "Content-Type: application/octet-stream" \
+    --data-binary "@$f" \
+    "https://uploads.github.com/repos/Dyse-Sofqi/OBSync/releases/$REL/assets?name=$f"
+done
+```
 
 ---
 
