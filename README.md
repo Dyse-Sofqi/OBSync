@@ -162,6 +162,11 @@ Chinese-first UI with an equal English one.
 2. 放进 `<你的库>/.obsidian/plugins/obsync/`
 3. 在 Obsidian 的「第三方插件」里启用 OBSync
 
+两个发布地址（内容一致，选连得上的那个）：
+
+- GitHub：[Dyse-Sofqi/OBSync/releases](https://github.com/Dyse-Sofqi/OBSync/releases)
+- Gitee 镜像：[sofqi/OBSync/releases](https://gitee.com/sofqi/OBSync/releases)（国内直连更快）
+
 **平台要求**：笔记同步依赖系统 git，**仅桌面端可用**；插件安装是纯网络操作，移动端也能用。
 
 ### 为什么又做一个
@@ -316,6 +321,11 @@ Not in the community plugin list yet. Manual install:
 1. Download `main.js`, `manifest.json` and `styles.css`
 2. Put them in `<your vault>/.obsidian/plugins/obsync/`
 3. Enable OBSync under Community plugins
+
+Two release locations (same artifacts — use whichever is reachable):
+
+- GitHub: [Dyse-Sofqi/OBSync/releases](https://github.com/Dyse-Sofqi/OBSync/releases)
+- Gitee mirror: [sofqi/OBSync/releases](https://gitee.com/sofqi/OBSync/releases)
 
 Vault sync needs the system `git` binary and is **desktop-only**; plugin installation works on mobile.
 
