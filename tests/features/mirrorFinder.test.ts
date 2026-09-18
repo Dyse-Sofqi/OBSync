@@ -49,7 +49,7 @@ afterEach(() => {
 
 describe("findGiteeMirror", () => {
     it("Gitee 有同名仓库且 manifest id 一致时命中", async () => {
-        const mirror = await findGiteeMirror({ host: "github", owner: "owner", repo: "demo" });
+        const mirror = await findGiteeMirror({ host: "github", owner: "owner", repo: "demo" }, undefined, ["owner"]);
         expect(mirror).toEqual({ host: "gitee", owner: "owner", repo: "demo" });
     });
 
@@ -62,7 +62,7 @@ describe("findGiteeMirror", () => {
             return { status: 404, text: "not found" };
         });
 
-        const mirror = await findGiteeMirror({ host: "github", owner: "owner", repo: "demo" });
+        const mirror = await findGiteeMirror({ host: "github", owner: "owner", repo: "demo" }, undefined, ["owner"]);
         expect(mirror).toBeUndefined();
     });
 
@@ -74,7 +74,7 @@ describe("findGiteeMirror", () => {
             return { status: 200, text: GITEE_DIFFERENT_ID };
         });
 
-        const mirror = await findGiteeMirror({ host: "github", owner: "owner", repo: "demo" });
+        const mirror = await findGiteeMirror({ host: "github", owner: "owner", repo: "demo" }, undefined, ["owner"]);
         expect(mirror).toBeUndefined();
     });
 
@@ -87,7 +87,7 @@ describe("findGiteeMirror", () => {
             return { status: 200, text: "<html>这不是插件</html>" };
         });
 
-        const mirror = await findGiteeMirror({ host: "github", owner: "owner", repo: "demo" });
+        const mirror = await findGiteeMirror({ host: "github", owner: "owner", repo: "demo" }, undefined, ["owner"]);
         expect(mirror).toBeUndefined();
     });
 
@@ -101,7 +101,78 @@ describe("findGiteeMirror", () => {
             return { status: 200, text: GITEE_SAME_ID };
         });
 
-        const mirror = await findGiteeMirror({ host: "github", owner: "owner", repo: "demo" });
+        const mirror = await findGiteeMirror(
+            { host: "github", owner: "owner", repo: "demo" },
+            undefined,
+            ["owner"]
+        );
+        expect(mirror).toBeUndefined();
+    });
+});
+
+/**
+ * **镜像挂在别的账号下** —— 这条是真实踩到的，不是设想出来的。
+ *
+ * 实测：`github.com/Dyse-Sofqi/MDRazor` 的镜像是 `gitee.com/sofqi/MDRazor`
+ * （作者自己的 Gitee 账号，名字与 GitHub 上的 owner 不同）。只探同名 owner 的
+ * 旧实现永远发现不了它 —— 用户看到的是「明明有镜像，却一直走 GitHub」，
+ * 而 GitHub 不通时（实测 `net::ERR_CONNECTION_RESET`）就只能降级到源码通道。
+ */
+describe("findGiteeMirror · 候选 owner", () => {
+    /** 同名 owner 在 Gitee 上不存在，镜像在 `sofqi` 名下（就是实测的那个形状）。 */
+    const route = (url: string): { status: number; text: string } => {
+        if (/raw\.githubusercontent\.com\/dyse-sofqi\/MDRazor\/HEAD\/manifest\.json$/.test(url)) {
+            return { status: 200, text: GITHUB_MANIFEST };
+        }
+        if (/gitee\.com\/sofqi\/MDRazor\/raw\/HEAD\/manifest\.json$/.test(url)) {
+            return { status: 200, text: GITEE_SAME_ID };
+        }
+        if (/gitee\.com\/dyse-sofqi\/MDRazor\/raw\/HEAD\/manifest\.json$/.test(url)) {
+            return { status: 404, text: "not found" };
+        }
+        throw new Error(`no route for ${url}`);
+    };
+    beforeEach(() => {
+        __setRequestUrlHandler(async (request) => route(request.url));
+    });
+
+    it("同名探不到、Gitee 账号名能探到时命中后者", async () => {
+        const mirror = await findGiteeMirror(
+            { host: "github", owner: "dyse-sofqi", repo: "MDRazor" },
+            undefined,
+            ["dyse-sofqi", "sofqi"]
+        );
+
+        expect(mirror).toEqual({ host: "gitee", owner: "sofqi", repo: "MDRazor" });
+    });
+
+    it("同名 owner 命中时**不**再探后面的候选（顺序即优先：同名最可信）", async () => {
+        const probed: string[] = [];
+        __setRequestUrlHandler(async (request) => {
+            if (request.url.includes("gitee.com")) probed.push(request.url);
+            if (/gitee\.com\/dyse-sofqi\//.test(request.url)) {
+                return { status: 200, text: GITEE_SAME_ID };
+            }
+            return route(request.url);
+        });
+
+        const mirror = await findGiteeMirror(
+            { host: "github", owner: "dyse-sofqi", repo: "MDRazor" },
+            undefined,
+            ["dyse-sofqi", "sofqi"]
+        );
+
+        expect(mirror).toEqual({ host: "gitee", owner: "dyse-sofqi", repo: "MDRazor" });
+        expect(probed).toHaveLength(1);
+    });
+
+    it("候选里没有那个账号时仍然找不到（不能靠猜）", async () => {
+        const mirror = await findGiteeMirror(
+            { host: "github", owner: "dyse-sofqi", repo: "MDRazor" },
+            undefined,
+            ["dyse-sofqi"]
+        );
+
         expect(mirror).toBeUndefined();
     });
 });

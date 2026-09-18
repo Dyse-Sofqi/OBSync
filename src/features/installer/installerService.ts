@@ -140,6 +140,12 @@ interface FetchedItem<M, N extends string> {
 }
 
 export class InstallerService {
+    /**
+     * 解析出来的 Gitee 账号名（镜像探测的第二个候选 owner）。
+     * 只缓存**成功**的结果，理由见 `giteeAccountName`。
+     */
+    private giteeAccount: string | undefined;
+
     constructor(readonly deps: InstallerHost) {}
 
     private get app(): App {
@@ -201,7 +207,11 @@ export class InstallerService {
         }
 
         try {
-            const mirror = await findGiteeMirror(ref, this.tokenFor("github"));
+            const mirror = await findGiteeMirror(
+                ref,
+                this.tokenFor("github"),
+                await this.mirrorOwnerCandidates(ref)
+            );
             if (mirror) {
                 logger.info(`using Gitee mirror ${formatRepoId(mirror)} for ${formatRepoId(ref)}`);
                 return { ref: mirror, origin: ref };
@@ -212,6 +222,41 @@ export class InstallerService {
         }
 
         return { ref };
+    }
+
+    /**
+     * 镜像探测的候选 owner（按可信度排序）。
+     *
+     * 第二个候选是**配置的 Gitee 账号名**：作者常把仓库镜像到自己的 Gitee 账号下，
+     * 而那个账号名与 GitHub 上的 owner 往往不同名（实测 `Dyse-Sofqi` ↔ `sofqi`）。
+     * 没有令牌时拿不到账号名，那就只探同名那一个。
+     */
+    private async mirrorOwnerCandidates(ref: RepoRef): Promise<string[]> {
+        const owners = [ref.owner];
+        const account = await this.giteeAccountName();
+        if (account && account.toLowerCase() !== ref.owner.toLowerCase()) owners.push(account);
+        return owners;
+    }
+
+    /**
+     * 用配置的 Gitee 令牌解析账号名（`GET /v5/user`）。
+     *
+     * **只在成功时缓存**：失败（或还没填令牌）不缓存 —— 这样用户在同一个会话里
+     * 补上令牌之后，下一次探测就能用上，不必重启 Obsidian。
+     */
+    private async giteeAccountName(): Promise<string | undefined> {
+        if (this.giteeAccount) return this.giteeAccount;
+        const token = this.tokenFor("gitee");
+        if (!token) return undefined;
+        try {
+            const info = await getHost("gitee").validateToken(token);
+            if (!info.valid || !info.account) return undefined;
+            this.giteeAccount = info.account;
+            return this.giteeAccount;
+        } catch (err) {
+            logger.debug("could not resolve the Gitee account name", err);
+            return undefined;
+        }
     }
 
     /** 列出可安装的版本，供版本选择弹窗使用。 */

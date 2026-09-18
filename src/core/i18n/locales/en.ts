@@ -115,7 +115,7 @@ export const en = {
             selfDesc:
                 "Update OBSync itself. Only the new files are written; the running plugin is not reloaded — the new version takes effect after you restart Obsidian.",
             mirrorDiscovery: "Discover Gitee mirrors",
-            mirrorDiscoveryDesc: "When installing a GitHub plugin, look for a same-named Gitee mirror first and download from it instead (faster in mainland China).",
+            mirrorDiscoveryDesc: "When installing a GitHub plugin, look for a Gitee mirror first: a same-named repository, or a same-named repository under your own Gitee account (the latter needs a Gitee token). Downloads then use the mirror — faster in mainland China.",
         },
 
         sync: {

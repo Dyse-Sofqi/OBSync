@@ -41,41 +41,51 @@ function readManifestId(raw: string | undefined, context: string): string | unde
 /**
  * 探测 `owner/repo` 在 Gitee 上是否存在内容等价的镜像。
  *
- * @returns 命中且 `id` 一致时返回 Gitee 仓库引用，否则 undefined。
+ * ## 候选 owner 不止一个
+ *
+ * 镜像**常常挂在作者自己的 Gitee 账号下，而那个账号名与 GitHub 上的 owner
+ * 不一样**（实测：`github.com/Dyse-Sofqi/MDRazor` 的镜像在
+ * `gitee.com/sofqi/MDRazor`）。只探同名 owner 会漏掉这类镜像 ——
+ * 用户那边看到的是「明明有镜像，却一直走 GitHub」，GitHub 不通时就只能降级报错。
+ * 所以候选由调用方给出并**按可信度排序**：先同名（最可信），再 Gitee 账号名。
+ *
+ * @param candidateOwners 候选 owner，按顺序探测，命中即返回
+ * @returns 命中且 `id` 一致时返回 Gitee 仓库引用，否则 undefined
  */
 export async function findGiteeMirror(
     githubRef: RepoRef,
-    githubToken?: string
+    githubToken: string | undefined,
+    candidateOwners: readonly string[]
 ): Promise<RepoRef | undefined> {
-    const candidate: RepoRef = {
-        host: "gitee",
-        owner: githubRef.owner,
-        repo: githubRef.repo,
-    };
-
-    const [githubManifest, giteeManifest] = await Promise.all([
-        getHost("github").readFile(githubRef, "manifest.json", { token: githubToken }),
-        // 刻意不传令牌：镜像探测是「试试看」，不该因为令牌问题抛错，
-        // 也不该把私有仓库的凭据发到另一个平台。
-        getHost("gitee").readFile(candidate, "manifest.json"),
-    ]);
-
-    if (!giteeManifest) return undefined;
-
-    const giteeId = readManifestId(giteeManifest, formatRepoId(candidate));
-    if (!giteeId) return undefined;
-
-    // 拿不到源 manifest 就无法校验。宁可不切镜像，也不冒装错的风险。
+    // 源 manifest 必须先拿到：**它是唯一的校验依据**，拿不到就宁可不切镜像
+    // （放在探测之前，顺便省掉「反正也验不了」的那些请求）。
+    const githubManifest = await getHost("github").readFile(githubRef, "manifest.json", {
+        token: githubToken,
+    });
     const githubId = readManifestId(githubManifest, formatRepoId(githubRef));
     if (!githubId) return undefined;
 
-    if (githubId !== giteeId) {
-        logger.debug(
-            `Gitee repo ${formatRepoId(candidate)} exists but is a different plugin ` +
-                `(id "${giteeId}" vs "${githubId}") — ignoring`
-        );
-        return undefined;
+    for (const owner of candidateOwners) {
+        const candidate: RepoRef = { host: "gitee", owner, repo: githubRef.repo };
+
+        // 刻意不传令牌：镜像探测是「试试看」，不该因为令牌问题抛错，
+        // 也不该把私有仓库的凭据发到另一个平台。
+        const giteeManifest = await getHost("gitee").readFile(candidate, "manifest.json");
+        if (!giteeManifest) continue;
+
+        const giteeId = readManifestId(giteeManifest, formatRepoId(candidate));
+        if (!giteeId) continue;
+
+        if (giteeId !== githubId) {
+            logger.debug(
+                `Gitee repo ${formatRepoId(candidate)} exists but is a different plugin ` +
+                    `(id "${giteeId}" vs "${githubId}") — ignoring`
+            );
+            continue;
+        }
+
+        return candidate;
     }
 
-    return candidate;
+    return undefined;
 }

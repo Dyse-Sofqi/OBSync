@@ -89,15 +89,16 @@ afterEach(() => {
 function createService(fake: FakeApp, discoverGiteeMirrors: boolean) {
     const settings: ObsyncSettings = normalizeSettings({});
     settings.installer.discoverGiteeMirrors = discoverGiteeMirrors;
+    const secretStore = new SecretStore(fake.app);
     const host: InstallerHost = {
         app: fake.app,
         notifier: new Notifier({ getShowNotices: () => true, getT: () => zhCN }),
-        secretStore: new SecretStore(fake.app),
+        secretStore,
         getSettings: () => settings,
         getT: () => zhCN,
         saveSettings: async () => undefined,
     };
-    return { service: new InstallerService(host), settings };
+    return { service: new InstallerService(host), settings, secretStore };
 }
 
 /** 源仓库的两个通道（GitHub raw）。 */
@@ -291,8 +292,7 @@ describe("自动发现 Gitee 镜像之后，两个地址都要留在记录里", 
     });
 });
 
-describe("resolveRepo 的返回", () => {
-    it("命中镜像时同时给出两个地址，`ref` 是实际要用的那个", async () => {
+describe("resolveRepo 的返回", () => {    it("命中镜像时同时给出两个地址，`ref` 是实际要用的那个", async () => {
         const fake = createFakeApp();
         const { service } = createService(fake, true);
         routeGitHubSource();
@@ -313,5 +313,118 @@ describe("resolveRepo 的返回", () => {
 
         expect(resolved.ref).toEqual(GITHUB);
         expect(resolved.origin).toBeUndefined();
+    });
+});
+
+/**
+ * **镜像挂在作者自己的 Gitee 账号下**（owner 与 GitHub 不同名）—— 实测场景。
+ *
+ * 实测：`github.com/Dyse-Sofqi/MDRazor` 的镜像是 `gitee.com/sofqi/MDRazor`。
+ * 旧实现只探「同 owner 同名」，于是永远发现不了它 —— 用户那边表现为
+ * 「明明有镜像，却一直走 GitHub」，而 GitHub 不通时（实测
+ * `net::ERR_CONNECTION_RESET`）只能降级到源码通道并弹一条警告。
+ *
+ * 现在多一个候选：**配置的 Gitee 令牌所属账号名**（`GET /v5/user`）。
+ */
+describe("镜像在别的账号下（owner 不同名）", () => {
+    const GITHUB_REF: RepoRef = { host: "github", owner: "dyse-sofqi", repo: "MDRazor" };
+    const GITEE_ACCOUNT = "sofqi";
+
+    const MAIN_JS = "// main from the author's Gitee account";
+
+    /**
+     * 两条通道都要铺：**有令牌时 Gitee 先走 API raw 端点**，404 才落到网页通道
+     * （见 `giteeHost.readFile`）。同名 owner 那条 Gitee 仓库不存在。
+     */
+    function routeDifferentOwner(): void {
+        route(/^https:\/\/raw\.githubusercontent\.com\/dyse-sofqi\/MDRazor\/HEAD\/manifest\.json$/, () => ({
+            status: 200,
+            text: GITHUB_MANIFEST,
+        }));
+        // 源仓库那条通道（没配令牌时用得上）
+        route(/^https:\/\/raw\.githubusercontent\.com\/dyse-sofqi\/MDRazor\/HEAD\/main\.js$/, () => ({
+            status: 200,
+            text: "// main from github",
+        }));
+        route(/^https:\/\/raw\.githubusercontent\.com\/dyse-sofqi\/MDRazor\/HEAD\/styles\.css$/, () => ({
+            status: 404,
+            text: "not found",
+        }));
+        route(/api\.github\.com\/repos\/dyse-sofqi\/MDRazor\/releases\/latest/, () => ({
+            status: 404,
+            text: '{"message":"Not Found"}',
+        }));
+        route(/api\.github\.com\/repos\/dyse-sofqi\/MDRazor\/releases\?/, () => ({
+            status: 200,
+            text: "[]",
+        }));
+
+        // 令牌 → 账号名（候选 owner 的来源）
+        route(/^https:\/\/gitee\.com\/api\/v5\/user\?/, () => ({
+            status: 200,
+            text: JSON.stringify({ login: GITEE_ACCOUNT }),
+        }));
+        // 镜像仓库：API raw 通道（有令牌时先走这条）
+        route(
+            new RegExp(`gitee\.com/api/v5/repos/${GITEE_ACCOUNT}/MDRazor/raw/manifest\.json`),
+            () => ({ status: 200, text: MIRROR_MANIFEST })
+        );
+        route(
+            new RegExp(`gitee\.com/api/v5/repos/${GITEE_ACCOUNT}/MDRazor/raw/main\.js`),
+            () => ({ status: 200, text: MAIN_JS })
+        );
+        // 镜像仓库：网页 raw 通道（探测本身走这条，匿名）
+        route(new RegExp(`^https://gitee\.com/${GITEE_ACCOUNT}/MDRazor/raw/HEAD/manifest\.json$`), () => ({
+            status: 200,
+            text: MIRROR_MANIFEST,
+        }));
+        // 镜像仓库没有 release（Gitee 上的常态）
+        route(new RegExp(`gitee\.com/api/v5/repos/${GITEE_ACCOUNT}/MDRazor/releases/latest`), () => ({
+            status: 404,
+            text: '{"message":"Not Found"}',
+        }));
+        route(new RegExp(`gitee\.com/api/v5/repos/${GITEE_ACCOUNT}/MDRazor/releases\?`), () => ({
+            status: 200,
+            text: "[]",
+        }));
+
+        // 兜底：Gitee 两条 raw 通道上其余路径一律 404（styles.css 可选、同名 owner 不存在）
+        route(/gitee\.com\/(api\/v5\/repos\/)?(dyse-sofqi|sofqi)\/MDRazor\/raw\//, () => ({
+            status: 404,
+            text: "not found",
+        }));
+    }
+
+    it("用 Gitee 令牌解析账号名当候选，命中后两个地址都记下", async () => {
+        const fake = createFakeApp();
+        const { service, settings, secretStore } = createService(fake, true);
+        secretStore.setToken("gitee", "a-gitee-token");
+        routeDifferentOwner();
+
+        await service.install({ repo: "dyse-sofqi/MDRazor" });
+
+        const record = settings.installer.tracked[0]!;
+        expect({ host: record.host, owner: record.owner, repo: record.repo }).toEqual({
+            host: "gitee",
+            owner: GITEE_ACCOUNT,
+            repo: "MDRazor",
+        });
+        expect(record.origin).toEqual(GITHUB_REF);
+        // 下载走的是镜像那条 raw 通道；GitHub 的 release 通道一次都没碰
+        expect(calls.some((url) => url.includes(`${GITEE_ACCOUNT}/MDRazor/raw/`))).toBe(true);
+        expect(calls.some((url) => url.includes("github.com/repos/"))).toBe(false);
+    });
+
+    it("没配 Gitee 令牌时拿不到账号名 —— 只探同名，找不到就不切（不靠猜）", async () => {
+        const fake = createFakeApp();
+        const { service, settings } = createService(fake, true);
+        routeDifferentOwner();
+
+        await service.install({ repo: "dyse-sofqi/MDRazor" });
+
+        const record = settings.installer.tracked[0]!;
+        expect(record.host).toBe("github");
+        expect(record.origin).toBeUndefined();
+        expect(calls.some((url) => url.includes(`gitee.com/${GITEE_ACCOUNT}`))).toBe(false);
     });
 });

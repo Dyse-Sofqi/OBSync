@@ -118,7 +118,7 @@ export const zhCN = {
             selfDesc:
                 "更新 OBSync 自己。只写入新版本的文件，不重载正在运行的插件 —— 重启 Obsidian 后新版本才生效。",
             mirrorDiscovery: "自动发现 Gitee 镜像",
-            mirrorDiscoveryDesc: "安装 GitHub 插件时，优先探测 Gitee 上的同名镜像仓库，命中则改用镜像源下载（国内速度更快）。",
+            mirrorDiscoveryDesc: "安装 GitHub 插件时，探测 Gitee 上的镜像仓库：同名仓库，以及你 Gitee 账号下的同名仓库（后者需要先填 Gitee 令牌）。命中则改用镜像源下载，国内速度更快。",
         },
 
         sync: {
