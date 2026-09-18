@@ -10,6 +10,11 @@ import type { RepoStatus } from "./types";
  * **用户最需要立即知道的异常**（不是仓库 / 没有 git / 有冲突）。
  * ahead/behind 计数用 `↑3 ↓1` 这种无语言符号展示，不进 i18n。
  *
+ * 条目**贴在状态栏最左侧**，其余条目留在原位 —— 位置**全部由 CSS 决定**
+ * （`styles.css` 的 `.status-bar` 与 `.obsync-status-bar-item` 两条规则，
+ * 那里写清了为什么必须这么做）。这里只打一个类，**不碰 DOM**：
+ * 一旦按 DOM 顺序去挪（`prepend`），就会挤动别人的位置 —— 见那个类的注释。
+ *
  * 参考项目 obsidian-git 的状态栏更新跑在固定的定时器里，
  * 这里改为**由 syncService 在每次状态变化后显式调用** ——
  * 没有变化就不动 DOM，也避免与真实同步动作脱节。
@@ -45,6 +50,9 @@ export class StatusBar {
     constructor(deps: StatusBarDeps) {
         this.item = deps.item;
         this.getT = deps.getT;
+        // 位置只在构造时定一次（条目不会被重建，重建会在状态栏上多挂一条）。
+        // 只加类，不动 DOM —— 见类顶部与 styles.css 里的说明。
+        this.item.addClass("obsync-status-bar-item");
         this.render();
     }
 

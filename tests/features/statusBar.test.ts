@@ -8,23 +8,35 @@ import { createFakeApp } from "../helpers/fakeApp";
 /**
  * `statusBar.ts` 此前**没有任何测试**。
  *
- * 它身上有两件事值得单测，而且都不是「不好看」：
+ * 它身上有三件事值得单测，而且都不是「不好看」：
  *
  * 1. `getVaultRoot` 决定 git 的 `baseDir`。错了不是状态栏的问题 ——
  *    是整个同步模块连不上仓库。而这个错**在本机（Windows）测不出来**，
  *    见下面第一组的说明。
  * 2. `StatusBar` 是全项目唯一把 `t` 在构造时快照下来的地方
  *    （别处一律 `getT()` 用到时才取），于是切换语言后它的文案不跟着变。
+ * 3. 条目的**位置**：状态栏是「收缩到内容宽、贴右下」的，要让条目贴最左又不
+ *    挤走别人，只能靠 CSS（见最后一组用例钉住的那条边界）。
  */
 
-function createItem(): { item: HTMLElement; texts: string[]; last: () => string | undefined } {
+function createItem(): {
+    item: HTMLElement;
+    texts: string[];
+    classes: string[];
+    last: () => string | undefined;
+} {
     const texts: string[] = [];
+    const classes: string[] = [];
     const item = {
         setText(value: string) {
             texts.push(value);
         },
+        // 真实元素上有（Obsidian 给 HTMLElement 加的），状态栏拿它贴最左。
+        addClass(value: string) {
+            classes.push(value);
+        },
     } as unknown as HTMLElement;
-    return { item, texts, last: () => texts[texts.length - 1] };
+    return { item, texts, classes, last: () => texts[texts.length - 1] };
 }
 
 function makeStatus(overrides: Partial<RepoStatus> = {}): RepoStatus {
@@ -177,6 +189,7 @@ describe("StatusBar 渲染", () => {
             setText() {
                 throw new Error("DOM is gone");
             },
+            addClass: () => {},
         } as unknown as HTMLElement;
 
         const bar = new StatusBar({ item, getT: () => zhCN });
@@ -216,5 +229,66 @@ describe("StatusBar 的语言", () => {
         locale = en;
         bar.setActivity("committing");
         expect(last()).toBe("OBSync: Committing…");
+    });
+});
+
+/**
+ * 条目的位置：**贴状态栏最左侧，且一个别的条目都不许动**。
+ *
+ * 位置全部由 CSS 决定（`styles.css` 的 `.status-bar` 与 `.obsync-status-bar-item`），
+ * 所以这里能钉的就是那条边界：**不碰 DOM**。
+ *
+ * 这条边界是被真实教训换来的：上一版用 `prepend` 把条目挪到最前，于是
+ * `addStatusBarItem()` 里已有的条目整体右移了一个条目的宽度（浏览器里实测
+ * 1280 视口下 130px）—— 用户看到的就是「我的其他状态栏图标全被挤走了」。
+ * 而唯一能同时满足「自己贴最左」和「别人不动」的做法是给状态栏留出空位
+ * （CSS 拉全宽 + `order: -1` + `margin-right: auto`），DOM 顺序一点都不动。
+ */
+describe("StatusBar 的位置", () => {
+    /** 造一个已挂进「状态栏」的条目（真实行为：`addStatusBarItem()` append 到末尾）。 */
+    function attachItem(siblings: unknown[] = []) {
+        const prependCalls: unknown[] = [];
+        const parent = {
+            children: [...siblings],
+            prepend(child: unknown) {
+                prependCalls.push(child);
+                this.children.unshift(child);
+            },
+        };
+        const classes: string[] = [];
+        const item = {
+            addClass: (value: string) => classes.push(value),
+            setText: () => {},
+            parentElement: parent,
+        };
+        parent.children.push(item);
+        return { parent, prependCalls, item: item as unknown as HTMLElement, classes };
+    }
+
+    it("带上贴左的类 —— 贴左与拉宽都挂在这个类上", () => {
+        const { item, classes } = attachItem();
+
+        new StatusBar({ item, getT: () => zhCN });
+
+        expect(classes).toContain("obsync-status-bar-item");
+    });
+
+    it("**不碰 DOM 顺序**：条目仍排在最后，别人的位置一个都不动", () => {
+        const other = { label: "别的插件的条目" };
+        const { parent, prependCalls, item } = attachItem([other]);
+
+        new StatusBar({ item, getT: () => zhCN });
+
+        expect(prependCalls).toEqual([]);
+        expect(parent.children[0]).toBe(other);
+        expect(parent.children[1]).toBe(item);
+    });
+
+    it("拿不到父节点也不抛错（元素是替身或尚未挂上）", () => {
+        const item = { addClass: () => {}, setText: () => {} };
+
+        expect(
+            () => new StatusBar({ item: item as unknown as HTMLElement, getT: () => zhCN })
+        ).not.toThrow();
     });
 });

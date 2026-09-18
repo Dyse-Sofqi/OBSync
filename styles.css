@@ -38,6 +38,15 @@
     font-weight: 400;
 }
 
+/* 类型徽标（插件 / 主题）。比「已冻结」还轻 —— 它每条都在，
+   是分类信息而不是状态，不该抢「可更新」那个强调色的注意力。 */
+.obsync-badge-kind {
+    color: var(--text-faint);
+    background: transparent;
+    border: 1px solid var(--background-modifier-border);
+    font-weight: 400;
+}
+
 /* ── 弹窗里的状态/警告行（AddRepoModal / BindExistingModal 共用） ──────── */
 .obsync-modal-status {
     opacity: 0.8;
@@ -60,6 +69,21 @@
 .obsync-empty {
     opacity: 0.7;
     margin: 0.5em 0;
+}
+
+/*
+ * 跟踪列表里的镜像行（紧跟在源仓库那一行下面）。
+ *
+ * 比描述行再弱一档：它要能被找到（用户核对「OBSync 在跟谁说话」时会来看），
+ * 但不该和「来源 / 版本」那一行抢视线 —— 扫列表时先看到的应该是插件名与版本。
+ * 用等宽字体是刻意的：地址里最容易看错的是 owner/repo 的边界，
+ * 等宽下对齐得整齐一些。
+ */
+.obsync-settings .obsync-mirror-line {
+    font-size: var(--font-ui-smaller, 0.85em);
+    opacity: 0.65;
+    font-family: var(--font-monospace);
+    word-break: break-all;
 }
 
 /* 源码控制视图的变更列表 */
@@ -249,4 +273,47 @@
 
 .obsync-settings .obsync-diag-failed > span:last-child {
     font-weight: 600;
+}
+
+/* ── 状态栏 ─────────────────────────────────────────────────────────────── */
+
+/* OBSync 的状态栏条目贴在**最左侧**，其余条目一个都不许挪。
+ *
+ * Obsidian 自带的规则是（`app.css`，实测抠出来的）：
+ *
+ *     .status-bar { position: fixed; width: auto; right: 0;
+ *                   display: flex; justify-content: flex-end; }
+ *
+ * 即「宽度收缩到内容、贴右下角、条目从右往左排」。在这个形态下，「贴最左」
+ * 与「不动别人」是**互相矛盾**的两件事 —— 实测（1280 视口，我们的条目 127px）：
+ *
+ *     原始：            其他条目在 959 / 1033 / 1109，OBSync 在最右
+ *     按 DOM 插到最前：  其他条目被挤到 1089 / 1164 / 1240
+ *
+ * 因为状态栏的宽度就是内容宽度、又锚在右边：我们的条目一旦离开右端，
+ * 其余条目整体右移一个条目的宽度。所以「挪 DOM 顺序」这条路是错的，
+ * 正确做法是给状态栏**留出空位**：把它拉成整屏宽，于是左边有了空位，
+ * 条目被推到最左，其余条目仍旧靠右（与它们原本的位置一致）。 */
+
+/* 拉成全屏宽（等于 Obsidian 原本的 `width: auto` + 两侧都贴边）。
+   这一条会影响状态栏整体的观感（由「右下角一条」变成「底部一条」），
+   但那是让条目能贴最左的**前提**：不拉宽，左边根本没有空位。
+
+   作用域用 `:has()` 收在我们自己那个条目上 —— 这是文件里唯一一条碰到
+   Obsidian 核心元素的规则（其余一律挂在 `.obsync-*` 下），收窄之后
+   「条目不在时状态栏保持原生形态」这件事由 CSS 自己保证，不靠调用方。 */
+.status-bar:has(.obsync-status-bar-item) {
+    left: 0;
+    right: 0;
+    width: auto;
+}
+
+.obsync-status-bar-item {
+    /* 视觉顺序放到最前。**不用 prepend**：那会改别人的 DOM 顺序（并且如上
+       实测会把它们挤走），`order` 只影响我们自己这一个元素。 */
+    order: -1;
+    /* 剩下的空间全归这条的右边距 → 它留在最左，其余条目被顶到最右。
+       靠的是「auto 外边距先于 justify-content 分配空间」，所以主题把
+       justify-content 改成 flex-start / space-between 也照样成立。 */
+    margin-right: auto;
 }

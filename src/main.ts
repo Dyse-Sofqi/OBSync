@@ -9,6 +9,8 @@ import {
     type ObsyncSettings,
 } from "./core/settings";
 import { createInstallerModule, type InstallerModule } from "./features/installer";
+import { downloadSourceLabel } from "./features/installer/downloadSource";
+import { clearPendingRestart } from "./features/installer/selfUpdate";
 import type { InstallerHost } from "./features/installer/installerService";
 import type { SyncModule } from "./features/sync";
 import {
@@ -80,6 +82,13 @@ export default class ObsyncPlugin extends Plugin {
 
     async onload(): Promise<void> {
         await this.loadSettings();
+
+        // 上次把 OBSync 自己更新过、但用户没重启 —— 这次加载跑的就是新版本了，
+        // 待重启的标记到此为止（不清掉的话设置页会一直挂着「已下载 x，重启后生效」，
+        // 而用户明明已经重启过）。见 features/installer/selfUpdate.ts。
+        if (clearPendingRestart(this.settings)) {
+            await this.saveSettings();
+        }
 
         this.secretStore = new SecretStore(this.app);
         this.notifier = new Notifier({
@@ -266,10 +275,16 @@ export default class ObsyncPlugin extends Plugin {
             const { updated, failed } = await this.installer.checker.updateAll(summary.results);
 
             if (updated.length > 0) {
+                // 来源去重后一并报出：一次「全部更新」可能有的走 GitHub、有的走
+                // Gitee 镜像，用户要能看出这一点（也是「到底有没有用镜像」的答案）。
+                const sources = [
+                    ...new Set(updated.map((entry) => downloadSourceLabel(t, entry.source))),
+                ];
                 this.notifier.success(
                     t.installer.updatedMany(
                         updated.length,
-                        updated.map((item) => item.name).join("、")
+                        updated.map((entry) => entry.tracked.name).join("、"),
+                        sources.join("、")
                     )
                 );
             }

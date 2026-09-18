@@ -142,8 +142,9 @@ function makeService(git: FakeGit, fake: FakeApp) {
     notifier.error = (message: string) => notices.push(message);
     notifier.warn = (message: string) => notices.push(message);
 
-    // 状态栏元素直接给个假 DOM 节点 —— StatusBar 只会调 setText。
-    const fakeItem = { setText: () => {} } as unknown as HTMLElement;
+    // 状态栏元素直接给个假 DOM 节点 —— StatusBar 只调 setText 与 addClass
+    // （后者用于把条目贴到状态栏最左，见 statusBar.ts）。
+    const fakeItem = { setText: () => {}, addClass: () => {} } as unknown as HTMLElement;
 
     const settings = normalizeSettings({});
     settings.sync.commitMessage = "backup {{numFiles}}";

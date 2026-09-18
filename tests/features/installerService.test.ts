@@ -6,6 +6,7 @@ import { normalizeSettings, type ObsyncSettings } from "../../src/core/settings"
 import { zhCN } from "../../src/core/i18n/locales/zh-cn";
 import { InstallerService, type InstallerHost } from "../../src/features/installer/installerService";
 import { createFakeApp, readPluginFile, seedPlugin, type FakeApp } from "../helpers/fakeApp";
+import type { TrackedItem } from "../../src/features/installer/types";
 import { expectInstallerError } from "../helpers/expectInstallerError";
 
 /** 路由式 HTTP mock：按 URL 正则匹配，返回预设响应。 */
@@ -122,10 +123,11 @@ describe("install —— release 通道", () => {
 
         expect(settings.installer.tracked).toHaveLength(1);
         expect(settings.installer.tracked[0]).toMatchObject({
+            kind: "plugin",
             host: "github",
             owner: "owner",
             repo: "demo",
-            pluginId: "demo",
+            id: "demo",
             installedVersion: "2.0.0",
             requestedVersion: "latest",
             channel: "release",
@@ -257,10 +259,11 @@ describe("install —— release 通道", () => {
         const { service, settings } = createService(fake);
         settings.installer.tracked = [
             {
+                kind: "plugin",
                 host: "github",
                 owner: "owner",
                 repo: "demo",
-                pluginId: "demo",
+                id: "demo",
                 name: "Demo Plugin",
                 installedVersion: "1.0.0",
                 requestedVersion: "latest",
@@ -408,30 +411,93 @@ describe("install —— 校验与失败路径", () => {
     });
 });
 
-describe("uninstall", () => {
-    it("禁用、删目录、移出跟踪列表", async () => {
+/**
+ * 取消绑定 —— 只把条目移出跟踪列表。
+ *
+ * 这个动作**以前叫 uninstall**：它会禁用插件、`rmdir(folder, true)` 递归删掉
+ * 整个插件目录。那是越界的 —— 跟踪列表记的是「我在跟哪个仓库」，而插件的安装
+ * 与卸载归 Obsidian 自己管（设置里的「已安装插件」）。尤其对**绑定**进来的插件
+ * （用户从官方商店装的）来说，那次删除不可逆，而用户想表达的几乎一定是「别再跟了」。
+ *
+ * 下面几条各守一半：**不碰文件**、**不改启用状态**。
+ */
+describe("unbind（取消绑定）", () => {
+    function trackedDemo(): TrackedItem {
+        return {
+            kind: "plugin",
+            host: "github",
+            owner: "owner",
+            repo: "demo",
+            id: "demo",
+            name: "Demo Plugin",
+            installedVersion: "2.0.0",
+            requestedVersion: "latest",
+            frozen: false,
+            channel: "release",
+            installedAt: 0,
+        };
+    }
+
+    it("移出跟踪列表，但**插件文件与目录原样保留**", async () => {
+        const fake = createFakeApp(
+            seedPlugin("demo", { "manifest.json": MANIFEST, "main.js": "// main" })
+        );
+        const { service, settings } = createService(fake);
+        settings.installer.tracked = [trackedDemo()];
+
+        await service.unbind(settings.installer.tracked[0]!);
+
+        expect(settings.installer.tracked).toHaveLength(0);
+        expect(readPluginFile(fake, "demo", "manifest.json")).toBe(MANIFEST);
+        expect(readPluginFile(fake, "demo", "main.js")).toBe("// main");
+        expect(fake.folders.has(".obsidian/plugins/demo")).toBe(true);
+    });
+
+    it("**不改启用状态**（用户装好并开着的插件，取消绑定后照样开着）", async () => {
         const fake = createFakeApp(seedPlugin("demo", { "manifest.json": MANIFEST }));
         const { service, settings } = createService(fake);
         await fake.plugins.enablePluginAndSave("demo");
+        settings.installer.tracked = [trackedDemo()];
+
+        await service.unbind(settings.installer.tracked[0]!);
+
+        expect(fake.plugins.enabledPlugins.has("demo")).toBe(true);
+    });
+
+    it("顺带清掉该条的可更新徽标（否则重新绑定时会先看到过期提示）", async () => {
+        const fake = createFakeApp(seedPlugin("demo", { "manifest.json": MANIFEST }));
+        const { service, settings } = createService(fake);
+        settings.installer.tracked = [trackedDemo()];
+        settings.installer.availableUpdates["plugin:demo"] = {
+            latestVersion: "3.0.0",
+            checkedAt: 1,
+        };
+
+        await service.unbind(settings.installer.tracked[0]!);
+
+        expect(settings.installer.availableUpdates["plugin:demo"]).toBeUndefined();
+    });
+
+    it("只影响同 kind 同 id 的那一条", async () => {
+        const fake = createFakeApp(seedPlugin("demo", { "manifest.json": MANIFEST }));
+        const { service, settings } = createService(fake);
         settings.installer.tracked = [
+            trackedDemo(),
             {
+                kind: "theme",
                 host: "github",
-                owner: "owner",
-                repo: "demo",
-                pluginId: "demo",
-                name: "Demo Plugin",
-                installedVersion: "2.0.0",
-                requestedVersion: "latest",
+                owner: "kepano",
+                repo: "obsidian-minimal",
+                id: "demo",
+                name: "Theme demo",
+                installedVersion: "1.0.0",
                 frozen: false,
-                channel: "release",
                 installedAt: 0,
             },
         ];
 
-        await service.uninstall(settings.installer.tracked[0]!);
+        await service.unbind(settings.installer.tracked[0]!);
 
-        expect(fake.plugins.enabledPlugins.has("demo")).toBe(false);
-        expect(readPluginFile(fake, "demo", "manifest.json")).toBeUndefined();
-        expect(settings.installer.tracked).toHaveLength(0);
+        expect(settings.installer.tracked.map((item) => item.kind)).toEqual(["theme"]);
     });
 });

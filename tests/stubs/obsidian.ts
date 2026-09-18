@@ -214,6 +214,8 @@ export class TextComponent {
 export class ButtonComponent {
     text = "";
     disabled = false;
+    /** 真实组件暴露的元素，列表用它给「主操作」加类（见 TrackedItemsList）。 */
+    readonly extraSettingsEl = document.createElement("div");
     cta = false;
     tooltip = "";
     icon = "";
@@ -327,6 +329,12 @@ export function resetCreatedSettings(): void {
 /** 设置项构建器的最小可用版本 —— 只够让设置页/弹窗代码跑起来并被驱动。 */
 export class Setting {
     settingEl = document.createElement("div");
+    readonly nameEl = document.createElement("div");
+    readonly descEl = document.createElement("div");
+    /** 名称与描述 —— 断言列表/设置页写了什么时要用。 */
+    name = "";
+    desc = "";
+    readonly classes: string[] = [];
     readonly texts: TextComponent[] = [];
     readonly buttons: ButtonComponent[] = [];
     readonly toggles: ToggleComponent[] = [];
@@ -336,16 +344,19 @@ export class Setting {
         containerEl.appendChild(this.settingEl);
         createdSettings.push(this);
     }
-    setName(): this {
+    setName(name?: string): this {
+        this.name = name ?? "";
         return this;
     }
-    setDesc(): this {
+    setDesc(desc?: string): this {
+        this.desc = desc ?? "";
         return this;
     }
     setHeading(): this {
         return this;
     }
-    setClass(): this {
+    setClass(cls?: string): this {
+        if (cls) this.classes.push(cls);
         return this;
     }
     addText(callback?: (text: TextComponent) => unknown): this {
@@ -417,10 +428,21 @@ export class Plugin {
         if (app) this.app = app;
         if (manifest) this.manifest = manifest as typeof this.manifest;
     }
+    /**
+     * 落盘的数据。替身做成**有状态**的：启动路径里「加载 → 改设置 → 存回」
+     * 这类行为（例如加载时清掉「待重启」标记）只有能读到存了什么才验得了。
+     * 测试直接 `plugin.__data = {...}` 塞一份 data.json 进去即可。
+     */
+    __data: unknown = {};
+    readonly savedData: unknown[] = [];
+
     async loadData(): Promise<unknown> {
-        return {};
+        return this.__data;
     }
-    async saveData(): Promise<void> {}
+    async saveData(data: unknown): Promise<void> {
+        this.savedData.push(data);
+        this.__data = data;
+    }
     addSettingTab(): void {
         this.registered.settingTabs += 1;
     }

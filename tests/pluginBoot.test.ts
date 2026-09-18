@@ -43,6 +43,20 @@ function createPlugin(fake: FakeApp): ObsyncPlugin & {
     return new ObsyncPlugin(fake.app, MANIFEST) as never;
 }
 
+/**
+ * 替身 Plugin 上的落盘记录。
+ *
+ * 类型层面用的是**官方 obsidian 类型**（没有 `savedData` / `__data` —— 它们是
+ * 我们替身加的），所以这里显式取值。运行时走的才是替身（vitest 别名）。
+ */
+function savedDataOf(plugin: ObsyncPlugin): unknown[] {
+    return (plugin as unknown as { savedData: unknown[] }).savedData;
+}
+
+function setLoadedData(plugin: ObsyncPlugin, data: unknown): void {
+    (plugin as unknown as { __data: unknown }).__data = data;
+}
+
 let fake: FakeApp;
 
 beforeEach(() => {
@@ -69,6 +83,29 @@ describe("桌面端启动", () => {
         expect(plugin.sync).toBeDefined();
         expect(plugin.secretStore).toBeDefined();
         expect(plugin.notifier).toBeDefined();
+    });
+
+    it("加载时清掉「待重启」标记（否则重启完还会看到「重启后生效」）", async () => {
+        const plugin = createPlugin(fake);
+        setLoadedData(plugin, { installer: { pendingRestartVersion: "0.2.0" } });
+
+        await plugin.onload();
+
+        // 存回过一次，且标记被清空 —— 这次加载跑的就是那个新版本了
+        expect(savedDataOf(plugin)).toHaveLength(1);
+        expect(
+            (savedDataOf(plugin)[0] as { installer: { pendingRestartVersion: string } })
+                .installer.pendingRestartVersion
+        ).toBe("");
+        expect(plugin.settings.installer.pendingRestartVersion).toBe("");
+    });
+
+    it("没有待重启标记时**不做多余的保存**（否则每次启动都写一次 data.json）", async () => {
+        const plugin = createPlugin(fake);
+
+        await plugin.onload();
+
+        expect(savedDataOf(plugin)).toEqual([]);
     });
 
     it("注册了设置页、侧栏图标与状态栏元素", async () => {

@@ -1,5 +1,6 @@
 import type { LocaleStrings } from "../../core/i18n";
 import { ObsyncError } from "../../host/errors";
+import type { TrackedKind } from "./types";
 
 /**
  * 安装器的错误类型。
@@ -15,6 +16,10 @@ import { ObsyncError } from "../../host/errors";
  *
  * 用可辨识联合 + `switch` 穷尽检查：新增一个类型码时，翻译函数漏了会**编译不过**。
  * 这是这套机制比「直接写文案」强的地方 —— 漏翻译不会留到运行时。
+ *
+ * 主题加入后多了一类参数：`of: TrackedKind`。凡是「插件」与「主题」会共用同一个
+ * 类型码的地方（缺文件、写盘失败……），文案必须按 `of` 选词 —— 早期版本的文案
+ * 直接把「插件」写死在 locale 里，主题一进来就会说「插件 Minimal 缺少必需文件」。
  */
 
 export type InstallerErrorDetail =
@@ -22,15 +27,17 @@ export type InstallerErrorDetail =
     | { kind: "manifestNotObject"; context: string }
     | { kind: "manifestMissingField"; context: string; field: string }
     | { kind: "manifestBadId"; context: string; id: string }
-    | { kind: "missingManifest"; repo: string }
-    | { kind: "missingRequiredFiles"; repo: string; files: string }
+    | { kind: "missingManifest"; repo: string; of: TrackedKind }
+    | { kind: "missingRequiredFiles"; repo: string; files: string; of: TrackedKind }
     | { kind: "missingBuildArtifacts" }
     | { kind: "incompatibleApp"; name: string; minVersion: string }
     | { kind: "pluginIdConflict"; pluginId: string; repo: string }
-    | { kind: "folderMissingRequired"; pluginId: string; file: string }
-    | { kind: "writeFailedRolledBack"; pluginId: string }
-    | { kind: "writeFailedRollbackFailed"; pluginId: string }
+    | { kind: "folderMissingRequired"; id: string; file: string; of: TrackedKind }
+    | { kind: "writeFailedRolledBack"; id: string; of: TrackedKind }
+    | { kind: "writeFailedRollbackFailed"; id: string; of: TrackedKind }
     | { kind: "cannotEnablePlugin" }
+    | { kind: "selfIdMismatch"; repo: string; id: string }
+    | { kind: "selfUpdateDowngrade"; current: string; latest: string }
     | { kind: "communityIndexFailed"; status: number }
     | { kind: "rateLimitFallback"; host: string }
     | { kind: "apiUnavailableFallback"; host: string }
@@ -61,6 +68,12 @@ export function describeInstallerError(
 
     const detail = err.detail;
     const e = t.installer.errors;
+    /**
+     * 「插件 / 主题」这两个词本身也要跟着语言走 —— 在这里选一次，
+     * 避免每个 case 各写一遍三元表达式。
+     */
+    const ofKind = (kind: TrackedKind): string =>
+        kind === "plugin" ? t.installer.kindPlugin : t.installer.kindTheme;
 
     switch (detail.kind) {
         case "manifestNotJson":
@@ -72,9 +85,9 @@ export function describeInstallerError(
         case "manifestBadId":
             return e.manifestBadId(detail.context, detail.id);
         case "missingManifest":
-            return e.missingManifest(detail.repo);
+            return e.missingManifest(detail.repo, ofKind(detail.of));
         case "missingRequiredFiles":
-            return e.missingRequiredFiles(detail.repo, detail.files);
+            return e.missingRequiredFiles(detail.repo, detail.files, ofKind(detail.of));
         case "missingBuildArtifacts":
             return e.missingBuildArtifacts;
         case "incompatibleApp":
@@ -82,13 +95,17 @@ export function describeInstallerError(
         case "pluginIdConflict":
             return e.pluginIdConflict(detail.pluginId, detail.repo);
         case "folderMissingRequired":
-            return e.folderMissingRequired(detail.pluginId, detail.file);
+            return e.folderMissingRequired(detail.id, detail.file, ofKind(detail.of));
         case "writeFailedRolledBack":
-            return e.writeFailedRolledBack(detail.pluginId);
+            return e.writeFailedRolledBack(detail.id, ofKind(detail.of));
         case "writeFailedRollbackFailed":
-            return e.writeFailedRollbackFailed(detail.pluginId);
+            return e.writeFailedRollbackFailed(detail.id, ofKind(detail.of));
         case "cannotEnablePlugin":
             return e.cannotEnablePlugin;
+        case "selfIdMismatch":
+            return e.selfIdMismatch(detail.repo, detail.id);
+        case "selfUpdateDowngrade":
+            return e.selfUpdateDowngrade(detail.current, detail.latest);
         case "communityIndexFailed":
             return e.communityIndexFailed(detail.status);
         case "rateLimitFallback":

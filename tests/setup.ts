@@ -6,9 +6,17 @@
  */
 
 if (typeof globalThis.document === "undefined") {
-    const createElement = (tag: string): unknown => {
+    // 记录 `{ text, cls }` 这两个选项：列表/设置页的断言要看「这一行上写了什么」，
+    // 空实现会让所有关于文案与徽标的用例失去意义（只能断言「没抛错」）。
+    const createElement = (
+        tag: string,
+        options?: { text?: string; cls?: string; attr?: Record<string, string> }
+    ): unknown => {
         const element: Record<string, unknown> = {
             tagName: tag.toUpperCase(),
+            text: options?.text ?? "",
+            cls: options?.cls ?? "",
+            attrs: options?.attr ?? {},
             children: [] as unknown[],
             style: {},
             classList: { add: () => {}, remove: () => {}, toggle: () => {} },
@@ -21,19 +29,53 @@ if (typeof globalThis.document === "undefined") {
             empty() {
                 element.children = [];
             },
-            createEl(t: string) {
-                return createElement(t);
+            // 真实的 Obsidian 里 `el.createEl()` **创建并挂到父节点上** ——
+            // 替身若不挂，断言「这一行上有什么」就永远读到空数组。
+            createEl(t: string, o?: { text?: string; cls?: string; attr?: Record<string, string> }) {
+                const child = createElement(t, o);
+                (element.children as unknown[]).push(child);
+                return child;
             },
-            createDiv() {
-                return createElement("div");
+            createDiv(o?: { text?: string; cls?: string }) {
+                const child = createElement("div", o);
+                (element.children as unknown[]).push(child);
+                return child;
             },
-            createSpan() {
-                return createElement("span");
+            createSpan(o?: { text?: string; cls?: string }) {
+                const child = createElement("span", o);
+                (element.children as unknown[]).push(child);
+                return child;
             },
             addEventListener() {},
             removeEventListener() {},
-            setAttribute() {},
-            setText() {},
+            setAttribute(name: string, value: string) {
+                (element.attrs as Record<string, string>)[name] = value;
+            },
+            // Obsidian 在 HTMLElement 上加了这几个类操作，渲染路径会用到
+            // （设置页切「已配置 / 未配置」的状态、列表加主操作强调色…）。
+            // 替身少了任何一个，对应那一页就只会在真机上炸。
+            addClass(cls: string) {
+                const current = (element.cls as string).split(/\s+/).filter(Boolean);
+                if (!current.includes(cls)) current.push(cls);
+                element.cls = current.join(" ");
+            },
+            removeClass(cls: string) {
+                element.cls = (element.cls as string)
+                    .split(/\s+/)
+                    .filter((item) => item && item !== cls)
+                    .join(" ");
+            },
+            toggleClass(cls: string, value?: boolean) {
+                const has = (element.cls as string).split(/\s+/).includes(cls);
+                if (value ?? !has) (element.addClass as (c: string) => void)(cls);
+                else (element.removeClass as (c: string) => void)(cls);
+            },
+            hasClass(cls: string) {
+                return (element.cls as string).split(/\s+/).includes(cls);
+            },
+            setText(value: string) {
+                element.text = value;
+            },
             remove() {},
             // 弹窗会在 setTimeout 里对输入框调 focus()，缺失会变成未捕获异常
             focus() {},

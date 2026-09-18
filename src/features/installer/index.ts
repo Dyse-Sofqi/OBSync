@@ -1,7 +1,9 @@
 import type { App } from "obsidian";
 import { CommunityPluginIndex } from "./communityPlugins";
+import { CommunityThemeIndex } from "./communityThemes";
 import { describeInstallerError } from "./errors";
 import { InstallerService, type InstallerHost } from "./installerService";
+import type { InstallResult } from "./types";
 import { AddRepoModal } from "./ui/AddRepoModal";
 import { BindExistingModal } from "./ui/BindExistingModal";
 import { UpdateChecker } from "./updateChecker";
@@ -18,9 +20,18 @@ export interface InstallerModule {
     service: InstallerService;
     checker: UpdateChecker;
     communityIndex: CommunityPluginIndex;
-    /** 打开「添加插件仓库」弹窗。 */
-    openAddRepoModal(): void;
-    /** 打开「绑定已有插件」弹窗。 */
+    /** 官方社区主题索引。与插件索引同源、不同文件，绑定主题时用。 */
+    communityThemeIndex: CommunityThemeIndex;
+    /**
+     * 打开「添加插件仓库」弹窗。
+     *
+     * `onInstalled` 在安装成功后触发，调用方拿它重绘自己那一屏。与
+     * `openBindExistingModal` 的 `onBound` 是同一件事：弹窗关闭**不会**让
+     * Obsidian 重新渲染底下的设置页，而「已跟踪」列表是渲染时读 settings 的 ——
+     * 不重绘就看不见刚装的条目，得等下一次「检查全部更新」顺带那次重绘。
+     */
+    openAddRepoModal(onInstalled?: (result: InstallResult) => void): void;
+    /** 打开「绑定已安装的插件与主题」弹窗。 */
     openBindExistingModal(onBound?: (count: number) => void): void;
     /** 启动后的自动更新检查（受设置控制）。 */
     scheduleStartupCheck(): void;
@@ -30,6 +41,7 @@ export function createInstallerModule(host: InstallerHost, app: App): InstallerM
     const service = new InstallerService(host);
     const checker = new UpdateChecker(service);
     const communityIndex = new CommunityPluginIndex();
+    const communityThemeIndex = new CommunityThemeIndex();
 
     // 注册本模块的错误翻译器：逻辑层（manifest / pluginFiles / pluginFolder）
     // 抛的是「类型码 + 参数」，用户能看懂的话在这里按类型拼。
@@ -40,11 +52,10 @@ export function createInstallerModule(host: InstallerHost, app: App): InstallerM
         service,
         checker,
         communityIndex,
+        communityThemeIndex,
 
-        openAddRepoModal(): void {
-            new AddRepoModal(app, service, communityIndex, host.getT(), () => {
-                // 安装成功后不需要额外动作 —— 设置页下次渲染时自然带上新记录。
-            }).open();
+        openAddRepoModal(onInstalled): void {
+            new AddRepoModal(app, service, communityIndex, host.getT(), onInstalled).open();
         },
 
         openBindExistingModal(onBound?: (count: number) => void): void {
@@ -52,6 +63,7 @@ export function createInstallerModule(host: InstallerHost, app: App): InstallerM
                 app,
                 service,
                 communityIndex,
+                communityThemeIndex,
                 host.getT(),
                 (count) => onBound?.(count)
             ).open();

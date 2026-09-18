@@ -1,5 +1,6 @@
 import { logger } from "../../core/logger";
 import { InstallerError } from "./errors";
+import { RemoteIndex } from "./communityIndex";
 import { httpJson } from "../../host/http";
 
 /**
@@ -12,15 +13,14 @@ import { httpJson } from "../../host/http";
  *
  * 实测（2026-09）：7685 个插件，条目字段为
  * `{ id, name, author, description, repo }`。
+ *
+ * 缓存、并发去重与失败语义在 `RemoteIndex` 里 —— 与主题索引共用。
  */
 
 const COMMUNITY_PLUGINS_URL =
     "https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/community-plugins.json";
 const COMMUNITY_STATS_URL =
     "https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/community-plugin-stats.json";
-
-/** 索引缓存时长。这个文件变化很慢，没必要每次开弹窗都拉一遍。 */
-const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
 export interface CommunityPlugin {
     id: string;
@@ -41,39 +41,18 @@ interface RawEntry {
     repo?: unknown;
 }
 
-export class CommunityPluginIndex {
-    private plugins: CommunityPlugin[] = [];
-    private fetchedAt = 0;
+export class CommunityPluginIndex extends RemoteIndex<CommunityPlugin> {
+    protected readonly label = "community plugin index";
+
     /** 预热好的小写检索串，避免每次搜索都对 7000+ 条目做 toLowerCase。 */
     private haystacks: string[] = [];
-    private loading: Promise<CommunityPlugin[]> | undefined;
-
-    get isLoaded(): boolean {
-        return this.plugins.length > 0;
-    }
-
-    get size(): number {
-        return this.plugins.length;
-    }
 
     /** 按官方插件 id 查索引条目（未加载或不存在时为 undefined）。 */
     byId(id: string): CommunityPlugin | undefined {
-        return this.plugins.find((plugin) => plugin.id === id);
+        return this.items.find((plugin) => plugin.id === id);
     }
 
-    /** 拉取索引。并发调用只会真正请求一次。 */
-    async load(force = false): Promise<CommunityPlugin[]> {
-        const fresh = Date.now() - this.fetchedAt < CACHE_TTL_MS;
-        if (!force && this.plugins.length > 0 && fresh) return this.plugins;
-        if (this.loading) return this.loading;
-
-        this.loading = this.fetchAll().finally(() => {
-            this.loading = undefined;
-        });
-        return this.loading;
-    }
-
-    private async fetchAll(): Promise<CommunityPlugin[]> {
+    protected async fetchIndex(): Promise<CommunityPlugin[]> {
         const [pluginsResponse, statsResponse] = await Promise.all([
             httpJson<RawEntry[]>({ url: COMMUNITY_PLUGINS_URL }),
             // 统计文件是可选的：拿不到就不显示下载量，不影响浏览。
@@ -96,7 +75,7 @@ export class CommunityPluginIndex {
 
         // 用显式循环而不是 filter + type predicate：这里要同时做字段收窄
         // 和缺省值填充，拆成两步反而更绕。
-        this.plugins = [];
+        const plugins: CommunityPlugin[] = [];
         for (const entry of pluginsResponse.data) {
             if (
                 typeof entry?.id !== "string" ||
@@ -108,7 +87,7 @@ export class CommunityPluginIndex {
 
             const downloads = stats?.[entry.id]?.downloads;
 
-            this.plugins.push({
+            plugins.push({
                 id: entry.id,
                 name: entry.name,
                 author: typeof entry.author === "string" ? entry.author : "",
@@ -118,13 +97,11 @@ export class CommunityPluginIndex {
             });
         }
 
-        this.haystacks = this.plugins.map((plugin) =>
+        this.haystacks = plugins.map((plugin) =>
             `${plugin.id} ${plugin.name} ${plugin.author} ${plugin.description} ${plugin.repo}`.toLowerCase()
         );
-        this.fetchedAt = Date.now();
 
-        logger.info(`community plugin index loaded: ${this.plugins.length} entries`);
-        return this.plugins;
+        return plugins;
     }
 
     /**
@@ -141,12 +118,13 @@ export class CommunityPluginIndex {
         }
 
         const terms = trimmed.split(/\s+/);
+        const plugins = this.items;
         const matches: CommunityPlugin[] = [];
 
-        for (let index = 0; index < this.plugins.length; index++) {
+        for (let index = 0; index < plugins.length; index++) {
             const haystack = this.haystacks[index]!;
             if (terms.every((term) => haystack.includes(term))) {
-                matches.push(this.plugins[index]!);
+                matches.push(plugins[index]!);
             }
         }
 
@@ -156,7 +134,7 @@ export class CommunityPluginIndex {
     }
 
     private byPopularity(limit: number): CommunityPlugin[] {
-        return [...this.plugins].sort(byDownloads).slice(0, limit);
+        return [...this.items].sort(byDownloads).slice(0, limit);
     }
 }
 

@@ -2,9 +2,9 @@ import { Modal, Setting, type App, type ButtonComponent } from "obsidian";
 import type { LocaleStrings } from "../../../core/i18n";
 import { logger } from "../../../core/logger";
 import { formatRepoId } from "../../../host/repoRef";
-import type { RepoRef } from "../../../host/types";
 import type { CommunityPluginIndex } from "../communityPlugins";
-import type { InstallerService, VersionOption } from "../installerService";
+import { downloadSourceLabel, hostLabel } from "../downloadSource";
+import type { InstallerService, ResolvedRepo, VersionOption } from "../installerService";
 import type { InstallResult } from "../types";
 import { CommunityPluginModal } from "./CommunityPluginModal";
 import { VersionSuggestModal } from "./VersionSuggestModal";
@@ -24,7 +24,7 @@ export class AddRepoModal extends Modal {
     private version = "latest";
     private enableAfterInstall = true;
 
-    private resolved: { ref: RepoRef; mirror?: RepoRef } | undefined;
+    private resolved: ResolvedRepo | undefined;
     private versions: VersionOption[] = [];
     /** 拉版本列表失败时的说明，用于在界面上给出解释而不是静默降级。 */
     private versionError: string | undefined;
@@ -119,15 +119,17 @@ export class AddRepoModal extends Modal {
 
         contentEl.createEl("p", {
             text: t.installer.resolved(
-                resolved.ref.host === "gitee" ? t.host.gitee : t.host.github,
+                hostLabel(t, resolved.ref.host),
                 formatRepoId(resolved.ref)
             ),
             cls: "obsync-modal-status",
         });
 
-        if (resolved.mirror) {
+        if (resolved.origin) {
+            // 「已识别为」那行报的是**实际会用**的地址（镜像），这条再点明它是镜像 ——
+            // 只显示前者的话，用户看着自己输入的 GitHub 地址变成了 Gitee，不知道发生了什么。
             contentEl.createEl("p", {
-                text: t.installer.mirrorFound(formatRepoId(resolved.mirror)),
+                text: t.installer.mirrorFound(formatRepoId(resolved.ref)),
                 cls: "obsync-modal-status",
             });
         }
@@ -257,11 +259,16 @@ export class AddRepoModal extends Modal {
                 // 已经在 resolveRepo 阶段做过镜像发现，这里不要重复做。
                 allowMirror: false,
                 defaultHost: this.resolved.ref.host,
+                // 源地址只能由这里交出去 —— 上面那行的 `repo` 已经是镜像地址了。
+                origin: this.resolved.origin,
             });
 
+            // 两条都报来源：用户看不出「没走镜像」与「没探测镜像」的区别，
+            // 这条提示是他唯一能确认「东西实际从哪来」的地方。
+            const source = downloadSourceLabel(t, result);
             const message = result.replaced
-                ? t.installer.updated(result.manifest.name, result.version)
-                : t.installer.installed(result.manifest.name, result.version);
+                ? t.installer.updated(result.manifest.name, result.version, source)
+                : t.installer.installed(result.manifest.name, result.version, source);
             this.service.deps.notifier.success(message);
             this.onInstalled?.(result);
             this.close();

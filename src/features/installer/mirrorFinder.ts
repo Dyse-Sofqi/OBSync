@@ -2,7 +2,7 @@ import { logger } from "../../core/logger";
 import { getHost } from "../../host/hostRegistry";
 import { formatRepoId } from "../../host/repoRef";
 import type { RepoRef } from "../../host/types";
-import { parseManifest } from "./manifest";
+import { parsePluginManifest } from "./manifest";
 
 /**
  * GitHub → Gitee 镜像发现。
@@ -30,7 +30,7 @@ import { parseManifest } from "./manifest";
 function readManifestId(raw: string | undefined, context: string): string | undefined {
     if (!raw) return undefined;
     try {
-        return parseManifest(raw, context).id;
+        return parsePluginManifest(raw, context).id;
     } catch (err) {
         // 对方仓库里的 manifest 不合法（或根本不是插件仓库）—— 不算错误，只是不匹配。
         logger.debug(`manifest of ${context} is not a valid plugin manifest`, err);

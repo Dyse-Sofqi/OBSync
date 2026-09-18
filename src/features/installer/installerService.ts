@@ -3,27 +3,46 @@ import { requireApiVersion } from "obsidian";
 import type { LocaleStrings } from "../../core/i18n";
 import { logger } from "../../core/logger";
 import type { Notifier } from "../../core/notice";
-import type { ObsyncSettings } from "../../core/settings";
+import { availableUpdateKey, type ObsyncSettings } from "../../core/settings";
 import type { SecretStore } from "../../core/secretStore";
 import { RateLimitError } from "../../host/errors";
 import { getHost } from "../../host/hostRegistry";
-import { formatRepoId, parseRepoRef } from "../../host/repoRef";
+import { formatRepoId, isSameRepo, parseRepoRef } from "../../host/repoRef";
 import type { HostKind, RepoRef } from "../../host/types";
 import { InstallerError } from "./errors";
+import type { BindCandidate } from "./existingPlugins";
+import type { ThemeBindCandidate } from "./existingThemes";
 import { findGiteeMirror } from "./mirrorFinder";
-import { fetchPluginFiles } from "./pluginFiles";
+import { fetchFiles, PLUGIN_SPEC, THEME_SPEC, type FetchSpec } from "./installFiles";
+import { createBackup, writeItemFiles } from "./itemFolder";
+import { parseThemeManifest } from "./manifest";
 import {
-    createBackup,
-    disablePlugin,
     enablePlugin,
     isPluginEnabled,
-    readInstalledManifest,
+    readManifestInFolder,
     refreshPluginManifests,
     reloadPlugin,
-    removePluginFolder,
-    writePluginFiles,
+    resolvePluginFolder,
 } from "./pluginFolder";
-import type { InstallResult, InstallSource, TrackedPlugin, UpdateCheckResult } from "./types";
+import { setPendingRestart, SELF_PLUGIN_ID, SELF_REPO } from "./selfUpdate";
+import {
+    getActiveTheme,
+    requestThemeReload,
+    resolveThemeFolder,
+} from "./themeFolder";
+import { compareVersions } from "./versions";
+import {
+    itemRepoRef,
+    MANIFEST_FILE,
+    type InstallChannel,
+    type InstallResult,
+    type InstallSource,
+    type ThemeUpdateResult,
+    type TrackedItem,
+    type TrackedKind,
+    type TrackedTheme,
+    type UpdateCheckResult,
+} from "./types";
 
 /**
  * 安装编排。
@@ -37,6 +56,18 @@ import type { InstallResult, InstallSource, TrackedPlugin, UpdateCheckResult } f
  * 2. **逐文件回退到源码通道**（BRAT 要求三个文件都在 release 资产里）。
  * 3. **API 不可用时降级到源码通道**并明确告知用户 —— Gitee 的匿名 API
  *    配额极低，实测会直接 403 限流，没有这条降级路径就完全装不了。
+ *
+ * ## 插件与主题共用到哪一步
+ *
+ * 前半段（解析仓库、解析来源、取文件、兼容性检查、备份、写盘、记录）两者**逐字
+ * 相同**，只有两个地方分叉：
+ *
+ * - **身份从哪来**：插件是 `manifest.id`，主题是已记录的那个目录名；
+ * - **写完之后的动作**：插件要 enable / reload，主题只在「更新的正是当前主题」
+ *   时请求重载（绝不替用户切换主题）。
+ *
+ * 后半段因此各写一个方法（`install` / `updateTheme`），但不复制前半段 ——
+ * 那段抽在 `fetchItem` 与 `recordItem` 里。
  */
 
 export interface InstallerHost {
@@ -59,6 +90,17 @@ export interface InstallRequest {
     allowMirror?: boolean;
     /** 用于 `owner/repo` 简写时的默认平台。 */
     defaultHost?: HostKind;
+    /**
+     * 已经识别过的**源仓库地址**（来自「添加插件仓库」弹窗的「识别」那一步）。
+     *
+     * 弹窗在那里已经做过镜像发现，安装时不该再打一遍网络请求（所以那边传
+     * `allowMirror: false`）—— 但「用户填的是哪个地址」只存在于弹窗手上。
+     * 不传进来，走了镜像的安装就再也说不出源仓库在哪：`repo` 那一栏这时装的是
+     * 镜像地址，源地址没有任何位置可放。跟踪列表要同时展示两个地址，靠的就是它。
+     *
+     * 只在它与 `repo` 不同时才有意义（相同的话本来就没丢信息）。
+     */
+    origin?: RepoRef;
 }
 
 export interface VersionOption {
@@ -68,11 +110,33 @@ export interface VersionOption {
     prerelease: boolean;
 }
 
+/**
+ * 仓库地址的解析结果。
+ *
+ * `ref` 与 `origin` 是两个不同的地址，别再合并回一个：`ref` 是**实际使用**的
+ * 来源（命中镜像时就是镜像，下载与更新检查都走它），`origin` 是**用户填**的那个
+ * （只在走了镜像时才有）。跟踪列表要把两个都摆出来，所以两者都得活着到落库。
+ */
+export interface ResolvedRepo {
+    ref: RepoRef;
+    origin?: RepoRef;
+}
+
 /** 安装目标的解析结果，带上「是否降级」的信息。 */
 interface ResolvedSource {
     source: InstallSource;
     /** 非空表示发生了降级，内容是要告诉用户的原因。 */
     degradedReason?: string;
+}
+
+/** 取文件阶段的结果（两条安装路径共用的前半段）。 */
+interface FetchedItem<M, N extends string> {
+    files: Map<N, string>;
+    manifest: M;
+    channel: InstallChannel;
+    repoRef: RepoRef;
+    /** 走了镜像时的源地址；见 `ResolvedRepo`。 */
+    origin?: RepoRef;
 }
 
 export class InstallerService {
@@ -113,24 +177,34 @@ export class InstallerService {
      *
      * 镜像发现用 manifest 的 `id` 做二次校验，而不是只比仓库名 ——
      * 同名不同项目在 Gitee 上很常见，只比名字会装错插件。
+     *
+     * 返回的 `origin`（源地址）**必须在后续步骤里一路带到 `recordItem`**：
+     * `ref` 命中镜像后就被镜像占了，源地址只此一份，丢了就只能等用户重新发现。
      */
     async resolveRepo(
         input: string,
-        options: { allowMirror?: boolean; defaultHost?: HostKind } = {}
-    ): Promise<{ ref: RepoRef; mirror?: RepoRef }> {
+        options: { allowMirror?: boolean; defaultHost?: HostKind; origin?: RepoRef } = {}
+    ): Promise<ResolvedRepo> {
         const ref = parseRepoRef(input, options.defaultHost ?? "github");
 
+        // 调用方自己带来了源地址，说明镜像那一步已经做过了（弹窗路径）。
+        const providedOrigin =
+            options.origin && !isSameRepo(options.origin, ref) ? options.origin : undefined;
+
         const shouldLookForMirror =
+            !providedOrigin &&
             (options.allowMirror ?? this.settings.installer.discoverGiteeMirrors) &&
             ref.host === "github";
 
-        if (!shouldLookForMirror) return { ref };
+        if (!shouldLookForMirror) {
+            return providedOrigin ? { ref, origin: providedOrigin } : { ref };
+        }
 
         try {
             const mirror = await findGiteeMirror(ref, this.tokenFor("github"));
             if (mirror) {
                 logger.info(`using Gitee mirror ${formatRepoId(mirror)} for ${formatRepoId(ref)}`);
-                return { ref: mirror, mirror };
+                return { ref: mirror, origin: ref };
             }
         } catch (err) {
             // 镜像发现是「锦上添花」，任何失败都不该阻断安装。
@@ -207,17 +281,19 @@ export class InstallerService {
         }
     }
 
-    // ── 安装 ──────────────────────────────────────────────────────────────
-
-    /** 安装或更新一个插件。 */
-    async install(request: InstallRequest): Promise<InstallResult> {
-        const t = this.deps.getT();
-        const { ref: repoRef, mirror } = await this.resolveRepo(request.repo, {
-            allowMirror: request.allowMirror,
-            defaultHost: request.defaultHost,
-        });
-
-        const requestedVersion = request.version ?? "latest";
+    /**
+     * 解析仓库 → 解析来源 → 取文件 → 兼容性检查。
+     *
+     * 两条安装路径的**共同前半段**。写盘之前做兼容性检查是刻意的 ——
+     * 写完才发现不兼容就要走回滚了。
+     */
+    private async fetchItem<M extends { name: string; minAppVersion?: string }, N extends string>(
+        spec: FetchSpec<N, M>,
+        repoInput: string,
+        requestedVersion: string,
+        options: { allowMirror?: boolean; defaultHost?: HostKind; origin?: RepoRef }
+    ): Promise<FetchedItem<M, N>> {
+        const { ref: repoRef, origin } = await this.resolveRepo(repoInput, options);
         const { source, degradedReason } = await this.resolveSource(repoRef, requestedVersion);
 
         if (degradedReason) {
@@ -226,17 +302,15 @@ export class InstallerService {
 
         const host = getHost(repoRef.host);
         const token = this.tokenFor(repoRef.host);
-        const repoLabel = formatRepoId(repoRef);
-
-        const { files, manifest, channel } = await fetchPluginFiles(
+        const { files, manifest, channel } = await fetchFiles(
             host,
             repoRef,
             source,
-            token
+            token,
+            spec
         );
 
-        // 兼容性检查放在写盘之前 —— 写完才发现不兼容就要走回滚了。
-        if (!requireApiVersion(manifest.minAppVersion)) {
+        if (manifest.minAppVersion && !requireApiVersion(manifest.minAppVersion)) {
             throw new InstallerError({
                 kind: "incompatibleApp",
                 name: manifest.name,
@@ -244,7 +318,27 @@ export class InstallerService {
             });
         }
 
-        const alreadyInstalled = await readInstalledManifest(this.app, manifest.id);
+        return { files, manifest, channel, repoRef, origin };
+    }
+
+    // ── 安装（插件） ──────────────────────────────────────────────────────
+
+    /** 安装或更新一个插件。 */
+    async install(request: InstallRequest): Promise<InstallResult> {
+        const requestedVersion = request.version ?? "latest";
+        const { files, manifest, channel, repoRef, origin } = await this.fetchItem(
+            PLUGIN_SPEC,
+            request.repo,
+            requestedVersion,
+            {
+                allowMirror: request.allowMirror,
+                defaultHost: request.defaultHost,
+                origin: request.origin,
+            }
+        );
+
+        const folder = await resolvePluginFolder(this.app, manifest.id);
+        const alreadyInstalled = await readManifestInFolder(this.app, folder);
         const wasEnabled = isPluginEnabled(this.app, manifest.id);
 
         // 插件目录名可能和用户输入的仓库不一致（仓库名 ≠ manifest id），
@@ -253,14 +347,16 @@ export class InstallerService {
             throw new InstallerError({
                 kind: "pluginIdConflict",
                 pluginId: manifest.id,
-                repo: repoLabel,
+                // 报用户填的那个地址（走镜像时它不是 `repoRef`）——
+                // 提示语要能对上他刚才在弹窗里输入的东西。
+                repo: formatRepoId(origin ?? repoRef),
             });
         }
 
-        const backup = await createBackup(this.app, manifest.id);
+        const backup = await createBackup(this.app, "plugin", manifest.id, folder);
 
         try {
-            await writePluginFiles(this.app, manifest.id, files, backup);
+            await writeItemFiles(this.app, files, backup);
             await refreshPluginManifests(this.app);
 
             let enabled = false;
@@ -273,13 +369,15 @@ export class InstallerService {
                 enabled = isPluginEnabled(this.app, manifest.id);
             }
 
-            await this.recordInstalled({
+            await this.recordItem({
+                kind: "plugin",
                 repoRef,
-                manifest,
-                requestedVersion,
+                origin,
+                id: manifest.id,
+                name: manifest.name,
+                version: manifest.version,
                 channel,
-                enabled,
-                replaced: alreadyInstalled !== undefined,
+                requestedVersion,
             });
 
             return {
@@ -288,20 +386,80 @@ export class InstallerService {
                 version: manifest.version,
                 replaced: alreadyInstalled !== undefined,
                 enabled,
-                mirror: mirror ? { host: mirror.host, owner: mirror.owner, repo: mirror.repo } : undefined,
+                repoRef,
+                origin,
             };
         } catch (err) {
-            // writePluginFiles 内部已经回滚过一次；这里只处理写盘之后
+            // writeItemFiles 内部已经回滚过一次；这里只处理写盘之后
             // （启用/重载）失败的场景 —— 文件是好的，只是没能启用。
             logger.error(`install of ${manifest.id} failed after writing files`, err);
             throw err;
-        } finally {
-            void t;
         }
     }
 
-    /** 重装：忽略本地状态，按原设置重新走一遍安装。 */
-    async reinstall(tracked: TrackedPlugin): Promise<InstallResult> {
+    // ── 更新（主题） ──────────────────────────────────────────────────────
+
+    /**
+     * 更新一个已跟踪的主题。
+     *
+     * 三处刻意的行为：
+     *
+     * 1. **写回记录的那个目录名**，绝不按远端 manifest 的 `name` 改名 ——
+     *    目录名就是主题的身份（Obsidian 的「外观」里显示的是它，`setTheme()`
+     *    收的也是它），改名等于换了一个主题。
+     * 2. **绝不改变用户当前用的主题**。主题没有「启用/禁用」，唯一对应的动作
+     *    就是切换，而「更新一下」显然不该有那种副作用。
+     * 3. 但如果更新的**正是**当前主题，写完请求一次重载 —— 否则用户看到
+     *    「更新成功」而页面观感毫无变化（Obsidian 不会自己去读被换掉的文件）。
+     */
+    async updateTheme(tracked: TrackedTheme): Promise<ThemeUpdateResult> {
+        const { files, manifest, channel, repoRef, origin } = await this.fetchItem(
+            THEME_SPEC,
+            formatRepoId(tracked),
+            "latest",
+            // 主题不做镜像发现：那是给插件仓库准备的（用 manifest.id 二次校验），
+            // 主题没有 id，拿它去校验会认错东西。
+            { allowMirror: false, defaultHost: tracked.host }
+        );
+
+        const folder = await resolveThemeFolder(this.app, tracked.id);
+        const backup = await createBackup(this.app, "theme", tracked.id, folder);
+
+        await writeItemFiles(this.app, files, backup);
+
+        const active = getActiveTheme(this.app);
+        const wasActive =
+            active !== undefined && active.toLowerCase() === tracked.id.toLowerCase();
+        if (wasActive) requestThemeReload(this.app);
+
+        await this.recordItem({
+            kind: "theme",
+            repoRef,
+            origin,
+            id: tracked.id,
+            name: manifest.name,
+            version: manifest.version,
+            channel,
+        });
+
+        return {
+            manifest,
+            channel,
+            version: manifest.version,
+            replaced: backup.folderExisted,
+            wasActive,
+            repoRef,
+            origin,
+        };
+    }
+
+    /** 重装：忽略本地状态，按原设置重新走一遍。 */
+    async reinstall(tracked: TrackedItem): Promise<InstallResult | ThemeUpdateResult> {
+        if (tracked.kind === "theme") {
+            // 主题没有版本钉选（语义是「跟随仓库」），所以重装就是更新到最新。
+            return this.updateTheme(tracked);
+        }
+
         return this.install({
             repo: formatRepoId(tracked),
             version: tracked.requestedVersion,
@@ -309,6 +467,8 @@ export class InstallerService {
             defaultHost: tracked.host,
         });
     }
+
+    // ── 绑定 ──────────────────────────────────────────────────────────────
 
     /**
      * 绑定库里已安装的插件（来源经社区索引识别）。
@@ -319,27 +479,114 @@ export class InstallerService {
      *
      * @returns 实际新增的条数（已在跟踪列表里的会被跳过）。
      */
-    async bindExisting(
-        candidates: Array<{ pluginId: string; name: string; version: string; repo: RepoRef }>
+    async bindExisting(candidates: BindCandidate[]): Promise<number> {
+        return this.addTracked(
+            candidates.map((candidate) => ({
+                kind: "plugin" as const,
+                id: candidate.id,
+                name: candidate.name,
+                version: candidate.version,
+                repo: candidate.repo,
+            }))
+        );
+    }
+
+    /** 绑定库里已安装的主题（来源经官方主题索引识别）。 */
+    async bindExistingThemes(candidates: ThemeBindCandidate[]): Promise<number> {
+        return this.addTracked(
+            candidates.map((candidate) => ({
+                kind: "theme" as const,
+                id: candidate.id,
+                name: candidate.name,
+                version: candidate.version,
+                repo: candidate.repo,
+            }))
+        );
+    }
+
+    /**
+     * 手动绑定一个来源未识别的主题（用户手填仓库地址）。
+     *
+     * 为什么主题需要这条路、插件不需要：插件有「添加插件仓库」那个入口，
+     * 官方索引里查不到时用户可以去那里手动装；本次范围里主题**没有**新装入口，
+     * 手填仓库地址就是未识别主题唯一的纳入方式。
+     *
+     * 绑定前会先读一次远端的 manifest.json 做校验 —— 一个打错的仓库地址若被
+     * 静默记下，要等到下次「更新」时才会以写错文件的形式暴露出来。
+     *
+     * @returns 新增条数（0 表示已经在跟踪列表里）。
+     */
+    async bindThemeToRepo(
+        theme: { id: string; name: string; version: string },
+        repoInput: string
+    ): Promise<number> {
+        const ref = parseRepoRef(repoInput, "github");
+        const repoLabel = formatRepoId(ref);
+        const raw = await getHost(ref.host).readFile(ref, MANIFEST_FILE, {
+            token: this.tokenFor(ref.host),
+            ref: "HEAD",
+        });
+
+        if (raw === undefined) {
+            throw new InstallerError({ kind: "missingManifest", repo: repoLabel, of: "theme" });
+        }
+        // 解析一次就够：manifest 不合法会在此抛出带类型码的错误。
+        parseThemeManifest(raw, repoLabel);
+
+        return this.addTracked([
+            { kind: "theme", id: theme.id, name: theme.name, version: theme.version, repo: ref },
+        ]);
+    }
+
+    /** 绑定条目的共同落库路径。 */
+    private async addTracked(
+        entries: Array<{
+            kind: TrackedKind;
+            id: string;
+            name: string;
+            version: string;
+            repo: RepoRef;
+        }>
     ): Promise<number> {
         const tracked = this.settings.installer.tracked;
         let added = 0;
 
-        for (const candidate of candidates) {
-            if (tracked.some((item) => item.pluginId === candidate.pluginId)) continue;
-            tracked.push({
-                host: candidate.repo.host,
-                owner: candidate.repo.owner,
-                repo: candidate.repo.repo,
-                pluginId: candidate.pluginId,
-                name: candidate.name,
-                installedVersion: candidate.version,
-                requestedVersion: "latest",
+        for (const entry of entries) {
+            // 用**同一个身份键**判重，而不是就地写一个 `kind === kind && id === id`：
+            // 键里还编着「主题的目录名不区分大小写」这条规则（见 `availableUpdateKey`），
+            // 就地比较会漏掉它 —— 于是同一个主题能被记两条，各自指向同一个目录。
+            const key = availableUpdateKey(entry);
+            if (tracked.some((item) => availableUpdateKey(item) === key)) {
+                continue;
+            }
+
+            const common = {
+                host: entry.repo.host,
+                owner: entry.repo.owner,
+                repo: entry.repo.repo,
+                id: entry.id,
+                name: entry.name,
+                installedVersion: entry.version,
                 frozen: false,
-                // 历史未知 —— 当作 release 通道，更新检查会按实际回退。
-                channel: "release",
                 installedAt: Date.now(),
-            });
+            };
+
+            tracked.push(
+                entry.kind === "plugin"
+                    ? {
+                          ...common,
+                          kind: "plugin",
+                          requestedVersion: "latest",
+                          // 历史未知 —— 当作 release 通道，更新检查会按实际回退。
+                          channel: "release",
+                      }
+                    : {
+                          ...common,
+                          kind: "theme",
+                          // 主题连通道都不编造：绑定没经过任何下载，
+                          // 第一次更新后才有真实值。
+                      }
+            );
             added += 1;
         }
 
@@ -347,67 +594,187 @@ export class InstallerService {
         return added;
     }
 
-    /** 卸载：先禁用再删目录，最后从跟踪列表移除。 */
-    async uninstall(tracked: TrackedPlugin): Promise<void> {
-        await disablePlugin(this.app, tracked.pluginId);
-        await removePluginFolder(this.app, tracked.pluginId);
-        await refreshPluginManifests(this.app);
+    // ── 更新自己 ──────────────────────────────────────────────────────────
 
-        const settings = this.settings;
-        settings.installer.tracked = settings.installer.tracked.filter(
-            (item) => !(item.pluginId === tracked.pluginId && item.host === tracked.host)
+    /**
+     * 更新 OBSync 自己 —— 写盘后**不重载、不记入跟踪列表**。
+     *
+     * ## 为什么不重载（这块的核心取舍）
+     *
+     * 别的插件更新完走 disable → enable；对**自己**是先卸载正在执行这段代码的
+     * 实例，剩下半段靠闭包才活着 —— 能成也是靠副作用成功，中途失败就停在
+     * 「已禁用」，而来得及提示你的代码已经不在了。所以这里只写文件，然后记一个
+     * 「待重启」的版本号（设置页据此常驻提示，用户重启后新代码才生效）。
+     *
+     * 不记入跟踪列表：那张表是「用户装了什么」的清单，自己不是其中一项
+     * （绑定弹窗也刻意跳过自己）。所以它没有徽标、没有取消绑定。
+     *
+     * ## 两道守卫
+     *
+     * - 远端 manifest 的 id 必须是 `obsync`。`SELF_REPO` 是个写死的常量，
+     *   万一指错地方，按错的 id 解析目录会把**别的插件**覆盖掉 —— 拦住，
+     *   而不是赌它没写错。
+     * - **不允许降级**（远端比当前旧就中止）：「更新」不该把用户降回旧版本。
+     *   版本相同则放行 —— 那是「重装修复」，把一个坏掉的安装修回来是合理需求。
+     *
+     * @param currentVersion 运行中的版本（来自插件 manifest）。传进来而不是读磁盘：
+     *   待重启期间磁盘上那份比运行中的新，拿它比就永远比不出「降级」。
+     */
+    async updateSelf(currentVersion: string): Promise<{ version: string; replaced: boolean }> {
+        const { files, manifest, repoRef } = await this.fetchItem(
+            PLUGIN_SPEC,
+            formatRepoId(SELF_REPO),
+            "latest",
+            // 不做镜像发现：那套是给「用户装的插件」找国内加速用的，
+            // 自己更新必须来自官方仓库。
+            { allowMirror: false }
         );
+
+        if (manifest.id !== SELF_PLUGIN_ID) {
+            throw new InstallerError({
+                kind: "selfIdMismatch",
+                repo: formatRepoId(repoRef),
+                id: manifest.id,
+            });
+        }
+
+        if (compareVersions(manifest.version, currentVersion) === -1) {
+            throw new InstallerError({
+                kind: "selfUpdateDowngrade",
+                current: currentVersion,
+                latest: manifest.version,
+            });
+        }
+
+        const folder = await resolvePluginFolder(this.app, SELF_PLUGIN_ID);
+        const backup = await createBackup(this.app, "plugin", SELF_PLUGIN_ID, folder);
+
+        // 写入失败会整体回滚（`writeItemFiles` 内部），此时**不会**留下待重启标记 ——
+        // 标标记与写盘是同一个成功条件，这是「磁盘比运行中新」这个断言成立的前提。
+        await writeItemFiles(this.app, files, backup);
+
+        setPendingRestart(this.settings, manifest.version);
+        await this.deps.saveSettings();
+
+        logger.info(`OBSync updated to ${manifest.version}; restart required`);
+
+        return { version: manifest.version, replaced: backup.folderExisted };
+    }
+
+    // ── 取消绑定 ──────────────────────────────────────────────────────────
+
+    /**
+     * 取消跟踪 —— **不碰磁盘上的任何东西**。
+     *
+     * 这个方法以前叫 `uninstall`，它会禁用插件、递归删掉整个目录，主题那边还会
+     * 先把正在使用的主题切回默认。那是**越界**的：跟踪列表记的是「我在跟哪个仓库」，
+     * 而插件 / 主题的安装与移除归 Obsidian 自己管（设置里的「已安装插件」与「外观」）。
+     *
+     * 对**绑定**进来的对象来说这一点尤其要紧：用户从官方商店或手工装好之后让 OBSync
+     * 认下它，此时点「移除」想表达的几乎一定是「别再跟了」，而不是「把它从库里删掉」。
+     * 后者不可逆（尤其是他自己放进去的附加文件），而前者一条命令就能加回来。
+     *
+     * 所以这里只做两件事：从跟踪列表里去掉、清掉它的更新徽标。
+     * 要真删文件，去 Obsidian 自己的界面删 —— 那里有它自己的确认流程。
+     */
+    async unbind(tracked: TrackedItem): Promise<void> {
+        const settings = this.settings;
+
+        // 按 kind + id 移除：跟踪列表的不变量就是「每个 (kind, id) 只有一条」，
+        // 与 recordItem / sanitize 的去重口径一致。
+        settings.installer.tracked = settings.installer.tracked.filter(
+            (item) => !(item.kind === tracked.kind && item.id === tracked.id)
+        );
+
+        // 顺手清掉徽标记录：跟踪列表是「谁该有徽标」的唯一事实来源。留着它，
+        // 用户重新绑定时会先看到一条过期的「可更新」。
+        delete settings.installer.availableUpdates[availableUpdateKey(tracked)];
+
         await this.deps.saveSettings();
     }
 
     // ── 记录 ──────────────────────────────────────────────────────────────
 
-    private async recordInstalled(input: {
+    /** 把一次成功安装/更新的结果写进跟踪列表。两种 kind 共用。 */
+    private async recordItem(input: {
+        kind: TrackedKind;
         repoRef: RepoRef;
-        manifest: { id: string; name: string; version: string };
-        requestedVersion: string;
-        channel: TrackedPlugin["channel"];
-        enabled: boolean;
-        replaced: boolean;
+        /** 走了镜像时的源地址；见 `InstallRequest.origin`。 */
+        origin?: RepoRef;
+        id: string;
+        name: string;
+        version: string;
+        channel: InstallChannel;
+        /** 只对插件有意义（主题没有版本钉选）。 */
+        requestedVersion?: string;
     }): Promise<void> {
         const settings = this.settings;
-        const { repoRef, manifest } = input;
+        const tracked = settings.installer.tracked;
 
-        const existingIndex = settings.installer.tracked.findIndex(
-            (item) => item.pluginId === manifest.id
+        const existingIndex = tracked.findIndex(
+            (item) => item.kind === input.kind && item.id === input.id
         );
-        const previous = existingIndex >= 0 ? settings.installer.tracked[existingIndex] : undefined;
+        const previous = existingIndex >= 0 ? tracked[existingIndex] : undefined;
 
-        const record: TrackedPlugin = {
-            host: repoRef.host,
-            owner: repoRef.owner,
-            repo: repoRef.repo,
-            pluginId: manifest.id,
-            name: manifest.name,
-            installedVersion: manifest.version,
-            requestedVersion: input.requestedVersion,
+        // 源地址要**继承**，不能只取这一次的值：更新路径上（「更新到最新」、
+        // 「更新全部」、重装）传进来的 `repo` 是记录里那个地址 —— 它已经是镜像了，
+        // 镜像发现不会再跑（`shouldLookForMirror` 要求 `ref.host === "github"`），
+        // 于是这次调用手里没有源地址。不继承的话，用户更新一次插件，
+        // 列表里的 GitHub 那一行就凭空消失 —— 而他什么都没做。
+        //
+        // 但**只在来源没变时**继承。身份是 `(kind, id)`，所以「同一个插件换个
+        // 仓库装」会落在同一条记录上（上游 ↔ 自己的 fork 之间切换，真会发生）——
+        // 而 `origin` 说的是**上一个**仓库的地址，继承下来列表就会显示一个早就
+        // 不是它来源的地址，偏偏用户正是来看「它到底跟谁走」的。
+        //
+        // 与 `frozen` 的继承正好形成对照：冻结是**这个已安装的东西**的属性，
+        // 换个仓库装它仍然成立；`origin` 是关于**仓库**的，仓库换了就不成立。
+        const previousRef = previous ? itemRepoRef(previous) : undefined;
+        const inheritedOrigin =
+            previousRef && isSameRepo(input.repoRef, previousRef) ? previous!.origin : undefined;
+        const origin = input.origin ?? inheritedOrigin;
+
+        const common = {
+            host: input.repoRef.host,
+            owner: input.repoRef.owner,
+            repo: input.repoRef.repo,
+            // 与主来源相同就不记（列表会画出两行同一个地址）。写入侧兜一道，
+            // 读取侧 `sanitizeOrigin` 再兜一道 —— data.json 是可以手改的。
+            origin: origin && !isSameRepo(origin, input.repoRef) ? origin : undefined,
+            id: input.id,
+            name: input.name,
+            installedVersion: input.version,
             // 更新时保留用户之前设的冻结状态。
             frozen: previous?.frozen ?? false,
             channel: input.channel,
             installedAt: Date.now(),
         };
 
+        const record: TrackedItem =
+            input.kind === "plugin"
+                ? {
+                      ...common,
+                      kind: "plugin",
+                      requestedVersion: input.requestedVersion ?? "latest",
+                  }
+                : { ...common, kind: "theme" };
+
         if (existingIndex >= 0) {
-            settings.installer.tracked[existingIndex] = record;
+            tracked[existingIndex] = record;
         } else {
-            settings.installer.tracked.push(record);
+            tracked.push(record);
         }
 
         // 装上了新版本，旧的可更新徽标就该消失 —— 否则列表永远挂着过期提示。
-        delete settings.installer.availableUpdates[manifest.id];
+        delete settings.installer.availableUpdates[availableUpdateKey(record)];
 
         await this.deps.saveSettings();
     }
 
     /** 切换冻结状态。 */
-    async setFrozen(tracked: TrackedPlugin, frozen: boolean): Promise<void> {
+    async setFrozen(tracked: TrackedItem, frozen: boolean): Promise<void> {
         const record = this.settings.installer.tracked.find(
-            (item) => item.pluginId === tracked.pluginId
+            (item) => item.kind === tracked.kind && item.id === tracked.id
         );
         if (!record) return;
         record.frozen = frozen;
@@ -431,13 +798,11 @@ export class InstallerService {
 
         for (const result of results) {
             if (result.error !== undefined) continue;
+            const key = availableUpdateKey(result.tracked);
             if (result.hasUpdate) {
-                store[result.tracked.pluginId] = {
-                    latestVersion: result.latestVersion,
-                    checkedAt: Date.now(),
-                };
+                store[key] = { latestVersion: result.latestVersion, checkedAt: Date.now() };
             } else {
-                delete store[result.tracked.pluginId];
+                delete store[key];
             }
         }
 

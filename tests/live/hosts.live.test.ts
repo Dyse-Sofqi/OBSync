@@ -14,7 +14,10 @@ import { GiteeHost } from "../../src/host/giteeHost";
 import { GitHubHost } from "../../src/host/githubHost";
 import { httpJson, httpRequest } from "../../src/host/http";
 import { RateLimitError } from "../../src/host/errors";
-import { fetchPluginFiles } from "../../src/features/installer/pluginFiles";
+import {
+    fetchFiles,
+    PLUGIN_SPEC,
+} from "../../src/features/installer/installFiles";
 import { parseRepoRef } from "../../src/host/repoRef";
 import type { Release } from "../../src/host/types";
 
@@ -120,11 +123,12 @@ describe("GitHub 真实链路", () => {
         // objects.githubusercontent.com）在本地实测 3 次里 2 次 21 秒超时 ——
         // 直接调它会让这条用例假失败。产品要保证的是「文件最终能取到」，
         // 至于是走资产还是走源码，是实现细节。
-        const { files, manifest, channel } = await fetchPluginFiles(
+        const { files, manifest, channel } = await fetchFiles(
             host,
             REF,
             { kind: "release", tag: latest.tag, ref: latest.tag },
-            undefined
+            undefined,
+            PLUGIN_SPEC
         );
 
         expect(manifest.id).toBe("glimpse");

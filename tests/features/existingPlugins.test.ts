@@ -70,7 +70,7 @@ describe("listInstalledPlugins", () => {
         const installed = await listInstalledPlugins(fake.app);
 
         expect(installed).toHaveLength(1);
-        expect(installed[0]!.pluginId).toBe("demo");
+        expect(installed[0]!.id).toBe("demo");
         expect(installed[0]!.manifest.version).toBe("1.2.3");
         expect(installed[0]!.enabled).toBe(true);
     });
@@ -100,13 +100,13 @@ describe("resolveBindCandidates", () => {
 
         expect(bindable).toEqual([
             {
-                pluginId: "demo",
+                id: "demo",
                 name: "Demo Plugin",
                 version: "1.2.3",
                 repo: { host: "github", owner: "alice", repo: "demo-repo" },
             },
         ]);
-        expect(unresolved.map((plugin) => plugin.pluginId)).toEqual(["offline-plugin"]);
+        expect(unresolved.map((plugin) => plugin.id)).toEqual(["offline-plugin"]);
     });
 
     it("目录名 ≠ manifest id 时按 id 查索引（实测本机 5 个插件如此）", async () => {
@@ -139,7 +139,7 @@ describe("resolveBindCandidates", () => {
         expect(unresolved).toHaveLength(0);
         expect(bindable).toEqual([
             {
-                pluginId: "md-razor",
+                id: "md-razor",
                 name: "MDRazor",
                 version: "0.1.0",
                 repo: { host: "github", owner: "dyse-sofqi", repo: "MDRazor" },
@@ -178,7 +178,7 @@ describe("resolveBindCandidates", () => {
 
         const installed = await listInstalledPlugins(fake.app);
 
-        expect(installed.map((plugin) => plugin.pluginId)).toEqual(["regex-replace"]);
+        expect(installed.map((plugin) => plugin.id)).toEqual(["regex-replace"]);
     });
 });
 
@@ -191,13 +191,13 @@ describe("InstallerService.bindExisting", () => {
 
         const added = await service.bindExisting([
             {
-                pluginId: "demo",
+                id: "demo",
                 name: "Demo Plugin",
                 version: "1.2.3",
                 repo: { host: "github", owner: "alice", repo: "demo-repo" },
             },
             {
-                pluginId: "second",
+                id: "second",
                 name: "Second",
                 version: "2.0.0",
                 repo: { host: "github", owner: "bob", repo: "second" },
@@ -213,7 +213,7 @@ describe("InstallerService.bindExisting", () => {
             host: "github",
             owner: "alice",
             repo: "demo-repo",
-            pluginId: "demo",
+            id: "demo",
             name: "Demo Plugin",
             installedVersion: "1.2.3",
             requestedVersion: "latest",
@@ -224,7 +224,7 @@ describe("InstallerService.bindExisting", () => {
         // 重复绑定：全部跳过，不落盘
         const again = await service.bindExisting([
             {
-                pluginId: "demo",
+                id: "demo",
                 name: "Demo Plugin",
                 version: "1.2.3",
                 repo: { host: "github", owner: "alice", repo: "demo-repo" },

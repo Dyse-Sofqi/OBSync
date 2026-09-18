@@ -13,7 +13,7 @@ import { GitAuthError } from "../../src/features/sync/errors";
 /**
  * 安装器错误的**展示层**翻译。
  *
- * 背景：抛出点（manifest / pluginFiles / pluginFolder）是纯函数，拿不到 `t`，
+ * 背景：抛出点（manifest / installFiles / itemFolder）是纯函数，拿不到 `t`，
  * 所以只携带「类型码 + 参数」；用户能看懂的话在这里按类型拼。
  *
  * 早期实现把中文文案烘焙进 `message`，而 `Notifier` 对 `ObsyncError` 是原样返回 ——
@@ -28,14 +28,14 @@ const SAMPLES: InstallerErrorDetail[] = [
     { kind: "manifestNotObject", context: "demo" },
     { kind: "manifestMissingField", context: "demo", field: "version" },
     { kind: "manifestBadId", context: "demo", id: "BAD ID" },
-    { kind: "missingManifest", repo: "o/r" },
-    { kind: "missingRequiredFiles", repo: "o/r", files: "main.js" },
+    { kind: "missingManifest", repo: "o/r", of: "plugin" },
+    { kind: "missingRequiredFiles", repo: "o/r", files: "main.js", of: "plugin" },
     { kind: "missingBuildArtifacts" },
     { kind: "incompatibleApp", name: "Demo", minVersion: "1.9.0" },
     { kind: "pluginIdConflict", pluginId: "demo", repo: "o/r" },
-    { kind: "folderMissingRequired", pluginId: "demo", file: "main.js" },
-    { kind: "writeFailedRolledBack", pluginId: "demo" },
-    { kind: "writeFailedRollbackFailed", pluginId: "demo" },
+    { kind: "folderMissingRequired", id: "demo", file: "main.js", of: "plugin" },
+    { kind: "writeFailedRolledBack", id: "demo", of: "plugin" },
+    { kind: "writeFailedRollbackFailed", id: "demo", of: "plugin" },
     { kind: "cannotEnablePlugin" },
     { kind: "communityIndexFailed", status: 500 },
     { kind: "rateLimitFallback", host: "Gitee" },
@@ -79,7 +79,7 @@ describe("describeInstallerError", () => {
 
     it("错误自身的 message 只含技术性描述，不含面向用户的文案", () => {
         // message 进日志，也可能在兜底路径里露出来 —— 不该混入中文。
-        const error = new InstallerError({ kind: "missingManifest", repo: "o/r" });
+        const error = new InstallerError({ kind: "missingManifest", repo: "o/r", of: "plugin" });
 
         expect(error.message).toContain("missingManifest");
         expect(error.message).toContain("o/r");

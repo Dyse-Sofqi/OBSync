@@ -4,7 +4,11 @@
 > `docs/reference-analysis.md`（两个参考项目的源码分析）、`.workbuddy-ai/memory/`（历次工作日志）、
 > **`docs/RELEASE.md`（发版清单 —— 要发版时照着走，别重新推导步骤）**。
 >
-> 最后更新：2026-09-16（验收复查：修掉 2 个真 bug + 补 3 处降级 + 补回一个漏做的功能，
+> 最后更新：2026-09-17（新增主题支持：绑定 + 更新，含设置结构 v3 迁移；
+> 顺带修掉一个「默认值被就地改写」的真 bug，见五点五节末尾。
+> 同日追加：OBSync 自身的检查更新与更新 —— **只写文件、不重载自己**，见五点六节）
+>
+> 上一轮：2026-09-16（验收复查：修掉 2 个真 bug + 补 3 处降级 + 补回一个漏做的功能，
 > 详见下方「验收复查记录」）
 
 ---
@@ -38,6 +42,7 @@
 > 阶段二之后按使用反馈持续增补（均已提交）：绑定库里已有的插件（`1a73339`）、
 > 可用更新常驻徽标（`e9a0729`）、插件身份改用 manifest id（`3c4e660`）、
 > 检查时机调整（`c5bc825`）。设置结构版本现在是 `SETTINGS_VERSION = 2`。
+| 主题支持（绑定 + 更新） | ✅ 完成 | 见五点五节 |
 | 四：打磨与发布 | ⬜ 未开始 | — |
 
 ### 验收复查记录（2026-09-16）
@@ -67,7 +72,7 @@
 | **安装器的命令没有插件名前缀** | UX 缺口：同步命令叫「OBSync：立即同步」，安装器命令却直接用了弹窗标题（「添加插件仓库」）。Obsidian 用户按插件名搜命令，没前缀就搜不到 | 新增 `cmdAddRepo` / `cmdBindExisting` / `cmdCheckUpdates` / `cmdUpdateAll` / `cmdOpenSettings`；弹窗标题保持不带前缀 |
 | **Gitee 的令牌会随错误消息漏出去** | 真问题（安全）：Gitee 的鉴权只能把令牌放查询串（`?access_token=`），而 `http` 把 URL 写进了错误消息与调试日志。那条消息有两个出口 —— `Notifier` 把它**弹在屏幕上**（用户截个图就带出去），`logger.error` 把它写进控制台（而用户报 issue 时贴的正是这个）。令牌存在系统密钥库里刻意绕开 `data.json`，却从这条侧路原样漏了；`repoRef` 的报错还会把用户粘进来的 `https://oauth2:TOKEN@…` 克隆地址原样回显 | 新增 `host/redact.ts`（`redactUrl`），在 `httpRequest` 的**每个** URL 出口上脱敏（含超时、重试日志、最终错误、底层错误详情），`repoRef` 回显输入前也过一遍；新增 `tests/host/redact.test.ts`，并给 `http` / `repoRef` 补上「不泄漏」用例（含一条「脱敏不能影响实际请求」的反向守卫） |
 | **既是「令牌上屏」的另两条路，也是自相矛盾的 UI** | 真问题（安全）：① `SyncService.diagnose` 的 `detail` 会**渲染在设置页上**，而它带的正是远端地址原文 —— 库的远端本来就写着带令牌的地址时（用户从前配的），令牌直接显示出来；② 「远端已设置 …」的成功提示也回显整条地址；③ 更要紧的是**设计自相矛盾**：`auth.ts` 明确论证过不能把令牌写进 remote URL（会落进 `.git/config`、`git remote -v` 一眼可见、随配置文件泄漏，实测确认），而「编辑远端地址」弹窗对这样的地址**一句提示都没有**，默默照写 | 脱敏收口到 `diagnose` 的 `add()`（报告的唯一写入点）+ `main.ts` 的回显；弹窗新增凭据警告（`classifyRemoteUrl` 抽成纯函数，判定与渲染分离，第一次有测试）；新增 `tests/features/editRemoteModal.test.ts`、扩充 `syncService.test.ts` 与 `redact.test.ts` |
-| **`data.json` 里的 `pluginId` 没查内容 → 卸载会删出插件目录** | 真 bug（路径逃逸）：`tracked[].pluginId` 最终会变成**路径的一截** —— 卸载时 `resolvePluginFolder()` 找不到同名目录就回落到 `{configDir}/plugins/{pluginId}`，紧接 `rmdir(folder, true)` **递归**删（路径算术与「真的发出这个调用」见 `tests/features/pluginFolder.test.ts`）。而 `sanitizeTrackedPlugins` 只检查「是不是非空字符串」：`"../../evil"` 会拼出 `.obsidian/plugins/../../evil`。`data.json` 恰恰是这个字段**唯一**不经过 `parseManifest` 的来源（可手改，也会随笔记仓库同步到别的设备） | 抽出 `core/pluginId.ts`（`PLUGIN_ID_RE` / `isValidPluginId`）作为**单一事实来源**，`manifest.ts` 与 `settings.ts` 共用；新增 `tests/core/pluginId.test.ts`，其中两条是**防漂移**——「`parseManifest` 放行的，`normalizeSettings` 一个都不能丢」及反向 |
+| **`data.json` 里的 `pluginId` 没查内容 → 卸载会删出插件目录** | 真 bug（路径逃逸）：`tracked[].pluginId` 最终会变成**路径的一截** —— 卸载时 `resolvePluginFolder()` 找不到同名目录就回落到 `{configDir}/plugins/{pluginId}`，紧接 `rmdir(folder, true)` **递归**删（路径算术与「真的发出这个调用」见 `tests/features/itemFolder.test.ts`）。而 `sanitizeTrackedPlugins` 只检查「是不是非空字符串」：`"../../evil"` 会拼出 `.obsidian/plugins/../../evil`。`data.json` 恰恰是这个字段**唯一**不经过 `parseManifest` 的来源（可手改，也会随笔记仓库同步到别的设备） | 抽出 `core/pluginId.ts`（`PLUGIN_ID_RE` / `isValidPluginId`）作为**单一事实来源**，`manifest.ts` 与 `settings.ts` 共用；新增 `tests/core/pluginId.test.ts`，其中两条是**防漂移**——「`parseManifest` 放行的，`normalizeSettings` 一个都不能丢」及反向 |
 | **更新检查比安装路径「少做了两件事」→ 永远报「已是最新」** | 真 bug：`checkOne`（检查）本应是 `resolveSource`（安装）的镜像，却有两处退化。① **不带令牌** —— 私有仓库在未鉴权时两个平台都返回 **404**（刻意不泄漏「仓库是否存在」），检查把它读成「这个仓库没有 release」；② **不回退** —— `/releases/latest` 只给正式版，「只发预发布版」的仓库返回 404，而安装路径在这一级会往下看预发布版。两处症状相同：**装得上、却永远收不到更新提示**。附带代价：不带令牌走的是**匿名配额**（Gitee 极低，项目为此专门做过节流），等于自己制造那些 403 | `checkOne` 带上 `service.tokenForHost(plugin.host)`（新增带文档的公开出口），并在 404 后对齐 `resolveSource` 的第二级（`listReleases` 取首个）；`updateChecker.test.ts` +6，含两条反向守卫（令牌不串平台、没配令牌不造鉴权头）与一条「回退只在 404 后发生」 |
 | **「有哪些平台」有 4 份副本，其中 1 份决定用户数据的生死** | 真缺口（漂移风险）：`SUPPORTED_HOSTS` 声明自己是平台列表，却**没有任何调用方**；同一个事实另写了三份 —— `settings` 的 `VALID_HOSTS`（持久化校验）、`secretStore.snapshot` 的循环、设置页的两个 `renderTokenField("github"/"gitee")`。第一份的后果不是「不好看」：**漏掉某个平台时，用户在那个平台上装的插件会在下次加载 `data.json` 时被当成非法条目无声丢弃**（不报错，列表里就没了）。而 `hostRegistry` 自己的注释写着「将来加 GitLab / Bitbucket 只需要在这里注册一项」—— 那句话不成立 | 平台列表移入 `host/types.ts` 并让 `HostKind` 由它**推导**（加平台 = 改那一行），三个使用点全部改为派生；`hostRegistry` 的注释改成「加平台要动哪些地方」的完整清单；新增 `tests/host/hostRegistry.test.ts`（5 条，让四个使用点互相印证而非各列一份平台名） |
 | **重复实现里躺着的那一份是错的** | 真缺口：`InstallerService.checkForUpdate` 是「有没有更新」的**第二份实现**，无任何调用方，且判据用的是 `requestedVersion` —— 跟踪最新版的插件那个值是字符串 `"latest"`，于是它几乎恒返回 release。谁把它当成现成的工具接上，谁就得到一个**恒报「有更新」**的功能。同类还有 `isManifestCompatible`（兼容性判断的第二份），它声明的存在理由「注入 `requireApiVersion` 便于测试」已被 obsidian stub 的 `__setApiVersion` 取代 | 两处删除（其余死导出清点见第七节「死代码清点」） |
@@ -89,7 +94,8 @@
 | **「放弃当前合并」后毫无反馈** | 真缺口：`sync.mergeAborted` 这个键写了却从没接上。用户点了撤销类动作，库里的冲突标记消失了但界面一片安静 —— 会让人怀疑到底成没成 | `abortMerge` 成功后发提示 |
 | 绑定弹窗的空状态 / 扫描中没有底部按钮 | 小缺口：只能按 Esc 或点弹窗外，与其他状态不一致 | 两个状态都渲染 footer |
 | `AddRepoModal` 用笼统的「加载中…」 | 小缺口：`installer.resolving` / `installing` 两个键写了没接上，用户不知道卡在哪一步 | `busy` 改为阶段枚举，显示具体文案 |
-| 跟踪列表不显示安装来源 | 小缺口：`installer.sourceRaw` 写了没接上。从源码装的插件更新检查查不到版本，用户会以为功能坏了 | 仅在 `channel === "raw"` 时显示来源（常见情况不加噪音） |
+| **跟踪列表不显示安装来源** | 小缺口：`installer.sourceRaw` 写了没接上。从源码装的插件更新检查查不到版本，用户会以为功能坏了 | 仅在 `channel === "raw"` 时显示来源（常见情况不加噪音） |
+| **自动发现镜像后源地址从记录里消失了** | 真缺口：`host/owner/repo` 只有三个位置，镜像命中后就被镜像占了（下载与更新检查都走它，那是镜像的意义），而**用户填的源地址没有任何地方可放** —— 装完之后列表只显示 Gitee，用户看不出插件的家在 GitHub，也看不出 OBSync 在跟谁说话。修的时候还带出一条不显眼的规则：更新路径手里**没有**源地址（传进去的 `repo` 已经是镜像，而镜像发现要求 `ref.host === "github"` 不会再跑），不继承的话用户更新一次插件，GitHub 那一行就凭空消失 | `TrackedItem.origin` 记源地址（只在走了镜像时才有）；列表「源仓库一行 + 镜像另起一行」，第二行必须点明**下载走镜像**；`recordItem` 只在**来源没变时**继承 `origin`（与上一次的 ref 做 `isSameRepo` 比对 —— 无条件继承会让「同一个插件换个仓库装」显示上一个仓库的地址）；`sanitizeOrigin` 在读取侧兜住手改的 `data.json`（坏值只丢它自己，与主来源相同的值视为没写）。见 `tests/features/mirrorProvenance.test.ts` |
 | **意外 HTTP 状态码漏出英文技术文案** | 真缺口：`host.requestFailed` 写了没接上。500/502/422 这类状态码会落到 `ObsyncError → err.message`，中文用户看到的是 `Unexpected HTTP 500 from ...` | 新增 `HttpStatusError`（带 status + 服务端说明），`describeError` 里加翻译分支 |
 | **`statusMapper` 没有任何测试** | 测试盲区：一次变异验证打偏才发现的 —— 我把 `HttpStatusError` 换回 `ObsyncError` 后用例照样全绿，因为用例直接构造错误对象，没走映射路径 | 新增 `statusMapper.test.ts`（10 项，覆盖两个平台各自的限流表达方式） |
 | 死键清理 | 25 个未被引用的 i18n 键：4 个背后是真缺口（见上），其余是通用词汇（保留）或设计上不该存在（`plugin.commandCategory` —— Obsidian 命令 API 没有分类字段；`settings.title` —— 被 `cmdOpenSettings` 取代） | 逐个分诊处理 |
@@ -99,6 +105,7 @@
 | **「从 Gitee 装只有源码的插件」这条验收标准从没被真正走通** | 测试盲区：`installerService.test.ts` 用 mock 的 host（验编排）、`giteeHost.test.ts` 验 host 单独工作 —— 两者都对，但**组合起来**的缝隙没人管 | 新增 `tests/features/giteeInstall.test.ts`：用**真实的 GiteeHost** 驱动完整安装流程 |
 | **初始化仓库不建 `.gitignore`** | 真缺口：`init()` 只跑 `git init`。用户会把 `.obsidian/workspace.json`（面板/标签布局，**每开关一个标签就变**）同步出去，多设备必然冲突且没法手工合并 | 初始化时建一份默认的（已有则**绝不覆盖**，建不了也不让初始化失败）；另加「编辑 .gitignore」命令 |
 | **同一个文件被重复计入**（三处） | 真 bug：`mapStatus` 按 `git status` 的两位状态位分别归类，「改了又暂存」的文件（`AM`/`MM`）同时进 `staged` 与 `unstaged`。于是 `{{numFiles}}` 多算、`{{files}}` 重复、**状态栏脏文件数虚高**、视图列表同一路径出现两遍 | 三处都改成**按路径去重** |
+| **主题的大小写变体被当成两个主题**（身份键漏了归一） | 真 bug：主题的身份是**目录名**，而 macOS / Windows 的文件系统不区分大小写 —— 代码里另外三处都按这个口径办（`resolveThemeFolder` 找目录、`listInstalledThemes` 去重、`getActiveTheme` 判断当前主题），只有身份键 `availableUpdateKey` 是精确比较。后果不是「多一行」这么轻：两条记录指向**同一个目录**（更新其中一个等于更新两个），而徽标的键是 `<kind>:<id>` —— `theme:Minimal` 与 `theme:minimal` 是两条不同的记录，检查完只有一条会亮，用户看着两行一模一样的主题分不出哪行是真的。触发路径：`data.json` 随笔记仓库同步到多设备、或用户手改过目录名的大小写。`addTracked` 还自己就地写了一遍同样的比较，等于同一个判据两处各写一份 | `availableUpdateKey` 里按 kind 归一（**只归一主题**，插件不归一 —— `manifest.id` 有 `/^[a-z0-9-]+$/`，本来就不可能出现大写）；`addTracked` 改用它判重。两侧各有用例（写入侧 `themeService.test.ts`、读取侧 `settings.test.ts`），并额外钉住「两边刻意不对称」这条规则 |
 | **插件在移动端会加载失败** | 真 bug（发布阻断级）：manifest 是 `isDesktopOnly: false`，但 `main.ts` **静态导入**了同步模块 → `simple-git` → 它在**模块初始化阶段**就 `require("child_process")` / `require("fs")`。移动端没有 Node，整个插件一启用就崩 —— 连纯 HTTP 的安装器都用不了 | `main.ts` 改用**动态 import**，推迟到 `Platform.isDesktopApp` 之后；`pnpm check` 加「移动端安全」守住这个不变式 |
 
 > ⚠ **一处我自己的误判，记下来免得再犯**：判断 `minAppVersion` 时我最初用
@@ -210,6 +217,8 @@ src/
 ├─ main.ts                 # 主类：只做装配。安装器已挂载；阶段三的 sync 模块也在这里挂
 ├─ settingsTab.ts          # 设置页：语言/host令牌/安装器列表/sync（阶段三加）
 ├─ core/                   # i18n（zh-cn 是规范源）、settings、secretStore、logger、notice
+│  ├─ pluginId.ts          # 插件 id 判据（会成为路径的一截）
+│  └─ themeName.ts         # 主题目录名判据 —— **不能**与上面共用（主题名有空格/大写）
 ├─ host/                   # ★ 双平台抽象层（脊柱）
 │  ├─ IRepoHost.ts         # 统一接口；applyAuth 是接口方法（GitHub 用 header，Gitee 用 query）
 │  ├─ githubHost.ts / giteeHost.ts
@@ -217,6 +226,15 @@ src/
 │  ├─ http.ts              # requestUrl 封装：throw:false、重试退避（400ms*3^n）、20s 超时
 │  └─ statusMapper.ts      # 状态码 → RateLimitError/AuthError/NotFoundError
 ├─ features/installer/     # 阶段二产出，见第五节（含 errors.ts：类型码 + 翻译器）
+│  ├─ types.ts             # 判别联合：TrackedPlugin | TrackedTheme（另有 FILE_SETS / SUBDIR）
+│  ├─ installFiles.ts      # 取文件：按「文件集 + manifest 解析器」参数化（原 pluginFiles.ts）
+│  ├─ itemFolder.ts        # 目录读写：备份/写盘/回滚/删除（两种 kind 共用）
+│  ├─ pluginFolder.ts      # 插件：目录定位（目录名≠id）+ enable/disable/reload
+│  ├─ themeFolder.ts       # 主题：目录定位 + 非公开 API 守卫（当前主题/切换/重载）
+│  ├─ existingPlugins.ts   # 绑定：扫描已装插件 × 官方插件索引
+│  ├─ existingThemes.ts    # 绑定：扫描已装主题 × 官方主题索引（+ 手填仓库）
+│  ├─ communityIndex.ts    # 官方索引的公共骨架（缓存/并发去重）+ communityRepoRef
+│  └─ communityThemes.ts   # 官方主题索引（community-css-themes.json）
 └─ features/sync/          # 阶段三产出，见第六节
    ├─ types.ts / errors.ts # 领域类型 + 按应对方式分类的错误（含 describeSyncError）
    ├─ gitManager.ts        # 抽象接口（含状态字符映射 mapStatusChar）
@@ -313,6 +331,22 @@ src/
 - **镜像发现**（`mirrorFinder.ts`）：用两边 manifest 的 `id` 二次校验，
   同名不同项目直接放弃 —— 装错比找不到严重。默认关闭
   （实测抽样 40 个社区插件命中 0 个），且全程走 raw 通道零 API 配额。
+  > **命中之后两个地址都要留着**（`TrackedItem.origin`）：`host/owner/repo` 记的是
+  > **实际使用**的来源（镜像），源地址另存一份，列表才会「源仓库一行 + 镜像一行」。
+  > 拿到「实际来源」一律走 `types.ts` 的 `itemRepoRef()`，**不要**读 `origin` ——
+  > 检查、下载、重装必须同源，读 `origin` 会让它们分叉（见缺陷表里那条）。
+  > 主题**不做**镜像发现：那套校验靠插件 manifest 的 `id`，主题没有 id。
+  >
+  > **「有没有用镜像」只在两个时刻能看见**：安装时弹窗那句「发现 Gitee 镜像」，
+  > 以及每次更新/重装后的完成提示（`downloadSource.ts` 拼的来源名，命中镜像时为
+  > 「Gitee 镜像」）。列表那行镜像文案只在命中时才出现，**看不出「没探测到」与
+  > 「没探测」的区别** —— 而且这两件事都真实存在：
+  > 1. 探测只认「Gitee 上同 owner 同名」的仓库。实测（2026-09-18）把测试库在跟的
+  >    7 个仓库逐个探了一遍，**全部 404**：多数 Gitee 镜像挂在别的账号下
+  >    （`gitee.com/mirrors/...` 之类），这条判据永远命中不了 —— 这也是默认关闭的原因。
+  > 2. **绑定进来的条目从不做镜像探测**（`bindExisting` 直接写记录），要等到
+  >    第一次更新时才会探（更新路径会探）。所以「刚绑定就看不到镜像行」是正常的，
+  >    不是显示坏了；真在意的话点一次「更新」。
 - **绑定已有插件**（`existingPlugins.ts` + `ui/BindExistingModal.ts`）：
   扫描 `{configDir}/plugins/`（以磁盘为准，能发现刚手动拷入的插件），
   用官方社区索引按**manifest id** 反查来源仓库 —— manifest 规范里没有 repo 字段，
@@ -323,6 +357,126 @@ src/
   （pkmer / trefoil / bewater / qimen / lyricflux / Enhanced-editing 等）。
 - **社区插件索引**（`communityPlugins.ts`）：GitHub 独有资源，Gitee 无等价物。
   6 小时缓存；统计文件可选；7685 条实测；`byId()` 供绑定功能反查。
+
+## 五点五、主题支持（安装器的第二类对象）实现要点
+
+主题与插件共用**同一条安装/更新链路**（`installFiles.ts` + `itemFolder.ts` + `InstallerService`），
+只在两处分叉：**身份从哪来**、**写完之后的动作**。改这块前先读下面四条。
+
+### 身份：目录名，不是 manifest
+
+主题**没有 id 字段**，身份就是 `{configDir}/themes/` 下的**目录名**
+（`app.customCss.setTheme()` 收的也是它）。这与插件「身份一律以 manifest 为准」正好相反：
+
+- `TrackedBase.id` 对插件是 `manifest.id`，对主题是目录名 —— 名字一样，语义由 kind 决定；
+- 更新永远写回**记录的那个目录**（`resolveThemeFolder` 精确匹配 → 大小写不敏感兜底 →
+  默认落点），**绝不**按远端 manifest 的 `name` 改名（改名等于换一个主题）；
+- 校验用 `core/themeName.ts` 的 `isValidThemeName`，**不能**套 `PLUGIN_ID_RE`
+  （那会把 `Minimal`、`Blue Topaz` 之类的真实主题名全判非法，症状是「一个都绑不上」且无提示）。
+
+### 更新判据：版本号 + 一级回退
+
+与插件同构（远端版本 vs 本地已装版本），但**没有 release 时读默认分支的
+`manifest.json`**（`updateChecker.checkTheme`）。插件那边停在「无从比较」是配额考虑；
+主题的生态就是「只推仓库、不发 release」，不读这一级就永远收不到更新提示。
+
+> 实测三份流行主题都带 version：Minimal 9.1.0 / Things 2.2.4 / AnuPpuccin 1.5.0，
+> Minimal 还有 21 个同名 release。「主题不写版本号」是误传（混淆了社区索引的字段）。
+
+已知边界：作者不升版本号却在改 CSS 时会漏报。这是「与插件一致」的那套语义，不是缺陷。
+
+### 非公开 API 清单（都做了兜底）
+
+公开 `obsidian.d.ts` 里 `customCss` 出现 **0 次**，`pnpm check` 的 minAppVersion 自查
+扫不到它（`CustomCss` 不在 `WATCHED` 名单里，且这些成员没有 `@since` 标注）——
+**所以这一块的人为核查不能省**：
+
+| 用途 | 调用 | 兜底 |
+| --- | --- | --- |
+| 读当前主题 | `customCss.getTheme()` → `customCss.theme` → `vault.getConfig("cssTheme")` | 三级都失败返回 `undefined`（**与默认主题的空串区分开**） |
+| 刷新观感 | `customCss.requestLoadTheme()` | 失败只记 debug（文件已写好，不该报成更新失败） |
+
+`setTheme` **没有**收进这个窄接口，因为没有任何地方该替用户换主题：更新时不碰当前选择，
+取消绑定又不删文件（见下条）。读当前主题只为一件事 —— 判断「更新的正是它吗」，
+是则请求一次重载，否则连重载都不做。
+
+### 移除 = 取消绑定（2026-09-17 改）
+
+列表里的那个按钮以前是 `uninstall`：禁用插件、`rmdir(folder, true)` 递归删掉整个目录，
+主题还先把正在使用的那个切回默认。**这越界了** —— 跟踪列表记的是「我在跟哪个仓库」，
+而插件 / 主题的安装与移除归 Obsidian 自己管（设置里的「已安装插件」与「外观」）。
+对**绑定**进来的对象尤其糟：用户从官方商店装好之后让 OBSync 认下它，点「移除」时想表达的
+几乎一定是「别再跟了」，却换来了不可逆的删除。
+
+现在 `InstallerService.unbind` 只做两件事：从跟踪列表里去掉、清掉它的更新徽标。
+于是：**不删文件、不改启用状态、不切主题、也不需要二次确认**（动作可逆，与「绑定」那侧对称）。
+按钮图标随之从 `trash` 换成 `unlink`，文案写明「不删除文件」—— 用户对「移除 = 卸载」
+有惯性，不写清楚会以为功能坏了。要真删文件，去 Obsidian 自己的界面删。
+
+连带删掉的东西：`themeFolder.detachThemeIfActive`（连同它的四种返回状态）、
+`removeConfirm` / `removeConfirmTheme` / `themeRevertedToDefault` / `themeDetachUnconfirmed`
+四个 i18n 键。**递归删除现在只出现在回滚路径上**（`restoreBackup`），
+而 `sanitizeTrackedItems` 的路径校验仍然必要 —— 主题的更新回滚用的正是 `tracked.id`。
+
+### 设置结构 v3 与两处顺带修的坑
+
+- `SETTINGS_VERSION = 3`：v2 → v3 迁移要给老条目补 `kind: "plugin"`、把 `pluginId`
+  改名为 `id`、把 `availableUpdates` 的键换成 `<kind>:<id>`。**漏掉字段改名会让
+  `data.json` 被清空**（sanitize 按 `id` 取值，拿不到就整条丢弃）—— 已有用例钉住。
+- 顺带修掉一个真 bug：`mergeWithDefaults` 只做浅拷贝，「磁盘数据里缺这个键」时
+  直接把默认值本身放进结果，于是运行时的写入会**就地改写模块级 `DEFAULT_SETTINGS`**
+  （症状：删掉的条目又回来、全新库凭空多出跟踪条目）。现在所有默认值都过 `cloneDefault`。
+- 顺带清掉一个死导出：`isPluginInstalled`（只被测试用过，`readInstalledManifest` 覆盖同一件事）。
+
+## 五点六、OBSync 更新自己（2026-09-17）
+
+设置页「安装器」页最后有一节「OBSync 自身」：当前版本 + 检查更新 + 更新到最新 + 一行状态。
+实现在 `features/installer/selfUpdate.ts`（坐标与状态文案）、`updateChecker.checkSelf`
+（查）、`installerService.updateSelf`（写）。
+
+### 为什么它不在跟踪列表里
+
+跟踪列表是「**用户装了什么**」的清单，每一项旁边挂着冻结 / 取消绑定这类操作 ——
+对自己没有意义。所以它单独一节，而绑定列表也跳过自己（`SELF_PLUGIN_ID`，与
+`manifest.json` 的 `id` 必须一致）。
+
+### 更新只写文件，**不重载自己**（这块的核心取舍）
+
+别的插件更新完是 disable → enable；对**自己**则是**先卸载正在执行这段更新代码的
+实例**，剩下半段靠闭包才活着 —— 能成也是靠副作用成功，中途失败就停在「已禁用」，
+而来得及提示你的代码已经不在了。
+
+所以 `updateSelf` 只做三件事：写盘（失败整体回滚）、把版本号记进
+`installer.pendingRestartVersion`、提示用户重启。**不碰启用状态、不记跟踪列表。**
+
+于是有一段「磁盘上是新版、运行中是旧版」的窗口，这段时间必须如实告知，否则用户
+以为已经在用新版本：
+
+- 设置页那一行常驻显示「已下载 x，重启 Obsidian 后生效」（`describeSelfState` 里
+  **「待重启」压在检查结果之上**）；
+- 标记在**每次加载时清空**（`main.ts` 的 onload 调 `clearPendingRestart`）——
+  既然加载成功了，跑的就是磁盘上那份；不清的话用户重启完还会看到「重启后生效」。
+- 检查用的是**运行中**的版本（参数传进去），不是磁盘那份 —— 拿磁盘那份比会得出
+  「已是最新」，而用户此刻跑的不是它。
+
+### 两道守卫与一条放宽
+
+| 规则 | 为什么 |
+| --- | --- |
+| 远端 manifest 的 id 必须是 `obsync` | `SELF_REPO` 是写死的常量（manifest 没有 repo 字段），万一指错地方，按错的 id 解析目录会**覆盖别的插件** |
+| 不允许降级（远端比当前旧就中止） | 「更新」不该把用户降回旧版本 |
+| 允许**同版本重装** | 把一个坏掉的安装修回来是合理需求 |
+
+### 两条已知边界
+
+- **只能吃 release 资产**：`main.js` 是构建产物（在 `.gitignore` 里），源码回退通道
+  取不到它 —— 资产 CDN 不可达时自我更新会以 `missingRequiredFiles` 失败并回滚。
+  没有 release 时检查如实报「无从比较」（`checkSelf`）。
+- **另一条更稳的路是官方的**：插件发布到社区市场后，Obsidian 自带的更新入口
+  也走 disable → enable，但那是官方支持的路径。本节的入口服务的是「没上架 /
+  开发期」这段。
+
+---
 
 ## 六、同步模块（阶段三）实现要点
 文件都在 `src/features/sync/`。
@@ -380,7 +534,12 @@ syncService 在库根目录写《OBSync 冲突指南.md》（冲突文件清单 
 重启不重置周期；间隔 0 = 关闭，错过不补跑。
 
 **状态栏**：由 service 在动作前后显式驱动（不跑轮询），展示
-分支 / ↑ahead ↓behind / ~脏文件数 / ⚠冲突数。
+分支 / ↑ahead ↓behind / ~脏文件数 / ⚠冲突数。条目挂在状态栏**最左侧**、
+其余条目留在原位 —— 靠 CSS 实现（`styles.css` 的 `.status-bar` 拉全宽 +
+`.obsync-status-bar-item` 的 `order: -1` / `margin-right: auto`），**不碰 DOM**。
+别改成 `prepend`：状态栏是「收缩到内容宽 + 靠右下」的，按 DOM 顺序把它插到
+最前会把别人的条目整体右移一个条目的宽度（实测 1280 视口下 130px，用户当场
+发现「其他图标全被挤走了」）。
 
 **连接测试**（`syncService.diagnose()` + 设置页「仓库同步」页底部）：
 一条递进的检查链 —— git 可执行文件 → 是否 git 仓库 → 有没有远端 →
@@ -560,7 +719,10 @@ simple-git 的 config 传递（不碰网络、不需令牌）。
     永远不会来的输入。跑需要触发 401 的 git 命令时，加
     `-c credential.helper=`（**空值会重置助手链**，这个语义在 git 文档里很隐晦）。
 
-### 死代码清点（2026-09-16）
+### 死代码清点（2026-09-16，2026-09-17 更新）
+
+- `pluginFolder.isPluginInstalled` —— 只被测试用过，与 `readInstalledManifest` 重复。已删。
+- `pluginFiles.ts` 整体被 `installFiles.ts` 取代（按文件集参数化），旧模块已删。
 
 方法：扫 `src/**` 里所有 `export function|const|class` 声明，统计该名字在**整个
 `src` 树**里的出现次数（先剥掉注释，再剥掉 barrel 的 `export { … } from` ——

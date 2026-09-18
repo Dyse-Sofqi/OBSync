@@ -1,11 +1,19 @@
-import { PluginSettingTab, Setting, type App, type TextComponent } from "obsidian";
+import {
+    PluginSettingTab,
+    Setting,
+    type App,
+    type ButtonComponent,
+    type TextComponent,
+} from "obsidian";
 import { LANGUAGE_OPTIONS, type LanguageSetting, type LocaleStrings } from "./core/i18n";
 import type {
     DiagnosticCheck,
     DiagnosticsReport,
 } from "./features/sync/types";
+import { describeSelfState } from "./features/installer/selfUpdate";
 import { shouldCheckOnSettingsOpen } from "./features/installer/updateChecker";
-import { renderTrackedPlugins } from "./features/installer/ui/TrackedPluginsList";
+import type { SelfUpdateCheck } from "./features/installer/types";
+import { renderTrackedItems } from "./features/installer/ui/TrackedItemsList";
 import type ObsyncPlugin from "./main";
 import { getHost } from "./host/hostRegistry";
 import { SUPPORTED_HOSTS, type HostKind } from "./host/types";
@@ -13,8 +21,8 @@ import { SUPPORTED_HOSTS, type HostKind } from "./host/types";
 /**
  * 设置页的四个标签页。
  *
- * 顺序即显示顺序。把「已追踪插件」放第一页：用户进设置页多半是想看
- * 哪个插件能更新、或再装一个，而不是来调开关的。
+ * 顺序即显示顺序。把「插件与主题」放第一页：用户进设置页多半是想看
+ * 哪个有更新、或再装一个，而不是来调开关的。
  */
 type SettingsTabId = "tracked" | "installer" | "sync" | "general";
 
@@ -136,7 +144,7 @@ export class ObsyncSettingsTab extends PluginSettingTab {
         }
     }
 
-    /** 标签一：已追踪插件 —— 头部栏（标题 + 说明 + 三个主操作）+ 跟踪列表。 */
+    /** 标签一：已跟踪的插件与主题 —— 头部栏（标题 + 说明 + 三个主操作）+ 列表。 */
     private renderTrackedTab(): void {
         const t = this.obsync.t;
 
@@ -149,7 +157,9 @@ export class ObsyncSettingsTab extends PluginSettingTab {
                 button
                     .setButtonText(t.installer.modalTitle)
                     .setCta()
-                    .onClick(() => this.obsync.installer.openAddRepoModal())
+                    // 装完立刻重绘列表 —— 否则新条目要等下一次「检查全部更新」
+                    // 顺带的那次重绘才出现（用户以为没装上）。
+                    .onClick(() => this.obsync.installer.openAddRepoModal(() => this.display()))
             )
             .addButton((button) =>
                 button
@@ -173,14 +183,15 @@ export class ObsyncSettingsTab extends PluginSettingTab {
                 })
             );
 
-        renderTrackedPlugins(this.containerEl, {
+        renderTrackedItems(this.containerEl, {
             app: this.obsync.app,
             t,
             service: this.obsync.installer.service,
             checker: this.obsync.installer.checker,
             getTracked: () => this.obsync.settings.installer.tracked,
-            getUpdateFor: (pluginId) =>
-                this.obsync.settings.installer.availableUpdates[pluginId],
+            // 键是 `<kind>:<id>`（见 availableUpdateKey）—— 插件 id 与主题目录名
+            // 是两个命名空间，用裸 id 会让两者互相覆盖。
+            getUpdateFor: (key) => this.obsync.settings.installer.availableUpdates[key],
             refresh: () => this.display(),
         });
     }
@@ -450,9 +461,95 @@ export class ObsyncSettingsTab extends PluginSettingTab {
                 })
             );
 
+        // OBSync 自身放在本页最后：它是自举用的，与「装别的插件」不是一类事，
+        // 但同属「来源与版本」的范畴（跟踪列表那边是「用户装了什么」，自己不在其中）。
+        this.renderSelfUpdate();
+
         // 令牌属于「怎么访问插件来源」的范畴，跟着安装器页走 ——
         // 列表与操作按钮已移到「已追踪插件」页。
         this.renderTokens();
+    }
+
+    /**
+     * 「OBSync 自身」一节：检查更新 + 更新 + 一行状态。
+     *
+     * 状态行由 `describeSelfState` 拼（纯函数，单测覆盖）—— 这里只负责在合适的
+     * 时机重绘它：**不能**用 `this.display()` 重绘整页来刷新状态，那会把用户
+     * 正在看的滚动位置与焦点一起丢掉（`AddRepoModal` 的按钮可用性踩过同一个坑）。
+     */
+    private renderSelfUpdate(): void {
+        const t = this.obsync.t;
+        const currentVersion = this.obsync.manifest.version;
+
+        let check: SelfUpdateCheck | undefined;
+        let busy: "checking" | "updating" | undefined;
+        let checkButton: ButtonComponent | undefined;
+        let updateButton: ButtonComponent | undefined;
+        let status: HTMLElement | undefined;
+
+        const renderStatus = (): void => {
+            status?.setText(
+                describeSelfState(
+                    {
+                        currentVersion,
+                        check,
+                        pendingRestartVersion:
+                            this.obsync.settings.installer.pendingRestartVersion,
+                        busy,
+                    },
+                    t
+                )
+            );
+        };
+
+        const setBusy = (value: "checking" | "updating" | undefined): void => {
+            busy = value;
+            checkButton?.setDisabled(value !== undefined);
+            updateButton?.setDisabled(value !== undefined);
+            renderStatus();
+        };
+
+        new Setting(this.containerEl)
+            .setName(t.settings.installer.selfHeading)
+            .setDesc(t.settings.installer.selfDesc)
+            .addButton((button) => {
+                checkButton = button;
+                return button.setButtonText(t.installer.checkOne).onClick(async () => {
+                    setBusy("checking");
+                    try {
+                        check = await this.obsync.installer.checker.checkSelf(currentVersion);
+                    } finally {
+                        setBusy(undefined);
+                    }
+                });
+            })
+            .addButton((button) => {
+                updateButton = button;
+                return button
+                    .setButtonText(t.installer.updateToLatest)
+                    .onClick(async () => {
+                        setBusy("updating");
+                        try {
+                            const result = await this.obsync.installer.service.updateSelf(
+                                currentVersion
+                            );
+                            this.obsync.notifier.success(
+                                t.installer.selfUpdateDone(result.version)
+                            );
+                            // 检查结果作废：磁盘上已经是那个版本了，接下来该显示的是
+                            // 「待重启」（由 pendingRestartVersion 驱动，重启后自动消失）。
+                            check = undefined;
+                        } catch (err) {
+                            this.obsync.notifier.reportError(err, t.installer.selfUpdateFailed);
+                        } finally {
+                            setBusy(undefined);
+                        }
+                    });
+            });
+
+        // 状态行放在按钮行下方 —— 先渲染 Setting 再创建它，保证顺序。
+        status = this.containerEl.createEl("p", { cls: "setting-item-description" });
+        renderStatus();
     }
 
     private async checkAllUpdates(options: { quietWhenNone?: boolean } = {}): Promise<void> {

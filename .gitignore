@@ -23,3 +23,6 @@ _tmp_*
 
 # Windows 上 /dev/null 会被当成真实路径
 /dev/
+
+# 本机 agent 工具状态
+.zcode/

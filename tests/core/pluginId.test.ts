@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { isValidPluginId, PLUGIN_ID_RE } from "../../src/core/pluginId";
 import { normalizeSettings } from "../../src/core/settings";
-import { parseManifest } from "../../src/features/installer/manifest";
+import { parsePluginManifest } from "../../src/features/installer/manifest";
 
 /**
  * `src/core/pluginId.ts` 存在的理由就是**不让两个使用者各写一份正则**。
  *
  * 所以这个文件里最重要的不是「正则本身对不对」（那是实现细节），
- * 而是**两个使用者会不会漂**：安装时 `parseManifest` 接受了某个 id，
+ * 而是**两个使用者会不会漂**：安装时 `parsePluginManifest` 接受了某个 id，
  * 读 `data.json` 时 `normalizeSettings` 却不认它 —— 那用户的跟踪条目
  * 会在一轮重启后无声消失，而没有任何提示。
  *
@@ -17,7 +17,7 @@ import { parseManifest } from "../../src/features/installer/manifest";
  * 如果哪天有人往 `PLUGIN_ID_RE` 里加了字符（比如放宽到允许下划线），
  * 那组用例的 id 全在旧集合里、照样全绿 —— 漏的恰恰是新允许的那类。
  * 这里不列 id，而是**让两个实现互相对照**：
- * 凡是 `parseManifest` 放行的，`normalizeSettings` 就必须保留。
+ * 凡是 `parsePluginManifest` 放行的，`normalizeSettings` 就必须保留。
  */
 
 /** 各种形态：合法的在前，越界的在后。 */
@@ -47,7 +47,7 @@ const SAMPLES = [
     "trailing ",
 ];
 
-/** 拼一个能被 `parseManifest` 接收的 manifest 原文（其余字段都合法）。 */
+/** 拼一个能被 `parsePluginManifest` 接收的 manifest 原文（其余字段都合法）。 */
 function manifestRawWith(id: string): string {
     return JSON.stringify({
         id,
@@ -60,14 +60,16 @@ function manifestRawWith(id: string): string {
 function settingsRawWith(id: string) {
     return {
         installer: {
-            tracked: [{ host: "github", owner: "owner", repo: "repo", pluginId: id, name: "X" }],
+            tracked: [
+                { kind: "plugin", host: "github", owner: "owner", repo: "repo", id, name: "X" },
+            ],
         },
     };
 }
 
 function manifestAccepts(id: string): boolean {
     try {
-        parseManifest(manifestRawWith(id), "test");
+        parsePluginManifest(manifestRawWith(id), "test");
         return true;
     } catch {
         return false;
@@ -118,7 +120,7 @@ describe("PLUGIN_ID_RE", () => {
 });
 
 describe("两个使用者必须一致（防漂移）", () => {
-    it("`parseManifest` 放行的 id，`normalizeSettings` 一个都不能丢", () => {
+    it("`parsePluginManifest` 放行的 id，`normalizeSettings` 一个都不能丢", () => {
         for (const id of SAMPLES) {
             if (!manifestAccepts(id)) continue;
             expect(
@@ -129,7 +131,7 @@ describe("两个使用者必须一致（防漂移）", () => {
         }
     });
 
-    it("`normalizeSettings` 保留的 id，`parseManifest` 也必须放行", () => {
+    it("`normalizeSettings` 保留的 id，`parsePluginManifest` 也必须放行", () => {
         // 反方向：如果设置层比安装层宽，一个手改进 data.json 的畸形 id
         // 就能长留在跟踪列表里、并在卸载时被当成目录名 —— 那正是本组要防的。
         for (const id of SAMPLES) {

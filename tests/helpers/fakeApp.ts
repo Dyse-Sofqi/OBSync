@@ -19,6 +19,26 @@ export interface FakePluginManager {
     disablePluginAndSave(id: string): Promise<void>;
 }
 
+/**
+ * `app.customCss` 的替身 —— 主题相关的那个非公开 API。
+ *
+ * 只实现代码真正用到、且**行为要能被断言**的那几件：读当前主题、切换主题、
+ * 请求重载。做成有状态而不是空壳，是因为这些状态决定了真实行为：
+ * 「移除正在使用的主题要先切回默认」这段逻辑，靠空壳替身根本测不到。
+ *
+ * 想测「非公开 API 不可用」那条降级路径时，直接
+ * `delete (fake.app as { customCss?: unknown }).customCss` 即可 ——
+ * 守卫读的是 `app.customCss` 的存在性。
+ */
+export interface FakeCustomCss {
+    /** 当前主题名。空串表示默认主题（与 Obsidian 里的语义一致）。 */
+    theme: string;
+    /** 收到的 setTheme 调用，按顺序记录。 */
+    setThemeCalls: string[];
+    /** requestLoadTheme 被调了几次。 */
+    reloadRequests: number;
+}
+
 export interface FakeApp {
     app: App;
     /** 内存文件系统：路径 → 内容。 */
@@ -26,6 +46,8 @@ export interface FakeApp {
     /** 已存在的目录。 */
     folders: Set<string>;
     plugins: FakePluginManager;
+    /** `app.customCss` 的替身（主题的非公开 API）。 */
+    customCss: FakeCustomCss;
     /** 写入次数，用于断言"失败时没有留下半成品"。 */
     writes: string[];
     /**
@@ -48,7 +70,13 @@ const CONFIG_DIR = ".obsidian";
 
 export function createFakeApp(initialFiles: Record<string, string> = {}): FakeApp {
     const files = new Map<string, string>(Object.entries(initialFiles));
-    const folders = new Set<string>([CONFIG_DIR, `${CONFIG_DIR}/plugins`]);
+    const folders = new Set<string>([
+        CONFIG_DIR,
+        `${CONFIG_DIR}/plugins`,
+        // 真实的库未必有主题目录，但「有」是常态；测试要测没有的情况时
+        // 用空的主题目录即可（list 返回空数组，与不存在时的降级路径等价）。
+        `${CONFIG_DIR}/themes`,
+    ]);
     const basePath = path.join(os.tmpdir(), "obsync-fake-vault");
 
     // 从初始文件反推目录结构。不做这一步的话 `exists(某目录)` 会返回 false，
@@ -78,6 +106,11 @@ export function createFakeApp(initialFiles: Record<string, string> = {}): FakeAp
             },
         },
         app: undefined as unknown as App,
+        customCss: {
+            theme: "",
+            setThemeCalls: [],
+            reloadRequests: 0,
+        },
         // 这两个在下面装配完 workspace 之后再赋真实实现（那时才有回调列表可触发）。
         runLayoutReady: () => undefined,
         workspaceEvents: [],
@@ -149,6 +182,28 @@ export function createFakeApp(initialFiles: Record<string, string> = {}): FakeAp
     state.app = {
         vault: { configDir: CONFIG_DIR, adapter },
         plugins: state.plugins,
+        /**
+         * 主题的非公开 API。形状照着真实实现收窄（见 themeFolder.ts 的
+         * InternalCustomCss）—— 只放代码真正调用的那三个入口。
+         */
+        customCss: {
+            get theme(): string {
+                return state.customCss.theme;
+            },
+            set theme(value: string) {
+                state.customCss.theme = value;
+            },
+            getTheme(): string {
+                return state.customCss.theme;
+            },
+            setTheme(name: string): void {
+                state.customCss.theme = name;
+                state.customCss.setThemeCalls.push(name);
+            },
+            requestLoadTheme(): void {
+                state.customCss.reloadRequests += 1;
+            },
+        },
         // 最小工作区。装配路径（main.ts 的 onload）会用到这几个方法 ——
         // 少一个就会以 TypeError 的形式在启动时炸，所以宁可都留着。
         workspace: {
@@ -201,4 +256,35 @@ export function seedPlugin(
         result[`${CONFIG_DIR}/plugins/${pluginId}/${name}`] = content;
     }
     return result;
+}
+
+/** 便捷方法：读取某个主题的文件。 */
+export function readThemeFile(fake: FakeApp, themeName: string, file: string): string | undefined {
+    return fake.files.get(`${CONFIG_DIR}/themes/${themeName}/${file}`);
+}
+
+/** 便捷方法：构造一个已安装的主题目录。 */
+export function seedTheme(
+    themeName: string,
+    files: Record<string, string>
+): Record<string, string> {
+    const result: Record<string, string> = {};
+    for (const [name, content] of Object.entries(files)) {
+        result[`${CONFIG_DIR}/themes/${themeName}/${name}`] = content;
+    }
+    return result;
+}
+
+/**
+ * 便捷方法：一份合法的主题 manifest。
+ *
+ * 字段形状取自真实主题（Minimal / Things / AnuPpuccin）：**没有 id**，
+ * `minAppVersion` 有但不强制，多一个 `fundingUrl`。
+ */
+export function themeManifestRaw(
+    name: string,
+    version: string,
+    extra: Record<string, unknown> = {}
+): string {
+    return JSON.stringify({ name, version, minAppVersion: "1.0.0", author: "someone", ...extra });
 }

@@ -59,9 +59,11 @@ export const zhCN = {
         cmdOpenSettings: "OBSync：打开设置",
 
         tabs: {
-            // 统一用「跟踪」而不是「追踪」—— 同页标题用的是「已跟踪的插件」，
+            // 统一用「跟踪」而不是「追踪」—— 同页标题也用的是「跟踪」，
             // 混用会让用户以为指的是两样东西。
-            tracked: "已跟踪插件",
+            // 这个页签现在同时管插件与主题（同一个列表，靠类型徽标区分），
+            // 所以标签写两者而不是只写插件 —— 否则主题用户不会想到点进来。
+            tracked: "插件与主题",
             installer: "插件安装器",
             sync: "仓库同步",
             general: "通用",
@@ -104,14 +106,17 @@ export const zhCN = {
             enabled: "启用插件安装器",
             enabledDesc: "从 GitHub 或 Gitee 安装并更新社区插件。",
             autoCheck: "启动时检查更新",
-            autoCheckDesc: "Obsidian 启动后自动检查已跟踪插件的更新。默认关闭 —— 多数情况下用「进入设置页时自动检查」就够。",
+            autoCheckDesc: "Obsidian 启动后自动检查已跟踪插件与主题的更新。默认关闭 —— 多数情况下用「进入设置页时自动检查」就够。",
             autoCheckDelay: "启动检查延迟（秒）",
             autoCheckDelayDesc: "启动后等待多久再开始检查，避免与 Obsidian 自身的启动流程争抢资源。",
             autoCheckOnSettingsOpen: "进入设置页时自动检查",
             autoCheckOnSettingsOpenDesc: "打开本设置页时自动检查一次更新。短时间内重复打开会跳过，以免白白消耗接口配额。",
-            tracked: "已跟踪的插件",
-            trackedDesc: "通过 OBSync 安装或添加的插件仓库。",
-            trackedEmpty: "还没有添加任何插件仓库。",
+            tracked: "已跟踪的插件与主题",
+            trackedDesc: "通过 OBSync 绑定、安装或更新的插件与主题。",
+            trackedEmpty: "还没有添加任何插件或主题。",
+            selfHeading: "OBSync 自身",
+            selfDesc:
+                "更新 OBSync 自己。只写入新版本的文件，不重载正在运行的插件 —— 重启 Obsidian 后新版本才生效。",
             mirrorDiscovery: "自动发现 Gitee 镜像",
             mirrorDiscoveryDesc: "安装 GitHub 插件时，优先探测 Gitee 上的同名镜像仓库，命中则改用镜像源下载（国内速度更快）。",
         },
@@ -158,9 +163,19 @@ export const zhCN = {
          * 一串没有前缀的「添加插件仓库 / 检查全部更新」在面板里根本找不着。
          */
         cmdAddRepo: "OBSync：添加插件仓库",
-        cmdBindExisting: "OBSync：绑定库里已安装的插件",
-        cmdCheckUpdates: "OBSync：检查插件更新",
-        cmdUpdateAll: "OBSync：更新全部插件",
+        cmdBindExisting: "OBSync：绑定库里已安装的插件与主题",
+        cmdCheckUpdates: "OBSync：检查插件与主题更新",
+        cmdUpdateAll: "OBSync：更新全部插件与主题",
+
+        /**
+         * 两种被跟踪对象的称呼。
+         *
+         * 它们出现在徽标、错误文案与列表说明里，必须是「可拼进句子」的名词
+         * （例如「写入主题「Minimal」失败」）—— 错误文案按 kind 取词，见
+         * `installer/errors.ts` 的 ofKind。
+         */
+        kindPlugin: "插件",
+        kindTheme: "主题",
 
         modalTitle: "添加插件仓库",
         repoLabel: "仓库地址",
@@ -176,14 +191,32 @@ export const zhCN = {
         install: "安装",
         installing: "正在安装…",
         installFailed: "安装失败",
-        installed: (name: string, version: string) => `已安装 ${name} ${version}`,
-        updated: (name: string, version: string) => `已更新 ${name} 至 ${version}`,
+        installed: (name: string, version: string, source: string) =>
+            `已安装 ${name} ${version}（来源：${source}）`,
+        /**
+         * 完成提示里的 `source` 由 `features/installer/downloadSource.ts` 拼好
+         * （平台名，或命中镜像时的「Gitee 镜像」）。
+         *
+         * 每次都报：用户看不出「没走镜像」与「没探测镜像」的区别（跟踪列表里
+         * 那行镜像文案只在命中时才出现），提示是唯一能确认「东西实际从哪来」的地方。
+         */
+        updated: (name: string, version: string, source: string) =>
+            `已更新 ${name} 至 ${version}（来源：${source}）`,
         upToDate: (name: string) => `${name} 已是最新版本`,
-        reinstalled: (name: string) => `已重装 ${name}`,
-        removed: (name: string) => `已移除 ${name}`,
-        removeFailed: "移除失败",
+        reinstalled: (name: string, source: string) => `已重装 ${name}（来源：${source}）`,
+        removed: (name: string) => `已取消绑定 ${name}，它的文件未被改动`,
+        removeFailed: "取消绑定失败",
         sourceRaw: "来源：仓库源码文件",
         mirrorFound: (repo: string) => `发现 Gitee 镜像：${repo}，将改用镜像源下载。`,
+        /** 完成提示里报镜像来源时用（与 `mirrorLine` 的「镜像」同一层意思）。 */
+        mirrorSource: (host: string) => `${host} 镜像`,
+        /**
+         * 跟踪列表里镜像那一行（紧跟在源仓库下面）。
+         *
+         * 必须点明「下载使用此源」：只写「Gitee 镜像」的话，用户看到上面一行是
+         * GitHub、下面一行是 Gitee，无从判断 OBSync 到底在跟谁说话。
+         */
+        mirrorLine: (host: string, repo: string) => `${host} 镜像 · ${repo} · 下载使用此源`,
         /**
          * 错误文案。
          *
@@ -200,25 +233,29 @@ export const zhCN = {
                 `${context} 的 manifest.json 缺少必需字段「${field}」。`,
             manifestBadId: (context: string, id: string) =>
                 `${context} 的插件 id「${id}」不合法（只允许小写字母、数字和连字符）。`,
-            missingManifest: (repo: string) =>
-                `${repo} 里找不到 manifest.json，它可能不是 Obsidian 插件仓库。`,
-            missingRequiredFiles: (repo: string, files: string) =>
-                `${repo} 里找不到 ${files}，无法安装。`,
+            missingManifest: (repo: string, of: string) =>
+                `${repo} 里找不到 manifest.json，它可能不是 Obsidian ${of}仓库。`,
+            missingRequiredFiles: (repo: string, files: string, of: string) =>
+                `${repo} 里找不到 ${files}，无法安装该${of}。`,
             missingBuildArtifacts:
                 "如果这是源码仓库，作者可能没有把构建产物提交进仓库。",
             incompatibleApp: (name: string, minVersion: string) =>
                 `${name} 需要 Obsidian ${minVersion} 或更高版本，当前版本过低，已中止安装。`,
             pluginIdConflict: (pluginId: string, repo: string) =>
                 `插件 id「${pluginId}」已被另一个插件占用，无法安装 ${repo}。`,
-            folderMissingRequired: (pluginId: string, file: string) =>
-                `插件 ${pluginId} 缺少必需文件 ${file}，已中止安装。`,
-            writeFailedRolledBack: (pluginId: string) =>
-                `写入 ${pluginId} 失败，已还原到安装前的状态。`,
-            writeFailedRollbackFailed: (pluginId: string) =>
-                `写入 ${pluginId} 失败，且还原也失败。请手动检查插件目录。`,
+            folderMissingRequired: (id: string, file: string, of: string) =>
+                `${of}「${id}」缺少必需文件 ${file}，已中止写入。`,
+            writeFailedRolledBack: (id: string, of: string) =>
+                `写入${of}「${id}」失败，已还原到写入前的状态。`,
+            writeFailedRollbackFailed: (id: string, of: string) =>
+                `写入${of}「${id}」失败，且还原也失败。请手动检查它的目录。`,
             cannotEnablePlugin: "当前 Obsidian 版本不支持通过插件启用其他插件。",
+            selfIdMismatch: (repo: string, id: string) =>
+                `${repo} 里的插件 id 是「${id}」，不是 OBSync 自己（obsync）—— 已中止更新，以免覆盖别的插件。`,
+            selfUpdateDowngrade: (current: string, latest: string) =>
+                `远端最新版本 ${latest} 比当前运行的 ${current} 旧，已中止 —— 「更新」不该把你降级。`,
             communityIndexFailed: (status: number) =>
-                `拉取社区插件索引失败（HTTP ${status}）。该索引托管在 GitHub，网络不通时无法使用。`,
+                `拉取官方社区索引失败（HTTP ${status}）。该索引托管在 GitHub，网络不通时无法使用。`,
             rateLimitFallback: (host: string) =>
                 `${host} 接口调用次数已达上限，已改用仓库源码文件安装。` +
                 `在设置里填入访问令牌可以显著提高额度。`,
@@ -233,16 +270,19 @@ export const zhCN = {
 
         checkOne: "检查更新",
         checkAll: "检查全部更新",
-        updateAll: "更新全部插件",
-        updatedMany: (count: number, names: string) => `已更新 ${count} 个插件：${names}`,
-        updateFailedMany: (count: number) => `${count} 个插件更新失败`,
+        updateAll: "更新全部",
+        // 以下几条现在同时覆盖插件与主题 —— 用「项」而不是「个插件」，
+        // 否则主题更新完会收到一句「已更新 1 个插件」。
+        updatedMany: (count: number, names: string, source: string) =>
+            `已更新 ${count} 项：${names}（来源：${source}）`,
+        updateFailedMany: (count: number) => `${count} 项更新失败`,
         checkFailed: "更新检查失败",
         checking: "正在检查更新…",
         updateAvailable: (name: string, version: string) =>
             `${name} 有新版本 ${version}。`,
         updatesAvailable: (count: number, names: string) =>
-            `有 ${count} 个插件可以更新：${names}`,
-        checkNone: "所有插件都是最新版本。",
+            `有 ${count} 项可以更新：${names}`,
+        checkNone: "所有插件与主题都是最新版本。",
         checkSummary: (outdated: number, failed: number) =>
             failed > 0
                 ? `检查完成：${outdated} 个可更新，${failed} 个检查失败。`
@@ -254,23 +294,60 @@ export const zhCN = {
         unfreeze: "取消冻结",
         frozen: "已冻结",
         openRepo: "在浏览器中打开仓库",
-        remove: "移除",
-        removeConfirm: (name: string) =>
-            `确定要移除 ${name} 吗？\n\n插件目录会被删除，其中的自定义内容也会一并丢失。`,
+        /**
+         * 取消跟踪。
+         *
+         * 措辞里**必须**带「不删除文件」：这个动作以前会递归删掉整个目录
+         * （插件还先禁用），现在只把它移出跟踪列表（见 `InstallerService.unbind`）。
+         * 不写清楚的话，用户会因为「移除 = 卸载」的惯性而不敢点，或者点完发现
+         * 插件还在库里，以为功能坏了。
+         */
+        remove: "取消绑定（不删除文件）",
 
-        bindTitle: "绑定已有插件",
+        bindTitle: "绑定已安装的插件与主题",
         bindDesc:
-            "扫描当前库中已安装的插件，通过官方社区索引自动识别来源仓库；勾选后加入跟踪列表，即可接收更新检查。不会改动任何插件文件。",
-        bindScanning: "正在扫描已安装的插件…",
-        bindEmpty: "没有发现可绑定的新插件 —— 可能都已跟踪，或库里还没有插件。",
-        bindDetected: (count: number) => `检测到 ${count} 个可绑定的插件`,
+            "扫描当前库中已安装的插件与主题，通过官方社区索引自动识别来源仓库；勾选后加入跟踪列表，即可接收更新检查。不会改动任何文件，也不会切换你当前的主题。",
+        bindScanning: "正在扫描已安装的插件与主题…",
+        bindEmpty: "没有发现可绑定的新插件或主题 —— 可能都已跟踪，或库里还没有。",
+        bindPluginsHeading: (count: number) => `检测到 ${count} 个可绑定的插件`,
+        bindThemesHeading: (count: number) => `检测到 ${count} 个可绑定的主题`,
         bindSelectAll: "全选 / 取消全选",
         bindUnresolvedHeading: (count: number) =>
             `另有 ${count} 个插件来源未识别（不在官方社区索引中）：`,
         bindUnresolved: "来源未识别，请用「添加插件仓库」手动添加",
+        bindUnresolvedThemesHeading: (count: number) =>
+            `另有 ${count} 个主题来源未识别（不在官方社区索引中）：`,
+        /**
+         * 主题这半给了手填仓库的入口，插件那半没有 —— 这是刻意的**不对称**：
+         * 插件有「添加插件仓库」这个兜底入口，主题在本次范围里没有新装路径，
+         * 不手填的话未识别主题就永远纳不进跟踪。
+         */
+        bindUnresolvedTheme: "来源未识别：填写仓库地址即可绑定",
+        bindRepoPlaceholder: "例如 owner/repo 或完整仓库链接",
+        bindManualBind: "绑定",
+        bindManualFailed: "绑定主题失败",
         bindConfirm: (count: number) => `绑定所选（${count}）`,
-        bindLoadFailed: "扫描已安装插件失败",
-        bindDone: (count: number) => `已绑定 ${count} 个插件，将纳入更新检查。`,
+        bindLoadFailed: "扫描已安装的插件与主题失败",
+        bindDone: (count: number) => `已绑定 ${count} 项，将纳入更新检查。`,
+
+        /**
+         * OBSync 自身的更新。
+         *
+         * 「待重启」那句是这批文案里最要紧的：更新自己时**不重载自己**，
+         * 磁盘上已经是新版本而运行中的还是旧的 —— 不写清楚，用户会以为
+         * 已经用上新版了（所以这里也**不**清更新徽标，而是常驻这一行）。
+         */
+        selfNotChecked: (version: string) => `当前版本 ${version} · 尚未检查更新`,
+        selfUpToDate: (version: string) => `OBSync ${version} 已是最新版本`,
+        selfUpdateAvailable: (current: string, latest: string) =>
+            `有新版本 ${latest}（当前 ${current}）`,
+        selfPendingRestart: (version: string) =>
+            `已下载 ${version}，重启 Obsidian 后生效`,
+        selfUpdating: "正在下载新版本…",
+        selfUpdateDone: (version: string) =>
+            `已下载 OBSync ${version}，重启 Obsidian 后生效`,
+        selfCheckFailed: (reason: string) => `检查 OBSync 更新失败：${reason}`,
+        selfUpdateFailed: "更新 OBSync 失败",
     },
 
     sync: {

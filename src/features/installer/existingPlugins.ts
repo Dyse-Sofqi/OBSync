@@ -1,9 +1,11 @@
-import { normalizePath, type App } from "obsidian";
+import type { App } from "obsidian";
 import { logger } from "../../core/logger";
-import { tryParseRepoRef } from "../../host/repoRef";
-import type { HostKind, RepoRef } from "../../host/types";
+import type { RepoRef } from "../../host/types";
+import { communityRepoRef } from "./communityIndex";
 import type { CommunityPluginIndex } from "./communityPlugins";
-import { readManifestInFolder } from "./pluginFolder";
+import { isPluginEnabled, readManifestInFolder } from "./pluginFolder";
+import { SELF_PLUGIN_ID } from "./selfUpdate";
+import { itemRoot } from "./itemFolder";
 import type { PluginManifest } from "./types";
 
 /**
@@ -24,26 +26,26 @@ import type { PluginManifest } from "./types";
  * 导致这些「明明上了官方市场」的插件被误判成来源未识别 —— 这是踩过的坑，
  * 查索引、查启用状态、写跟踪记录都必须用 manifest.id。
  *
+ * （主题侧刚好相反：主题**没有** id，身份就是目录名。见 `existingThemes.ts`。）
+ *
  * ## 为什么扫文件系统而不是 `app.plugins.manifests`
  *
  * 后者是 Obsidian 启动时加载的内存状态，可能与磁盘有出入（比如刚手动
  * 拷进去一个插件还没重启）。以磁盘为准，顺带能发现「装了但损坏」的目录。
  */
 
-/** OBSync 自己的插件 id —— 不该出现在绑定列表里（跟踪自己毫无意义）。 */
-const OWN_PLUGIN_ID = "obsync";
 
 /** 库里已安装的一个插件（以磁盘上的 manifest 为准）。 */
 export interface ExistingPlugin {
     /** manifest 里的 id（插件身份，不是目录名）。 */
-    pluginId: string;
+    id: string;
     manifest: PluginManifest;
     enabled: boolean;
 }
 
 /** 可以直接绑定跟踪的候选：来源仓库已识别。 */
 export interface BindCandidate {
-    pluginId: string;
+    id: string;
     name: string;
     /** 本地已装的版本。 */
     version: string;
@@ -57,12 +59,9 @@ export interface BindCandidate {
  * 多个目录时只保留第一个（重复安装，Obsidian 自己也只能加载一份）。
  */
 export async function listInstalledPlugins(app: App): Promise<ExistingPlugin[]> {
-    const pluginsRoot = normalizePath(`${app.vault.configDir}/plugins`);
-
     let folders: string[];
     try {
-        const listing = await app.vault.adapter.list(pluginsRoot);
-        folders = listing.folders;
+        folders = (await app.vault.adapter.list(itemRoot(app, "plugin"))).folders;
     } catch (err) {
         // 连插件目录都没有 = 全新库，不是错误。
         logger.debug("no plugins directory to scan", err);
@@ -79,7 +78,9 @@ export async function listInstalledPlugins(app: App): Promise<ExistingPlugin[]> 
             logger.debug(`skipping ${folder}: no valid manifest.json`);
             continue;
         }
-        if (manifest.id === OWN_PLUGIN_ID) continue;
+        // 自己不进列表：跟踪自己不是「用户装了什么」的一部分（自制更新的入口
+        // 在设置页的「OBSync 自身」一节）。id 来自 selfUpdate 的单一事实来源。
+        if (manifest.id === SELF_PLUGIN_ID) continue;
 
         if (seen.has(manifest.id)) {
             logger.debug(
@@ -91,20 +92,13 @@ export async function listInstalledPlugins(app: App): Promise<ExistingPlugin[]> 
         seen.add(manifest.id);
 
         result.push({
-            pluginId: manifest.id,
+            id: manifest.id,
             manifest,
-            enabled: isPluginIdEnabled(app, manifest.id),
+            enabled: isPluginEnabled(app, manifest.id),
         });
     }
 
-    return result.sort((a, b) => a.pluginId.localeCompare(b.pluginId));
-}
-
-function isPluginIdEnabled(app: App, pluginId: string): boolean {
-    const manager = (app as unknown as {
-        plugins?: { enabledPlugins?: Set<string> };
-    }).plugins;
-    return manager?.enabledPlugins?.has(pluginId) ?? false;
+    return result.sort((a, b) => a.id.localeCompare(b.id));
 }
 
 /**
@@ -124,12 +118,12 @@ export async function resolveBindCandidates(
     const unresolved: ExistingPlugin[] = [];
 
     for (const plugin of installed) {
-        const community = index.byId(plugin.pluginId);
-        const repo = community ? repoRefOf(community.repo) : undefined;
+        const community = index.byId(plugin.id);
+        const repo = community ? communityRepoRef(community.repo) : undefined;
 
         if (repo) {
             bindable.push({
-                pluginId: plugin.pluginId,
+                id: plugin.id,
                 name: plugin.manifest.name,
                 version: plugin.manifest.version,
                 repo,
@@ -140,11 +134,4 @@ export async function resolveBindCandidates(
     }
 
     return { bindable, unresolved };
-}
-
-/** 社区索引里的 `owner/repo` → RepoRef。来源是官方索引，平台必为 GitHub。 */
-function repoRefOf(repo: string): RepoRef | undefined {
-    const ref = tryParseRepoRef(repo, "github");
-    if (!ref) return undefined;
-    return { host: "github" satisfies HostKind, owner: ref.owner, repo: ref.repo };
 }

@@ -58,7 +58,10 @@ export const en = {
         cmdOpenSettings: "OBSync: Open settings",
 
         tabs: {
-            tracked: "Tracked plugins",
+            // One tab now covers both plugins and themes (a single list with a
+            // type badge), so the label names both — a themes-only label would
+            // never be found by someone looking for their plugins.
+            tracked: "Plugins & themes",
             installer: "Plugin installer",
             sync: "Vault sync",
             general: "General",
@@ -100,14 +103,17 @@ export const en = {
             enabled: "Enable plugin installer",
             enabledDesc: "Install and update community plugins from GitHub or Gitee.",
             autoCheck: "Check for updates on startup",
-            autoCheckDesc: "Check tracked plugins for updates shortly after Obsidian starts. Off by default — the check on opening this settings tab covers most cases.",
+            autoCheckDesc: "Check tracked plugins and themes for updates shortly after Obsidian starts. Off by default — the check on opening this settings tab covers most cases.",
             autoCheckDelay: "Startup check delay (seconds)",
             autoCheckDelayDesc: "How long to wait before checking, so startup is not slowed down.",
             autoCheckOnSettingsOpen: "Check when opening settings",
             autoCheckOnSettingsOpenDesc: "Run an update check when this settings page opens. Repeated openings within a short window are skipped to save API quota.",
-            tracked: "Tracked plugins",
-            trackedDesc: "Plugin repositories added or installed through OBSync.",
-            trackedEmpty: "No plugin repositories added yet.",
+            tracked: "Tracked plugins and themes",
+            trackedDesc: "Plugins and themes bound, installed or updated through OBSync.",
+            trackedEmpty: "No plugins or themes added yet.",
+            selfHeading: "OBSync itself",
+            selfDesc:
+                "Update OBSync itself. Only the new files are written; the running plugin is not reloaded — the new version takes effect after you restart Obsidian.",
             mirrorDiscovery: "Discover Gitee mirrors",
             mirrorDiscoveryDesc: "When installing a GitHub plugin, look for a same-named Gitee mirror first and download from it instead (faster in mainland China).",
         },
@@ -152,9 +158,17 @@ export const en = {
          * does — Obsidian users search commands by plugin name.
          */
         cmdAddRepo: "OBSync: Add plugin repository",
-        cmdBindExisting: "OBSync: Bind plugins already installed in this vault",
-        cmdCheckUpdates: "OBSync: Check for plugin updates",
-        cmdUpdateAll: "OBSync: Update all plugins",
+        cmdBindExisting: "OBSync: Bind plugins and themes already installed in this vault",
+        cmdCheckUpdates: "OBSync: Check for plugin and theme updates",
+        cmdUpdateAll: "OBSync: Update all plugins and themes",
+
+        /**
+         * Names for the two tracked kinds. They have to read naturally inside a
+         * sentence (e.g. `Writing theme "Minimal" failed`), because error prose
+         * picks the word by kind — see `ofKind` in `installer/errors.ts`.
+         */
+        kindPlugin: "plugin",
+        kindTheme: "theme",
 
         modalTitle: "Add plugin repository",
         repoLabel: "Repository",
@@ -170,14 +184,20 @@ export const en = {
         install: "Install",
         installing: "Installing…",
         installFailed: "Install failed",
-        installed: (name: string, version: string) => `Installed ${name} ${version}`,
-        updated: (name: string, version: string) => `Updated ${name} to ${version}`,
+        installed: (name: string, version: string, source: string) =>
+            `Installed ${name} ${version} (from ${source})`,
+        /** `source` is composed by `features/installer/downloadSource.ts`. */
+        updated: (name: string, version: string, source: string) =>
+            `Updated ${name} to ${version} (from ${source})`,
         upToDate: (name: string) => `${name} is already up to date`,
-        reinstalled: (name: string) => `Reinstalled ${name}`,
-        removed: (name: string) => `Removed ${name}`,
-        removeFailed: "Removal failed",
+        reinstalled: (name: string, source: string) => `Reinstalled ${name} (from ${source})`,
+        removed: (name: string) => `Unbound ${name}; its files are untouched`,
+        removeFailed: "Failed to unbind",
         sourceRaw: "Source: repository source file",
         mirrorFound: (repo: string) => `Found Gitee mirror ${repo}; downloading from it instead.`,
+        mirrorSource: (host: string) => `${host} mirror`,
+        mirrorLine: (host: string, repo: string) =>
+            `${host} mirror · ${repo} · used for downloads`,
         /**
          * Error messages.
          *
@@ -194,26 +214,30 @@ export const en = {
                 `${context}: manifest.json is missing the required field "${field}".`,
             manifestBadId: (context: string, id: string) =>
                 `${context}: the plugin id "${id}" is invalid (lowercase letters, digits and hyphens only).`,
-            missingManifest: (repo: string) =>
-                `No manifest.json found in ${repo} — it may not be an Obsidian plugin repository.`,
-            missingRequiredFiles: (repo: string, files: string) =>
-                `Could not find ${files} in ${repo}; cannot install.`,
+            missingManifest: (repo: string, of: string) =>
+                `No manifest.json found in ${repo} — it may not be an Obsidian ${of} repository.`,
+            missingRequiredFiles: (repo: string, files: string, of: string) =>
+                `Could not find ${files} in ${repo}; cannot install that ${of}.`,
             missingBuildArtifacts:
                 "If this is a source repository, the author may not have committed the build output.",
             incompatibleApp: (name: string, minVersion: string) =>
                 `${name} requires Obsidian ${minVersion} or newer. Your version is too old, so the install was aborted.`,
             pluginIdConflict: (pluginId: string, repo: string) =>
                 `The plugin id "${pluginId}" is already taken by another plugin; cannot install ${repo}.`,
-            folderMissingRequired: (pluginId: string, file: string) =>
-                `Plugin ${pluginId} is missing the required file ${file}; install aborted.`,
-            writeFailedRolledBack: (pluginId: string) =>
-                `Writing ${pluginId} failed. The previous state has been restored.`,
-            writeFailedRollbackFailed: (pluginId: string) =>
-                `Writing ${pluginId} failed, and restoring the previous state also failed. Please check the plugin folder manually.`,
+            folderMissingRequired: (id: string, file: string, of: string) =>
+                `The ${of} "${id}" is missing the required file ${file}; install aborted.`,
+            writeFailedRolledBack: (id: string, of: string) =>
+                `Writing the ${of} "${id}" failed. The previous state has been restored.`,
+            writeFailedRollbackFailed: (id: string, of: string) =>
+                `Writing the ${of} "${id}" failed, and restoring the previous state also failed. Please check its folder manually.`,
             cannotEnablePlugin:
                 "This version of Obsidian does not allow a plugin to enable other plugins.",
+            selfIdMismatch: (repo: string, id: string) =>
+                `The plugin id in ${repo} is "${id}", not OBSync itself (obsync) — the update was aborted so it cannot overwrite another plugin.`,
+            selfUpdateDowngrade: (current: string, latest: string) =>
+                `The latest remote version ${latest} is older than the running ${current}; aborted — updating should not downgrade you.`,
             communityIndexFailed: (status: number) =>
-                `Could not fetch the community plugin index (HTTP ${status}). That index is hosted on GitHub, so it is unavailable when the network cannot reach it.`,
+                `Could not fetch the official community index (HTTP ${status}). That index is hosted on GitHub, so it is unavailable when the network cannot reach it.`,
             rateLimitFallback: (host: string) =>
                 `${host} API rate limit reached; falling back to installing from source files. ` +
                 `Adding an access token in settings raises the limit significantly.`,
@@ -228,15 +252,18 @@ export const en = {
 
         checkOne: "Check for updates",
         checkAll: "Check all for updates",
-        updateAll: "Update all plugins",
-        updatedMany: (count: number, names: string) => `Updated ${count} plugin(s): ${names}`,
-        updateFailedMany: (count: number) => `${count} plugin(s) failed to update`,
+        updateAll: "Update all",
+        // These now cover plugins and themes alike — "item(s)" instead of
+        // "plugin(s)", or updating a theme would report "Updated 1 plugin".
+        updatedMany: (count: number, names: string, source: string) =>
+            `Updated ${count} item(s): ${names} (from ${source})`,
+        updateFailedMany: (count: number) => `${count} item(s) failed to update`,
         checkFailed: "Update check failed",
         checking: "Checking for updates…",
         updateAvailable: (name: string, version: string) => `${name} has a newer version: ${version}.`,
         updatesAvailable: (count: number, names: string) =>
-            `${count} plugin(s) can be updated: ${names}`,
-        checkNone: "All plugins are up to date.",
+            `${count} item(s) can be updated: ${names}`,
+        checkNone: "All plugins and themes are up to date.",
         checkSummary: (outdated: number, failed: number) =>
             failed > 0
                 ? `Check finished: ${outdated} update(s) available, ${failed} check(s) failed.`
@@ -248,23 +275,58 @@ export const en = {
         unfreeze: "Unfreeze",
         frozen: "Frozen",
         openRepo: "Open repository in browser",
-        remove: "Remove",
-        removeConfirm: (name: string) =>
-            `Remove ${name}?\n\nThe plugin folder will be deleted, including any custom files inside it.`,
+        /**
+         * Unbind. The wording must say files are kept: this used to delete the
+         * whole folder (and disable the plugin first), and now it only drops the
+         * entry from the tracking list — see `InstallerService.unbind`.
+         */
+        remove: "Unbind (files are kept)",
 
-        bindTitle: "Bind installed plugins",
+        bindTitle: "Bind installed plugins and themes",
         bindDesc:
-            "Scans plugins already installed in this vault and resolves their source repository via the official community index. Selected ones join the tracking list for update checks. No plugin files are touched.",
-        bindScanning: "Scanning installed plugins…",
-        bindEmpty: "No new plugins to bind — they are all tracked already, or the vault has no plugins.",
-        bindDetected: (count: number) => `${count} bindable plugin(s) detected`,
+            "Scans plugins and themes already installed in this vault and resolves their source repository via the official community index. Selected ones join the tracking list for update checks. No files are touched, and your active theme is never switched.",
+        bindScanning: "Scanning installed plugins and themes…",
+        bindEmpty: "No new plugins or themes to bind — they are all tracked already, or the vault has none.",
+        bindPluginsHeading: (count: number) => `${count} bindable plugin(s) detected`,
+        bindThemesHeading: (count: number) => `${count} bindable theme(s) detected`,
         bindSelectAll: "Select all / none",
         bindUnresolvedHeading: (count: number) =>
             `${count} plugin(s) with unrecognized source (not in the official community index):`,
         bindUnresolved: "Source unknown — add it manually via \"Add plugin repository\"",
+        bindUnresolvedThemesHeading: (count: number) =>
+            `${count} theme(s) with unrecognized source (not in the official community index):`,
+        /**
+         * Themes get a manual repository field, plugins do not — a deliberate
+         * asymmetry: plugins have "Add plugin repository" as a fallback entry
+         * point, while themes have no install path in this version, so without
+         * this field an unrecognized theme could never be tracked.
+         */
+        bindUnresolvedTheme: "Source unknown — enter the repository to bind it",
+        bindRepoPlaceholder: "e.g. owner/repo or a full repository URL",
+        bindManualBind: "Bind",
+        bindManualFailed: "Failed to bind the theme",
         bindConfirm: (count: number) => `Bind selected (${count})`,
-        bindLoadFailed: "Failed to scan installed plugins",
-        bindDone: (count: number) => `Bound ${count} plugin(s); update checks now cover them.`,
+        bindLoadFailed: "Failed to scan installed plugins and themes",
+        bindDone: (count: number) => `Bound ${count} item(s); update checks now cover them.`,
+
+        /**
+         * OBSync updating itself.
+         *
+         * The pending-restart line matters most: we do **not** reload ourselves,
+         * so the files on disk are newer than the running code. Without saying so
+         * the user would believe the new version is already active.
+         */
+        selfNotChecked: (version: string) => `Version ${version} · not checked yet`,
+        selfUpToDate: (version: string) => `OBSync ${version} is up to date`,
+        selfUpdateAvailable: (current: string, latest: string) =>
+            `Version ${latest} is available (you are on ${current})`,
+        selfPendingRestart: (version: string) =>
+            `${version} downloaded — restart Obsidian to apply it`,
+        selfUpdating: "Downloading the new version…",
+        selfUpdateDone: (version: string) =>
+            `OBSync ${version} downloaded — restart Obsidian to apply it`,
+        selfCheckFailed: (reason: string) => `Could not check for OBSync updates: ${reason}`,
+        selfUpdateFailed: "Failed to update OBSync",
     },
 
     sync: {

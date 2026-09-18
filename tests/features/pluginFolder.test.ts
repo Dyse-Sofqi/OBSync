@@ -1,20 +1,21 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-    createBackup,
     disablePlugin,
     enablePlugin,
     isPluginEnabled,
-    isPluginInstalled,
     readInstalledManifest,
     reloadPlugin,
-    removePluginFolder,
     resolvePluginFolder,
-    restoreBackup,
-    writePluginFiles,
 } from "../../src/features/installer/pluginFolder";
-import type { PluginFileName } from "../../src/features/installer/types";
-import { createFakeApp, readPluginFile, seedPlugin, type FakeApp } from "../helpers/fakeApp";
-import { expectInstallerError } from "../helpers/expectInstallerError";
+import { createFakeApp, seedPlugin, type FakeApp } from "../helpers/fakeApp";
+
+/**
+ * 插件目录的**定位**与生命周期（启用 / 禁用 / 重载）。
+ *
+ * 目录本身的读写（备份、写盘、回滚、删除）在 `itemFolder.test.ts` ——
+ * 那部分是插件与主题共用的；这里只测插件独有的两件事：目录名与 id 的错位，
+ * 以及 Obsidian 的插件管理 API。
+ */
 
 const MANIFEST = JSON.stringify({
     id: "demo",
@@ -30,30 +31,20 @@ const OLD_MANIFEST = JSON.stringify({
     minAppVersion: "1.5.0",
 });
 
-function newFiles(): Map<PluginFileName, string> {
-    return new Map<PluginFileName, string>([
-        ["manifest.json", MANIFEST],
-        ["main.js", "// new main"],
-        ["styles.css", "/* new styles */"],
-    ]);
-}
-
 let fake: FakeApp;
 
 beforeEach(() => {
     fake = createFakeApp();
 });
 
-describe("isPluginInstalled / readInstalledManifest", () => {
-    it("未安装时返回 false / undefined", async () => {
-        expect(await isPluginInstalled(fake.app, "demo")).toBe(false);
+describe("readInstalledManifest", () => {
+    it("未安装时返回 undefined", async () => {
         expect(await readInstalledManifest(fake.app, "demo")).toBeUndefined();
     });
 
     it("已安装时读回 manifest", async () => {
         fake = createFakeApp(seedPlugin("demo", { "manifest.json": OLD_MANIFEST }));
 
-        expect(await isPluginInstalled(fake.app, "demo")).toBe(true);
         expect((await readInstalledManifest(fake.app, "demo"))?.version).toBe("1.0.0");
     });
 
@@ -64,41 +55,7 @@ describe("isPluginInstalled / readInstalledManifest", () => {
     });
 });
 
-describe("writePluginFiles", () => {
-    it("全新安装写入全部文件", async () => {
-        const backup = await createBackup(fake.app, "demo");
-        await writePluginFiles(fake.app, "demo", newFiles(), backup);
-
-        expect(readPluginFile(fake, "demo", "manifest.json")).toBe(MANIFEST);
-        expect(readPluginFile(fake, "demo", "main.js")).toBe("// new main");
-        expect(readPluginFile(fake, "demo", "styles.css")).toBe("/* new styles */");
-    });
-
-    it("缺少必需文件时直接抛错，不写任何东西", async () => {
-        const backup = await createBackup(fake.app, "demo");
-        const files = new Map<PluginFileName, string>([["manifest.json", MANIFEST]]);
-
-        await expectInstallerError(
-            () => writePluginFiles(fake.app, "demo", files, backup),
-            "folderMissingRequired"
-        );
-        expect(fake.writes).toEqual([]);
-        expect(readPluginFile(fake, "demo", "manifest.json")).toBeUndefined();
-    });
-
-    it("没有 styles.css 也能装（它是可选的）", async () => {
-        const backup = await createBackup(fake.app, "demo");
-        const files = new Map<PluginFileName, string>([
-            ["manifest.json", MANIFEST],
-            ["main.js", "// main"],
-        ]);
-
-        await writePluginFiles(fake.app, "demo", files, backup);
-        expect(readPluginFile(fake, "demo", "main.js")).toBe("// main");
-    });
-});
-
-describe("目录名 ≠ manifest id（手动解压/别的安装器造成的错位）", () => {
+describe("目录名 ≠ manifest id（手动解压 / 别的安装器造成的错位）", () => {
     /** 目录叫 MDRazor，manifest id 是 md-razor —— 实测本机就有这种插件。 */
     const RAZOR_MANIFEST = JSON.stringify({
         id: "md-razor",
@@ -107,7 +64,7 @@ describe("目录名 ≠ manifest id（手动解压/别的安装器造成的错�
         minAppVersion: "1.5.0",
     });
 
-    it("按 id 读写到真实目录，不新建同名 id 的第二份安装", async () => {
+    it("按 id 能找到目录名不同的那份安装", async () => {
         fake = createFakeApp(
             seedPlugin("MDRazor", {
                 "manifest.json": RAZOR_MANIFEST,
@@ -115,126 +72,20 @@ describe("目录名 ≠ manifest id（手动解压/别的安装器造成的错�
             })
         );
 
-        // 身份用 id 就能找到目录名不同的那份安装
-        expect(await isPluginInstalled(fake.app, "md-razor")).toBe(true);
+        expect(await resolvePluginFolder(fake.app, "md-razor")).toBe(".obsidian/plugins/MDRazor");
         expect((await readInstalledManifest(fake.app, "md-razor"))?.name).toBe("MDRazor");
-
-        const backup = await createBackup(fake.app, "md-razor");
-        const files = new Map<PluginFileName, string>([
-            ["manifest.json", RAZOR_MANIFEST],
-            ["main.js", "// new razor main"],
-        ]);
-        await writePluginFiles(fake.app, "md-razor", files, backup);
-
-        // 写进了 MDRazor/，且没有多出 md-razor/ 目录
-        expect(readPluginFile(fake, "MDRazor", "main.js")).toBe("// new razor main");
-        expect(fake.folders.has(".obsidian/plugins/md-razor")).toBe(false);
     });
 
-    it("删除按 id 删掉真实目录", async () => {
-        fake = createFakeApp(
-            seedPlugin("MDRazor", { "manifest.json": RAZOR_MANIFEST, "main.js": "// x" })
+    it("目录名就是 id 时走快路径（不读 manifest 也能定位）", async () => {
+        fake = createFakeApp(seedPlugin("demo", { "manifest.json": MANIFEST }));
+
+        expect(await resolvePluginFolder(fake.app, "demo")).toBe(".obsidian/plugins/demo");
+    });
+
+    it("全新安装（目录还不存在）回落到 plugins/{id}", async () => {
+        expect(await resolvePluginFolder(fake.app, "brand-new")).toBe(
+            ".obsidian/plugins/brand-new"
         );
-
-        await removePluginFolder(fake.app, "md-razor");
-
-        expect(readPluginFile(fake, "MDRazor", "manifest.json")).toBeUndefined();
-    });
-
-    it("全新安装（目录还不存在）落在 plugins/{id}", async () => {
-        const backup = await createBackup(fake.app, "brand-new");
-        const files = new Map<PluginFileName, string>([
-            ["manifest.json", RAZOR_MANIFEST],
-            ["main.js", "// fresh"],
-        ]);
-
-        await writePluginFiles(fake.app, "brand-new", files, backup);
-
-        expect(readPluginFile(fake, "brand-new", "main.js")).toBe("// fresh");
-    });
-});
-
-describe("失败回滚（参考项目 BRAT 没有这个能力）", () => {
-    it("更新已有插件写到一半失败时，还原到安装前的内容", async () => {
-        fake = createFakeApp(
-            seedPlugin("demo", {
-                "manifest.json": OLD_MANIFEST,
-                "main.js": "// old main",
-                "styles.css": "/* old styles */",
-            })
-        );
-
-        const backup = await createBackup(fake.app, "demo");
-        // 让最后一个文件写入失败 —— 此时前两个已经被覆盖了。
-        // 用一次性故障：真实场景里是瞬时 IO 错误，回滚本身应该能成功。
-        fake.failWriteOnceOn = (path) => path.endsWith("styles.css");
-
-        await expectInstallerError(
-            () => writePluginFiles(fake.app, "demo", newFiles(), backup),
-            "writeFailedRolledBack"
-        );
-
-        // 三个文件都必须回到旧内容，不能留下「新 manifest + 旧 main.js」这种混合态。
-        expect(readPluginFile(fake, "demo", "manifest.json")).toBe(OLD_MANIFEST);
-        expect(readPluginFile(fake, "demo", "main.js")).toBe("// old main");
-        expect(readPluginFile(fake, "demo", "styles.css")).toBe("/* old styles */");
-    });
-
-    it("全新安装失败时把整个插件目录删掉", async () => {
-        const backup = await createBackup(fake.app, "demo");
-        fake.failWriteOnceOn = (path) => path.endsWith("main.js");
-
-        await expect(
-            writePluginFiles(fake.app, "demo", newFiles(), backup)
-        ).rejects.toThrow();
-
-        // 不能留下一个只有 manifest.json 的半成品目录 ——
-        // Obsidian 会把它当成一个可加载但会崩的插件。
-        expect(await isPluginInstalled(fake.app, "demo")).toBe(false);
-        expect(fake.folders.has(".obsidian/plugins/demo")).toBe(false);
-    });
-
-    it("原本不存在的可选文件，回滚后也不该存在", async () => {
-        fake = createFakeApp(
-            seedPlugin("demo", { "manifest.json": OLD_MANIFEST, "main.js": "// old" })
-        );
-
-        const backup = await createBackup(fake.app, "demo");
-        fake.failWriteOnceOn = (path) => path.endsWith("styles.css");
-
-        await expect(writePluginFiles(fake.app, "demo", newFiles(), backup)).rejects.toThrow();
-
-        // 安装前没有 styles.css，回滚后它必须被删掉。
-        expect(readPluginFile(fake, "demo", "styles.css")).toBeUndefined();
-    });
-
-    it("回滚本身也失败时，明确告诉用户需要手动处理", async () => {
-        // 这是最坏情况：写盘失败 + 还原也失败，插件目录处于未知状态。
-        // 此时**不能**假装"已还原"，必须把真相说出来。
-        fake = createFakeApp(
-            seedPlugin("demo", { "manifest.json": OLD_MANIFEST, "main.js": "// old main" })
-        );
-
-        const backup = await createBackup(fake.app, "demo");
-        fake.failWriteOn = () => true;
-
-        await expectInstallerError(
-            () => writePluginFiles(fake.app, "demo", newFiles(), backup),
-            "writeFailedRollbackFailed"
-        );
-    });
-});
-
-describe("restoreBackup", () => {
-    it("可以独立调用（回滚也失败后的兜底路径）", async () => {
-        fake = createFakeApp(seedPlugin("demo", { "manifest.json": OLD_MANIFEST }));
-        const backup = await createBackup(fake.app, "demo");
-
-        await writePluginFiles(fake.app, "demo", newFiles(), backup);
-        expect((await readInstalledManifest(fake.app, "demo"))?.version).toBe("2.0.0");
-
-        await restoreBackup(fake.app, backup);
-        expect((await readInstalledManifest(fake.app, "demo"))?.version).toBe("1.0.0");
     });
 });
 
@@ -269,61 +120,23 @@ describe("插件启用状态", () => {
     });
 });
 
-describe("removePluginFolder", () => {
-    it("递归删掉整个插件目录", async () => {
-        fake = createFakeApp(
-            seedPlugin("demo", { "manifest.json": MANIFEST, "main.js": "// main" })
-        );
-        fake.files.set(".obsidian/plugins/demo/extra/asset.bin", "x");
-
-        await removePluginFolder(fake.app, "demo");
-
-        expect(readPluginFile(fake, "demo", "manifest.json")).toBeUndefined();
-        expect(fake.files.has(".obsidian/plugins/demo/extra/asset.bin")).toBe(false);
-    });
-
-    it("目录不存在时不报错", async () => {
-        await expect(removePluginFolder(fake.app, "nothing")).resolves.toBeUndefined();
-    });
-
-    /**
-     * 目录名的来源不只是 manifest —— `data.json` 里的 `tracked[].pluginId`
-     * 同样会走到这里（卸载按钮直接把它交给 `removePluginFolder`）。
-     *
-     * 而找不到匹配目录时 `resolvePluginFolder` 会回落到
-     * `{configDir}/plugins/{pluginId}`，紧接着 `rmdir(folder, true)` **递归**执行。
-     * `pluginId` 里只要出现 `..`，删的就不再是插件目录 ——
-     * `"../.."` 正好指向库根目录（它当然存在）。
-     *
-     * 修法不在这里（`removePluginFolder` 只拿到一个 id 字符串，无从判断它从哪来），
-     * 而在读取 `data.json` 时按 `manifest.ts` 的同一套规则校验 ——
-     * 见 `tests/core/settings.test.ts` 的「tracked 里的 pluginId 内容校验」。
-     * 这两条留在这里作为**后果的证明**。
-     */
-    it("pluginId 含 `..` 时解析出的目录已逃出 plugins/（路径计算）", async () => {
-        // 先看纯路径计算：这一步不需要任何「目录存在」的前提。
-        expect(await resolvePluginFolder(fake.app, "../..")).toBe(
-            ".obsidian/plugins/../.."
-        );
+/**
+ * 路径计算的那一半（**后果**那一半在 `itemFolder.test.ts` 里，
+ * 因为真正发出 `rmdir` 的是 `removeItemFolder`）。
+ *
+ * `data.json` 里的 `tracked[].id` 会一路走到目录解析：找不到匹配目录时
+ * `resolvePluginFolder` 回落到 `{configDir}/plugins/{id}`，
+ * 紧接着就是一次**递归**删除。`id` 里只要出现 `..`，删的就不再是插件目录。
+ *
+ * 修法不在这里（`resolvePluginFolder` 只拿到一个 id 字符串，无从判断它从哪来），
+ * 而在读取 `data.json` 时按 `manifest.ts` 的同一套规则校验 ——
+ * 见 `tests/core/settings.test.ts` 的「tracked 里的 id 内容校验」。
+ */
+describe("越界的 id 会解析出 plugins/ 之外的路径", () => {
+    it("`..` 不被消解，直接拼进返回值", async () => {
+        expect(await resolvePluginFolder(fake.app, "../..")).toBe(".obsidian/plugins/../..");
         expect(await resolvePluginFolder(fake.app, "../../evil")).toBe(
             ".obsidian/plugins/../../evil"
         );
-    });
-
-    it("那个路径存在时，真的会发出递归删除调用", async () => {
-        // 假的 adapter 只做字符串前缀匹配、不解析路径（真机上是文件系统解析的），
-        // 所以这里把「解析后的目标」直接标成存在，等价于库根目录确实在那儿。
-        fake.folders.add(".obsidian/plugins/../..");
-
-        const removed: Array<{ path: string; recursive: boolean }> = [];
-        const originalRmdir = fake.app.vault.adapter.rmdir.bind(fake.app.vault.adapter);
-        fake.app.vault.adapter.rmdir = async (path: string, recursive: boolean) => {
-            removed.push({ path, recursive });
-            return originalRmdir(path, recursive);
-        };
-
-        await removePluginFolder(fake.app, "../..");
-
-        expect(removed).toEqual([{ path: ".obsidian/plugins/../..", recursive: true }]);
     });
 });
