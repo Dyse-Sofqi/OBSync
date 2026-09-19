@@ -11,7 +11,7 @@ const mirrorCandidatePrefix = "Possible mirror: ";
 export const en = {
     plugin: {
         name: "OBSync",
-        ribbonSync: "OBSync: open the sync details (source control)",
+        ribbonSync: "OBSync: open the repository sync view",
         ribbonInstaller: "OBSync: install community plugins",
     },
 
@@ -133,7 +133,34 @@ export const en = {
                 "Let OBSync sync this vault in the background. Turning it off stops the " +
                 "automatic commit / push / pull timers; the sync commands stay available " +
                 "(those are started by you).",
+            /**
+             * Replacement description while the toggle is suspended (strategy = reset,
+             * see `Automatics.start()`). Says both *why* it is greyed out and *how* to
+             * resume — greying it out without an explanation reads as a broken plugin.
+             */
+            enabledSuspendedByReset:
+                "Paused: the pull integration strategy is reset, so every automatic sync " +
+                "would discard what was just committed. Switch back to merge or rebase to resume.",
             desktopOnly: "Vault sync needs system git and is only available on desktop.",
+            /**
+             * Notes shown at the top of this page, right under the heading. Both are
+             * traps that only bite under a *combination* of settings (reset strategy +
+             * automatic sync on; editing the same file on two devices), so they would go
+             * unread if buried in a single option's description.
+             *
+             * The first one is the other half of the suspension logic in
+             * `Automatics.start()` — change one, change the other.
+             */
+            notesHeading: "Notes",
+            notes: [
+                "With the pull integration strategy set to reset, every automatic sync runs " +
+                    "commit -> pull -> push, and reset discards what was just committed. Automatic " +
+                    "sync is therefore paused while reset is selected; it switches back on when " +
+                    "you return to merge or rebase.",
+                "If a note was just changed on another device while you are editing it here, an " +
+                    "automatic pull may overwrite what you have. Consider turning automatic sync " +
+                    "off while editing the same file on multiple devices.",
+            ],
             autoCommit: "Auto commit-and-sync interval (minutes)",
             autoCommitDesc:
                 "Set to 0 to disable. This is not commit-only: each run does " +
@@ -428,7 +455,10 @@ export const en = {
     },
 
     sync: {
-        viewTitle: "Source control",
+        // Renamed from "Source control" on 2026-09-19: the in-panel heading is
+        // gone, so this is the only name the user sees — and "source control"
+        // is git's word, not this plugin's job (it syncs the vault to a remote).
+        viewTitle: "Repository sync",
         statusPulling: "Pulling…",
         statusPushing: "Pushing…",
         statusCommitting: "Committing…",
@@ -511,8 +541,8 @@ export const en = {
         // Sidebar detail view (see the zh-CN locale for why these exist).
         // `cmdOpenView` and `viewTitle` must stay separate: command names need the
         // OBSync prefix to be findable in the command palette, panel titles do not.
-        cmdOpenView: "OBSync: Open source control panel",
-        statusBarHint: "Click to open the source control panel",
+        cmdOpenView: "OBSync: Open repository sync panel",
+        statusBarHint: "Click to open the repository sync panel",
         actRefresh: "Refresh",
         actInit: "Initialise repository",
         actStage: "Stage this file",

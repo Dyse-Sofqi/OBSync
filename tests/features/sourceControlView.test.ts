@@ -5,7 +5,15 @@ import {
     shortDate,
     SourceControlView,
 } from "../../src/features/sync/ui/SourceControlView";
-import { createdSettings, resetCreatedSettings, Setting } from "../stubs/obsidian";
+import {
+    ButtonComponent,
+    createdSettings,
+    DropdownComponent,
+    resetCreatedSettings,
+    Setting,
+    TextComponent,
+    ToggleComponent,
+} from "../stubs/obsidian";
 import { zhCN } from "../../src/core/i18n/locales/zh-cn";
 import { en } from "../../src/core/i18n/locales/en";
 import type { LocaleStrings } from "../../src/core/i18n";
@@ -14,7 +22,7 @@ import type { SimpleGitManager } from "../../src/features/sync/simpleGitManager"
 import type { CommitInfo, FileChange, RepoSize, RepoStatus } from "../../src/features/sync/types";
 
 /**
- * 源码控制视图。
+ * 仓库同步视图（源码控制视图的后继 —— 只改了显示名与顶部布局，见文件头注释）。
  *
  * 这个面板此前**一个渲染测试都没有** —— 于是它有下面这些问题而没人发现：
  * 面板标题与「打开面板」的命令名都是「OBSync」（命令面板里搜「同步」找不到）、
@@ -230,6 +238,41 @@ function findSetting(name: string): Setting {
     return found[found.length - 1]!;
 }
 
+/** 顶部工具条（唯一带 `obsync-actions` 的那个 Setting）。 */
+function findToolbar(): Setting {
+    const found = createdSettings.filter((setting) =>
+        setting.classes.includes("obsync-actions")
+    );
+    expect(found.length, "没有找到工具条").toBeGreaterThan(0);
+    return found[0]!;
+}
+
+/** 某个下拉框上的 `aria-label`（工具条里没有可见标签，标签挂在这里）。 */
+function ariaLabel(dropdown: DropdownComponent): string | undefined {
+    const selectEl = dropdown.selectEl as unknown as { attrs?: Record<string, string> };
+    return selectEl.attrs?.["aria-label"];
+}
+
+/**
+ * 一个控件在界面上的「样子」—— 用来断言工具条**从左到右**的顺序。
+ *
+ * 按钮看文字（图标按钮没有文字，退化成图标名），下拉框看当前值。混在一起排成
+ * 一条，才能验「分支下拉夹在推送和立即同步之间」这种排布。
+ */
+function controlLabel(
+    control: ButtonComponent | DropdownComponent | ToggleComponent | TextComponent
+): string {
+    if (control instanceof DropdownComponent) return `<select:${control.value}>`;
+    if (control instanceof ButtonComponent) return control.text || `<icon:${control.icon}>`;
+    return "<other>";
+}
+
+/** 一个 Setting 挂在哪个容器里、那个容器带什么类（验「两栏并排」要用）。 */
+function containerClass(setting: Setting): string {
+    const container = setting.containerEl as unknown as { cls?: string };
+    return container.cls ?? "";
+}
+
 beforeEach(() => {
     resetCreatedSettings();
 });
@@ -240,10 +283,24 @@ describe("SourceControlView 渲染", () => {
 
         await h.view.onOpen();
 
-        const init = findSetting("").buttons.find((button) => button.text === zhCN.sync.actInit);
+        const init = createdSettings
+            .flatMap((setting) => setting.buttons)
+            .find((button) => button.text === zhCN.sync.actInit);
         expect(init).toBeDefined();
         init!.click();
         expect(h.calls).toContain("initRepo");
+    });
+
+    it("不是仓库时工具条还在（刷新能用），但**没有**分支下拉", async () => {
+        // 没有状态就没有分支 —— 那一格必须空着，而不是显示一个编出来的分支名。
+        const h = harness({ status: undefined });
+
+        await h.view.onOpen();
+
+        const toolbar = findToolbar();
+        expect(toolbar.dropdowns).toHaveLength(0);
+        // 刷新仍然在（这是面板唯一的「重新读一次状态」入口）
+        expect(toolbar.buttons[toolbar.buttons.length - 1]!.icon).toBe("refresh-cw");
     });
 
     it("标题用的是面板名，不是带 OBSync 前缀的命令名", async () => {
@@ -256,28 +313,56 @@ describe("SourceControlView 渲染", () => {
         expect(zhCN.sync.cmdOpenView).toMatch(/^OBSync/);
     });
 
-    it("四个动作**在同一行**，顺序是 立即同步 → 提交 → 拉取 → 推送", async () => {
-        // 用户的要求：立即同步是完整的一条，三个分步动作跟在后面 ——
-        // 放一行才能一眼看出「一个顶三个」。分两行是他明确否掉的布局。
+    it("面板内**不再**重复一个标题（标签页上已经写着视图名了）", async () => {
+        // 2026-09-19 用户要求删掉它 —— 侧边栏里一行标题就是一行浪费。
         const h = harness({});
         await h.view.onOpen();
 
-        const rows = createdSettings.filter(
-            (setting) => setting.buttons.length >= 2 && setting.buttons[0]!.text !== ""
-        );
-        const actionRow = rows.find((setting) =>
-            setting.buttons.some((button) => button.text === zhCN.sync.actSync)
-        );
+        expect(settingsNamed(zhCN.sync.viewTitle)).toHaveLength(0);
+        // 视图名本身还在（`getDisplayText` 就是标签页的标题）
+        expect(h.view.getDisplayText()).toBe(zhCN.sync.viewTitle);
+    });
 
-        expect(actionRow, "没有找到动作行").toBeDefined();
-        expect(actionRow!.buttons.map((button) => button.text)).toEqual([
-            zhCN.sync.actSync,
+    it("工具条**一行**，顺序是 提交 / 拉取 / 推送 / 分支 / 立即同步 / 刷新", async () => {
+        // 用户的要求：标题右边的刷新按钮、四个动作、下一行的分支下拉合并成一行。
+        // 「一行」在实现上就是**同一个 Setting** —— 它们都落在它的 controlEl 里。
+        // 顺序是当天晚上第二次指定的：分步动作在左、立即同步在右、刷新最右。
+        const h = harness({});
+        await h.view.onOpen();
+
+        const toolbar = findToolbar();
+
+        // 用 `controls`（调用顺序 = 真实 DOM 里从左到右）而不是只看 `buttons` ——
+        // 分支下拉夹在中间，只看按钮列表是验不出它在哪一格。
+        expect(toolbar.controls.map(controlLabel)).toEqual([
             zhCN.sync.actCommit,
             zhCN.sync.actPull,
             zhCN.sync.actPush,
+            "<select:main>",
+            zhCN.sync.actSync,
+            "<icon:refresh-cw>",
         ]);
         // 窄面板里换行交给 CSS（这个类就是干这个的）
-        expect(actionRow!.classes).toContain("obsync-actions");
+        expect(toolbar.classes).toContain("obsync-actions");
+    });
+
+    it("「立即同步」带一个只属于它的类 —— 靠 auto 外边距顶到右侧", async () => {
+        // 顺序对了不等于位置对了：面板够宽时它要贴着右边，靠的是这个类
+        // （`.obsync-action-sync { margin-left: auto }`）。
+        const h = harness({});
+        await h.view.onOpen();
+
+        const sync = findToolbar().buttons.find(
+            (button) => button.text === zhCN.sync.actSync
+        )!;
+        expect(sync.buttonEl.hasClass("obsync-action-sync")).toBe(true);
+        // 其余按钮不该有这个类（否则右边会多出好几段空隙）
+        const others = findToolbar().buttons.filter(
+            (button) => button.text !== zhCN.sync.actSync
+        );
+        expect(
+            others.every((button) => !button.buttonEl.hasClass("obsync-action-sync"))
+        ).toBe(true);
     });
 
     it("「提交」按钮的文案就是两个字（不是「提交全部」）", async () => {
@@ -316,15 +401,41 @@ describe("SourceControlView 渲染", () => {
 
         await h.view.onOpen();
 
-        const dropdown = findSetting(zhCN.sync.branchLabel).dropdowns[0]!;
+        const dropdown = findToolbar().dropdowns[0]!;
         expect(dropdown.options.map((option) => option.value)).toEqual(["main", "dev"]);
         expect(dropdown.value).toBe("main");
+        // 「分支」两个字没地方写了，标签挂在 aria-label 上（读屏仍然知道它是什么）
+        expect(ariaLabel(dropdown)).toBe(zhCN.sync.branchLabel);
 
         dropdown.select("dev");
         expect(h.calls).toContain("checkout:dev");
     });
 
-    it("显示仓库体积与待提交改动的体积（两个问题不同，所以两行）", async () => {
+    it("游离 HEAD：下拉框写着「游离 HEAD」且不可选（没有分支可切）", async () => {
+        // 这一格是这条信息唯一的落点 —— 藏起来的话用户只会觉得「少了点什么」。
+        const h = harness({ status: status({ branch: null }) });
+
+        await h.view.onOpen();
+
+        const dropdown = findToolbar().dropdowns[0]!;
+        expect(dropdown.disabled).toBe(true);
+        expect(dropdown.options).toEqual([
+            { value: "", label: zhCN.sync.detachedHeadLabel },
+        ]);
+    });
+
+    it("列不出分支时给的是置灰的当前分支，不是可切的下拉框", async () => {
+        // 可切的下拉框里只有它自己 —— 那是个假象（选了不会有任何事发生）。
+        const h = harness({ branches: [] });
+
+        await h.view.onOpen();
+
+        const dropdown = findToolbar().dropdowns[0]!;
+        expect(dropdown.disabled).toBe(true);
+        expect(dropdown.options).toEqual([{ value: "main", label: "main" }]);
+    });
+
+    it("仓库体积与待提交改动的体积都在，且**并排两栏**", async () => {
         const h = harness({
             status: status({ unstaged: [change("a.md", "modified")] }),
             repoSize: { bytes: 12 * 1024 * 1024, objects: 1234 },
@@ -333,12 +444,17 @@ describe("SourceControlView 渲染", () => {
 
         await h.view.onOpen();
 
-        expect(findSetting(zhCN.sync.repoSizeLabel).desc).toBe(
-            zhCN.sync.repoSizeDesc("12 MB", 1234)
-        );
-        expect(findSetting(zhCN.sync.pendingChangesLabel).desc).toBe(
-            zhCN.sync.pendingChangesDesc("1 MB", 1)
-        );
+        const size = findSetting(zhCN.sync.repoSizeLabel);
+        const pending = findSetting(zhCN.sync.pendingChangesLabel);
+
+        // 两句话本身没变（它们回答的是两个不同的问题，见 repoSize.ts）
+        expect(size.desc).toBe(zhCN.sync.repoSizeDesc("12 MB", 1234));
+        expect(pending.desc).toBe(zhCN.sync.pendingChangesDesc("1 MB", 1));
+
+        // 「两栏」在实现上就是**挂在同一个容器里**，而那个容器是横向 flex。
+        // 谁要是把它们各自塞回 contentEl，这条立刻失败。
+        expect(size.containerEl).toBe(pending.containerEl);
+        expect(containerClass(size)).toContain("obsync-metrics");
     });
 
     it("**读不到仓库体积时说「读不到」，不编一个 0 B**", async () => {

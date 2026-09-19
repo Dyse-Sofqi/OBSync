@@ -657,7 +657,7 @@ describe("提交信息的文件数按路径去重", () => {
 });
 
 /**
- * 源码控制视图里的逐文件操作。
+ * 仓库同步视图里的逐文件操作。
  *
  * 这些动作**必须走串行队列**：视图里点一下「暂存」的同时，自动提交定时器
  * 到点了 —— 两条 git 命令并发写索引是真实会发生的。视图原来切分支就是直接
@@ -847,7 +847,7 @@ describe("推送：本地与远端一致时的反馈", () => {
         expect(notices).not.toContain(zhCN.sync.pushUpToDate);
     });
 
-    it("数量与源码控制视图里的列表同一套规则（去重、排除冲突）", async () => {
+    it("数量与仓库同步视图里的列表同一套规则（去重、排除冲突）", async () => {
         const git = new FakeGit();
         const fake = createFakeApp();
         const { service, notices } = makeService(git, fake);
@@ -1076,7 +1076,7 @@ describe("待提交改动的体积", () => {
     });
 });
 
-describe("状态订阅（源码控制视图）", () => {
+describe("状态订阅（仓库同步视图）", () => {
     it("refresh 会把状态推给订阅者", async () => {
         const git = new FakeGit();
         const fake = createFakeApp();

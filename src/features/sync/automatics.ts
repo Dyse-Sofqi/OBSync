@@ -1,5 +1,6 @@
 import { logger } from "../../core/logger";
 import type { SyncService } from "./syncService";
+import type { SyncStrategy } from "./types";
 
 /**
  * 自动提交 / 推送 / 拉取的定时器。
@@ -38,6 +39,23 @@ export interface AutomaticsSettings {
      * 与「插件自己到点就跑」不是一回事，拦下来只会让人以为插件坏了。
      */
     enabled: boolean;
+
+    /**
+     * 拉取整合策略。**必须在逻辑层也读到，不能只在设置页判一下** ——
+     * 理由与上面的 `enabled` 完全相同：那个字段当年就是这么被漏掉的
+     * （设置页写了、没人读，于是「关掉」之后照样在后台推）。
+     *
+     * 策略为 `reset` 时 `start()` 一个定时器都不起。自动同步的链路是
+     * 「提交 → 拉取 → 推送」，而 `reset` 的语义是「丢弃本地提交、以远端为准」
+     * （`simpleGitManager.resetToRemote` 走 `git reset --hard upstream`）。
+     * 两者叠在一起，用户每 N 分钟就**静默地**丢掉一次刚提交的东西 ——
+     * 而且 UI 上开关还开着，比关掉更让人想不到。
+     *
+     * 这里选择挂起而不是拦下 `reset`：策略本身是用户明确选的语义，
+     * 该被限制的是「让它无人值守地反复执行」这件事。
+     */
+    syncStrategy: SyncStrategy;
+
     autoCommitMinutes: number;
     autoPushMinutes: number;
     autoPullMinutes: number;
@@ -80,6 +98,16 @@ export class Automatics {
         // `sync.reload()` → 这里，所以用户拨开关是**立刻**生效的，不用重启。
         if (!current.enabled) {
             logger.debug("automatics disabled: no timers scheduled");
+            return;
+        }
+
+        // 策略为 reset 时挂起 —— 见 `AutomaticsSettings.syncStrategy`。
+        //
+        // 这里同样不需要在 `fire()` 里再判一次：`stop()` 已把世代号自增，
+        // 那一刻 in-flight 的 `fire()` 回来不会重新起表；而设置页每次改动都会走
+        // `commit()` → `applyDerivedSettings()` → `sync.reload()` → 这里。
+        if (current.syncStrategy === "reset") {
+            logger.debug("automatics suspended: pull strategy is reset");
             return;
         }
 

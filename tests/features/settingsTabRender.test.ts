@@ -22,8 +22,12 @@ import { createFakeApp, type FakeApp } from "../helpers/fakeApp";
  * 加上 `describeSelfState` 覆盖的文案逻辑，就够拦住常见的回归了。
  */
 
-function createTab(fake: FakeApp): ObsyncSettingsTab {
-    const settings = normalizeSettings({});
+/**
+ * @param raw 原始设置（会被 `normalizeSettings` 归一化）。默认空对象 ——
+ * 只有「仓库同步页」的用例需要构造特定的拉取策略，其余页面用默认值就够。
+ */
+function createTab(fake: FakeApp, raw: Record<string, unknown> = {}): ObsyncSettingsTab {
+    const settings = normalizeSettings(raw);
     const notifier = new Notifier({ getShowNotices: () => true, getT: () => zhCN });
 
     const plugin = {
@@ -32,6 +36,9 @@ function createTab(fake: FakeApp): ObsyncSettingsTab {
         t: zhCN,
         settings,
         notifier,
+        // 同步那一页先问这个。为 false（移动端）时它只画一行说明就 return，
+        // 于是「仓库同步页」的用例什么也验不到 —— 必须为 true。
+        isSyncAvailable: true,
         secretStore: new SecretStore(fake.app),
         // `commit()` 会调这两个。**必须真的记一笔**：不记的话
         // 「拨了开关有没有生效」这件事就验不了 —— 而设置页最容易犯的错正是
@@ -196,5 +203,99 @@ describe("设置页 · 通用页", () => {
         // 落盘 + 重算派生状态（后者才会给 body 加/摘那个类 —— 见 pluginBoot 的用例）
         expect(plugin.saved).toBe(1);
         expect(plugin.applied).toBe(1);
+    });
+});
+
+/**
+ * 设置页「仓库同步」标签。
+ *
+ * 这一页此前也没有用例。这里钉住两件事，都是**组合条件**才出问题的地方：
+ *
+ * 1. 注意事项在标题正下方 —— 它说的是「这样配会丢东西」，位置错了（比如沉到
+ *    页面底部）就等于没写。
+ * 2. 策略为「重置」时总开关被禁用且换了描述。这是 UI 那一半；**真正拦住定时器
+ *    的是 `Automatics.start()`**，那条在 `automatics.test.ts` 里单独测 ——
+ *    只测这里会漏掉「库里已经存着 enabled + reset」的用户（他们根本不碰设置页）。
+ */
+describe("设置页 · 仓库同步页", () => {
+    /** DOM shim 记下的节点形状（见 `tests/setup.ts`）。 */
+    type ShimEl = {
+        cls?: string;
+        text?: string;
+        children?: ShimEl[];
+    };
+
+    function renderSyncPage(tab: ObsyncSettingsTab): void {
+        (tab as unknown as { renderSync(): void }).renderSync();
+    }
+
+    function childrenOf(tab: ObsyncSettingsTab): ShimEl[] {
+        const container = (tab as unknown as { containerEl: { children: unknown[] } }).containerEl;
+        return container.children as ShimEl[];
+    }
+
+    it("渲染不抛错，且注意事项紧跟在「仓库同步」标题下面", () => {
+        const fake = createFakeApp();
+        const tab = createTab(fake);
+
+        expect(() => renderSyncPage(tab)).not.toThrow();
+
+        const heading = createdSettings.find(
+            (setting) => setting.name === zhCN.settings.sync.heading
+        );
+        const children = childrenOf(tab);
+        const headingIndex = children.indexOf(heading!.settingEl as unknown as ShimEl);
+
+        // 「标题正下方」＝ 紧邻的下一个节点。被挪到页面别处这条就红。
+        expect(children[headingIndex + 1]?.cls).toBe("obsync-sync-notes");
+    });
+
+    it("注意事项里是 locale 里的那两条，标题也在", () => {
+        const fake = createFakeApp();
+        const tab = createTab(fake);
+
+        renderSyncPage(tab);
+
+        const notes = childrenOf(tab).find((child) => child.cls === "obsync-sync-notes");
+        const [heading, list] = notes!.children!;
+
+        expect(heading?.cls).toBe("obsync-sync-notes-heading");
+        expect(heading?.text).toBe(zhCN.settings.sync.notesHeading);
+        // 逐条比对，而不是只看「有一条」：漏掉 reset 那条就等于没写。
+        expect(list?.children?.map((item) => item.text)).toEqual(zhCN.settings.sync.notes);
+    });
+
+    it("策略为「重置」时总开关被禁用，描述说明为什么", () => {
+        const fake = createFakeApp();
+        const tab = createTab(fake, { sync: { syncStrategy: "reset" } });
+
+        renderSyncPage(tab);
+
+        const row = createdSettings.find((setting) => setting.name === zhCN.settings.sync.enabled);
+        expect(row?.toggles[0]?.disabled).toBe(true);
+        expect(row?.desc).toBe(zhCN.settings.sync.enabledSuspendedByReset);
+    });
+
+    it("策略不是「重置」时开关可用，描述是常规说明", () => {
+        const fake = createFakeApp();
+        const tab = createTab(fake);
+
+        renderSyncPage(tab);
+
+        const row = createdSettings.find((setting) => setting.name === zhCN.settings.sync.enabled);
+        expect(row?.toggles[0]?.disabled).toBe(false);
+        expect(row?.desc).toBe(zhCN.settings.sync.enabledDesc);
+    });
+
+    it("开关被禁用时**值不被改写** —— 改回「合并」后才会自动恢复", () => {
+        const fake = createFakeApp();
+        const tab = createTab(fake, { sync: { enabled: true, syncStrategy: "reset" } });
+
+        renderSyncPage(tab);
+
+        const row = createdSettings.find((setting) => setting.name === zhCN.settings.sync.enabled);
+        // 灰掉的是「能不能拨」，不是「值是多少」。若这里被写成 setValue(false)，
+        // 用户改回 merge 之后自动同步就再也不会自己恢复 —— 而文案承诺了会。
+        expect(row?.toggles[0]?.value).toBe(true);
     });
 });

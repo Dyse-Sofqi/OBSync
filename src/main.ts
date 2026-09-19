@@ -140,7 +140,7 @@ export default class ObsyncPlugin extends Plugin {
 
         // 侧栏图标：**两个**。原来只有一个，而它打开的是安装器 —— 于是想找
         // 同步详情的人点开看到一个装插件的弹窗，找不到「同步面板在哪」。
-        // 现在同步那个图标（与 obsidian-git 的位置一致）打开源码控制视图。
+        // 现在同步那个图标（与 obsidian-git 的位置一致）打开仓库同步视图。
         if (this.sync) {
             this.addRibbonIcon("git-fork", this.t.plugin.ribbonSync, () => {
                 void this.openSyncView();
@@ -506,7 +506,7 @@ export default class ObsyncPlugin extends Plugin {
         await this.openRemoteUrl(vaultPath, fileHistoryOnRemoteUrl);
     }
 
-    /** 源码控制视图里点某条提交：在远端网页上看它。 */
+    /** 仓库同步视图里点某条提交：在远端网页上看它。 */
     private async openCommitOnRemote(hash: string): Promise<void> {
         await this.openRemoteUrl(hash, commitOnRemoteUrl);
     }

@@ -222,8 +222,18 @@ export class TextComponent {
 export class ButtonComponent {
     text = "";
     disabled = false;
-    /** 真实组件暴露的元素，列表用它给「主操作」加类（见 TrackedItemsList）。 */
+    /**
+     * 真实组件暴露的元素，列表用它给「主操作」加类（见 TrackedItemsList）。
+     *
+     * 注意这个属性在真实 API 里属于 **`ExtraButtonComponent`**（`addExtraButton`
+     * 的回调拿到的是它）。替身把两个组件合成一个，所以 `addExtraButton` 也走这里。
+     */
     readonly extraSettingsEl = document.createElement("div");
+    /**
+     * 真实 `ButtonComponent` 的元素（`extraSettingsEl` 是另一个组件的）。
+     * 视图用它给单个按钮加类 —— 例如把「立即同步」顶到工具条右侧。
+     */
+    readonly buttonEl = document.createElement("div");
     cta = false;
     /** 「危险动作」标记（真实的 ButtonComponent 会把它渲染成警示色）。 */
     warning = false;
@@ -296,7 +306,15 @@ export class ToggleComponent {
 }
 
 export class DropdownComponent {
+    /**
+     * 真实的 `DropdownComponent` 暴露 `<select>` 元素本身。
+     *
+     * 视图会把「分支」这个标签挂到它的 `aria-label` 上（工具条里没有位置再写
+     * 一个可见的标签），替身少了这个元素，那条路径一跑就 TypeError。
+     */
+    readonly selectEl = document.createElement("select");
     value = "";
+    disabled = false;
     options: Array<{ value: string; label: string }> = [];
     private changeHandler: ((value: string) => unknown) | undefined;
 
@@ -314,6 +332,10 @@ export class DropdownComponent {
     }
     getValue(): string {
         return this.value;
+    }
+    setDisabled(value: boolean): this {
+        this.disabled = value;
+        return this;
     }
     onChange(callback: (value: string) => unknown): this {
         this.changeHandler = callback;
@@ -353,6 +375,17 @@ export class Setting {
     readonly buttons: ButtonComponent[] = [];
     readonly toggles: ToggleComponent[] = [];
     readonly dropdowns: DropdownComponent[] = [];
+    /**
+     * 控件的**调用顺序**。
+     *
+     * 真实的 `Setting` 把每个控件按调用顺序 append 进同一个 `controlEl`，
+     * 所以「谁在谁左边」就等于调用顺序。只分别看 `buttons` / `dropdowns`
+     * 是验不了排布的 —— 而排布本身可能正是需求（「刷新在最右」「立即同步在
+     * 分支下拉右边」这类），所以这里要能还原出完整的一条。
+     */
+    readonly controls: Array<
+        ButtonComponent | DropdownComponent | ToggleComponent | TextComponent
+    > = [];
 
     constructor(public containerEl: HTMLElement) {
         containerEl.appendChild(this.settingEl);
@@ -376,12 +409,14 @@ export class Setting {
     addText(callback?: (text: TextComponent) => unknown): this {
         const component = new TextComponent();
         this.texts.push(component);
+        this.controls.push(component);
         callback?.(component);
         return this;
     }
     addButton(callback?: (button: ButtonComponent) => unknown): this {
         const component = new ButtonComponent();
         this.buttons.push(component);
+        this.controls.push(component);
         callback?.(component);
         return this;
     }
@@ -391,12 +426,14 @@ export class Setting {
     addToggle(callback?: (toggle: ToggleComponent) => unknown): this {
         const component = new ToggleComponent();
         this.toggles.push(component);
+        this.controls.push(component);
         callback?.(component);
         return this;
     }
     addDropdown(callback?: (dropdown: DropdownComponent) => unknown): this {
         const component = new DropdownComponent();
         this.dropdowns.push(component);
+        this.controls.push(component);
         callback?.(component);
         return this;
     }

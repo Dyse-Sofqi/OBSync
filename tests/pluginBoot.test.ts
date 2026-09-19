@@ -122,7 +122,7 @@ describe("桌面端启动", () => {
         expect(plugin.registered.statusBarItems).toBe(1);
     });
 
-    it("侧栏的同步图标真的会请求打开源码控制视图", async () => {
+    it("侧栏的同步图标真的会请求打开仓库同步视图", async () => {
         const plugin = createPlugin(fake);
         await plugin.onload();
 
@@ -155,7 +155,7 @@ describe("桌面端启动", () => {
         expect(ribbons[0]!.title).not.toBe(ribbons[1]!.title);
     });
 
-    it("注册了源码控制视图", async () => {
+    it("注册了仓库同步视图", async () => {
         const plugin = createPlugin(fake);
         await plugin.onload();
 
@@ -261,7 +261,7 @@ describe("移动端启动", () => {
         expect(plugin.installer).toBeDefined();
     });
 
-    it("不注册源码控制视图（工厂函数会解引用 sync 模块）", async () => {
+    it("不注册仓库同步视图（工厂函数会解引用 sync 模块）", async () => {
         const plugin = createPlugin(fake);
         await plugin.onload();
 

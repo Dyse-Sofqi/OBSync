@@ -179,7 +179,7 @@ export class ObsyncSettingsTab extends PluginSettingTab {
         const updates = Object.keys(installer.availableUpdates).length;
         if (updates > 0) {
             button.createSpan({
-                text: `↑${updates}`,
+                text: `${updates}`,
                 cls: "obsync-tab-count is-update",
             });
         }
@@ -662,16 +662,42 @@ export class ObsyncSettingsTab extends PluginSettingTab {
             return;
         }
 
+        // 注意事项：放在标题正下方，而不是塞进各设置项的描述里。
+        // 两条都是**组合条件**才踩得到的坑（策略选「重置」+ 开着自动同步；
+        // 多设备同时编辑同一个文件），写进单项描述没人读得到 ——
+        // 用户是在配好之后才出问题，那时早就不翻设置了。
+        const notes = this.containerEl.createDiv({ cls: "obsync-sync-notes" });
+        notes.createDiv({ cls: "obsync-sync-notes-heading", text: t.settings.sync.notesHeading });
+        const noteList = notes.createEl("ul");
+        for (const note of t.settings.sync.notes) {
+            noteList.createEl("li", { text: note });
+        }
+
         const settings = this.obsync.settings.sync;
+
+        /**
+         * 策略为「重置」时把总开关灰掉。
+         *
+         * 真正的拦截在 `Automatics.start()`（那里读同一个字段），这里只是
+         * **说明** —— 只灰不说，用户会以为插件坏了。
+         *
+         * 开关的**值**刻意不动：用户改回「合并」后自动恢复，不用重新拨一次。
+         */
+        const suspended = settings.syncStrategy === "reset";
 
         new Setting(this.containerEl)
             .setName(t.settings.sync.enabled)
-            .setDesc(t.settings.sync.enabledDesc)
+            .setDesc(
+                suspended ? t.settings.sync.enabledSuspendedByReset : t.settings.sync.enabledDesc
+            )
             .addToggle((toggle) =>
-                toggle.setValue(settings.enabled).onChange(async (value) => {
-                    settings.enabled = value;
-                    await this.commit();
-                })
+                toggle
+                    .setValue(settings.enabled)
+                    .setDisabled(suspended)
+                    .onChange(async (value) => {
+                        settings.enabled = value;
+                        await this.commit();
+                    })
             );
 
         const intervals: Array<{
@@ -738,7 +764,10 @@ export class ObsyncSettingsTab extends PluginSettingTab {
                 dropdown.setValue(settings.syncStrategy);
                 dropdown.onChange(async (value) => {
                     settings.syncStrategy = value as typeof settings.syncStrategy;
-                    await this.commit();
+                    // 必须重绘：策略决定上面那个总开关是否可用（见 `suspended`）。
+                    // 不重绘的话，用户切到「重置」后开关看起来还是能拨的 ——
+                    // 而实际行为已经停了，那比不灰掉更让人困惑。
+                    await this.commit(true);
                 });
             });
 

@@ -56,7 +56,7 @@ export class SyncService {
     private tail: Promise<unknown> = Promise.resolve();
     /** 排队中 + 执行中的任务数。 */
     private pending = 0;
-    /** 状态变化订阅者（源码控制视图）。见 `onStatusChange`。 */
+    /** 状态变化订阅者（仓库同步视图）。见 `onStatusChange`。 */
     private readonly statusListeners = new Set<(status: RepoStatus | undefined) => void>();
 
     constructor(
@@ -93,7 +93,7 @@ export class SyncService {
         return this.refresh();
     }
 
-    // ── 状态订阅（源码控制视图） ──────────────────────────────────────────
+    // ── 状态订阅（仓库同步视图） ──────────────────────────────────────────
 
     /**
      * 状态变化订阅者。
@@ -335,7 +335,7 @@ export class SyncService {
      * git 不直接给这个数，只能把有改动的文件大小加起来 —— 所以是**近似值**
      * （实际传输量还看压缩率；删除的文件本来没有体积）。取不到大小的文件按 0 计。
      *
-     * 公开是因为源码控制视图也要显示它，而它需要 `app.vault.adapter`（在 service 手上）。
+     * 公开是因为仓库同步视图也要显示它，而它需要 `app.vault.adapter`（在 service 手上）。
      */
     async pendingChangeBytes(status: RepoStatus): Promise<number> {
         const paths = changeRows(status).map((row) => row.path);
@@ -363,7 +363,7 @@ export class SyncService {
         });
     }
 
-    // ── 源码控制视图里的逐文件操作（2026-09-19） ──────────────────────────
+    // ── 仓库同步视图里的逐文件操作（2026-09-19） ──────────────────────────
 
     /**
      * 暂存指定文件 / 取消暂存 / 切换分支。

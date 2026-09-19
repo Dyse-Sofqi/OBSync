@@ -25,7 +25,7 @@ export interface FileChange {
     previousPath?: string;
 }
 
-/** 仓库当前状态快照，状态栏与源码控制视图共用。 */
+/** 仓库当前状态快照，状态栏与仓库同步视图共用。 */
 export interface RepoStatus {
     /** 当前分支名。游离 HEAD 时为 null。 */
     branch: string | null;

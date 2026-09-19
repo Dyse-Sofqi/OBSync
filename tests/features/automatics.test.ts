@@ -70,6 +70,7 @@ function harness(options: { onSync?: () => Promise<void> } = {}): Harness {
 
 const EVERY_MINUTE: AutomaticsSettings = {
     enabled: true,
+    syncStrategy: "merge",
     autoCommitMinutes: 1,
     autoPushMinutes: 0,
     autoPullMinutes: 0,
@@ -99,6 +100,7 @@ describe("起表与周期", () => {
         const { service, calls } = harness();
         const automatics = new Automatics(service, () => ({
             enabled: true,
+            syncStrategy: "merge",
             autoCommitMinutes: 0,
             autoPushMinutes: 0,
             autoPullMinutes: 0,
@@ -108,6 +110,49 @@ describe("起表与周期", () => {
         await vi.advanceTimersByTimeAsync(MINUTE_MS * 5);
 
         expect(calls).toEqual([]);
+    });
+
+    /**
+     * 与设置页「开关灰掉」是一件事的两面，但**必须分开测**。
+     *
+     * 灰掉开关只是 UI 表态，真正的拦截在这里 —— 而库里**已经**存着
+     * `enabled: true` + `reset` 的用户根本不会去动设置页。只测 UI 会漏掉他们，
+     * 表现是「界面看起来一切正常，笔记却每隔几分钟丢一次提交」。
+     */
+    it("拉取策略为 reset 时一个定时器都不起", async () => {
+        const { service, calls } = harness();
+        const automatics = new Automatics(service, () => ({
+            ...EVERY_MINUTE,
+            syncStrategy: "reset",
+        }));
+
+        automatics.start();
+        await vi.advanceTimersByTimeAsync(MINUTE_MS * 5);
+
+        expect(calls).toEqual([]);
+    });
+
+    /**
+     * 设置页那句「改回『合并』或『变基』后自动恢复」是一个**承诺**，这条守它。
+     *
+     * 挂起如果做成一次性的（比如只在启动那一刻判一次），用户改回 merge 之后
+     * 得重启 Obsidian 才会恢复 —— 而文案说的是「改回来就恢复」。
+     */
+    it("策略从 reset 改回 merge 后重新起表", async () => {
+        const { service, calls } = harness();
+        let settings: AutomaticsSettings = { ...EVERY_MINUTE, syncStrategy: "reset" };
+        const automatics = new Automatics(service, () => settings);
+
+        automatics.start();
+        await vi.advanceTimersByTimeAsync(MINUTE_MS * 2);
+        expect(calls).toEqual([]);
+
+        // 设置页改策略 → commit() → applyDerivedSettings() → reload() → restart()
+        settings = { ...settings, syncStrategy: "merge" };
+        automatics.restart();
+        await vi.advanceTimersByTimeAsync(MINUTE_MS);
+
+        expect(calls).toEqual(["sync"]);
     });
 
     /**

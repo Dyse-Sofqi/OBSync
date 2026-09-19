@@ -11,17 +11,29 @@
 ## 命令
 ```
 pnpm dev            # esbuild watch + 自动部署到测试库
-pnpm check          # 项目自查（scripts/checks.mjs，5 项）
+pnpm check          # 项目自查（scripts/checks.mjs，6 项）
 pnpm build          # check + typecheck + 生产构建 + 部署
 pnpm typecheck      # tsc --noEmit
 pnpm test           # 单元测试（不含网络）
 pnpm test:live      # 真实 API 测试（需要网络）
 pnpm verify:mobile  # 构建 + 用真实产物验证「移动端能加载」
+pnpm verify:head    # 在 HEAD（而不是工作区）上跑测试 —— 每次提交后跑
+pnpm hooks:install  # 启用 .githooks/（把 verify:head 挂到 pre-push）
 ```
 
 部署目标：`F:/_Workspace/Plugin-Test/.obsidian/plugins/obsync`，
 可用环境变量 `OBSYNC_DEPLOY_DIR` 覆盖，设为空串则跳过部署。
 部署失败（比如测试库不在）**不会中断构建**，只打警告。
+
+### 核实「部署产物里是不是新代码」
+- **esbuild 默认 `charset: "ascii"`，产物里的中文是 `\uXXXX` 转义**。
+  直接 `grep "仓库同步" main.js` 会**匹配不到**，看着像「没部署成功」——
+  要查 `\u4ED3\u5E93\u540C\u6B65`，或 `grep -o 'viewTitle:.\{0,40\}' main.js`。
+  （仓库根目录那份 `main.js` 是 gitignore 的，`git status` 里看不到它变过。）
+- 更省事的判据：`ls --time-style=+%H:%M:%S` 比**产物时间 vs 最后改动的源文件时间**。
+  但注意 `main.js` 是构建时生成的（mtime = 构建时刻，可靠），**`styles.css` 是原样
+  拷贝且保留源文件 mtime** —— 它的时间戳反映的是源文件什么时候改的，不是什么时候部署的。
+  要确认 CSS 到位就 `diff styles.css <部署目录>/styles.css`（一致即到位）。
 
 ## 约定
 
@@ -52,13 +64,15 @@ pnpm verify:mobile  # 构建 + 用真实产物验证「移动端能加载」
   `GitNotRepoError`，提示语变成「请先初始化仓库」，把用户指错方向。
 
 ### 自查脚本（`scripts/checks.mjs`，随 `pnpm check` 跑）
-早先是 `.probe/` 里的 Python 草稿，已移植成 Node 并入仓库。五项：
+早先是 `.probe/` 里的 Python 草稿，已移植成 Node 并入仓库。六项：
 - **minAppVersion 一致性**：用 `node_modules/obsidian/obsidian.d.ts` 的 `@since`
   比对 manifest。按**类作用域**限定，否则 `.name` / `.status` 这类同名成员会大量误报。
 - **硬编码中文**：扫 locale 之外的代码。**新增的中文都该是可疑的**。
 - **未使用的 i18n 键**：死键是信号，背后通常是漏接的本地化。
+  （所以删掉一处 `t.sync.xxx` 的用法时要顺手删键，否则这里会红。）
 - **CSS 类覆盖**：比对代码用到的 `obsync-*` 类与 `styles.css` 定义的类。
 - **移动端安全**：从 `main.ts` 走静态导入图，看有没有触及依赖 Node 的裸模块。
+- **设置项无人读取**：设置里定义了却没人读的字段（「死开关」）。
 
 两张**带理由**的豁免表在脚本里（`KNOWN_SAFE` / `ALLOWED` / `NOT_CLASS_PREFIXES`）——
 加条目必须写清为什么安全，否则它们会变成掩盖问题的地方。
@@ -175,7 +189,40 @@ pnpm verify:mobile  # 构建 + 用真实产物验证「移动端能加载」
 - git 层的令牌走 `http.extraheader`（`-c` 参数），不落盘也不进错误消息 ——
   这条路径是对的（simple-git 的报错取 stderr 而不是命令行），别改成写进 remote URL。
 
+### 配置项的互斥与限制（「假防护」）
+- **UI 上灰掉一个开关 ≠ 拦住行为**。库里**已经**存着「开关开着 + 危险组合」的用户
+  根本不会去动设置页 —— 定时器照跑，而界面看起来一切正常。
+  先例：`Automatics.start()` 读 `enabled`（曾经的死开关）与 `syncStrategy`
+  （`reset` 与自动同步互斥，2026-09-19）。**限制要在「读设置的那一层」也实现一份。**
+- **灰开关时不要改写它的值**（`setDisabled` 而非 `setValue(false)`）：解除限制后
+  要能**自动恢复** —— 文案通常承诺了这一点，写成 `setValue(false)` 会让它变成谎话。
+- **改「决定其它控件可用性」的设置项后，`commit()` 要传 `redraw=true`**，
+  否则那个控件的灰 / 亮状态不会跟着变。
+- **注意事项放在被违反的那一页的标题正下方**，不要塞进单个设置项的描述里：
+  它针对的是**组合条件**，写在单项描述里没人读得到（用户是配好之后才出问题）。
+  样式用 `.obsync-settings .obsync-sync-notes`（正文**别**用 `--text-muted` ——
+  灰字正是「扫过去看不见」的原因，而它说的是「这样配会丢东西」）。
+
 ### 代码风格
 - 注释用中文，写**为什么**而不是**做了什么**。
 - 不复刻参考项目的兼容包袱（如 BRAT 的设置页新旧双渲染、obsidian-git 的树形视图）。
 - 敏感项（令牌）**绝不进 `data.json`**，走 `core/secretStore`。
+
+### 提交（这个坑很隐蔽，务必执行）
+- **提交后要验的是 HEAD，不是工作区。** `pnpm test` 读的是工作区文件，
+  HEAD 缺了什么根本看不出来 —— 只有别人克隆或 CI 才会撞上红的 HEAD。
+  实测踩过：`d939df2`（状态栏全宽开关）提交了测试与 i18n 键，
+  **唯独漏了 `src/settingsTab.ts`**，于是 HEAD 上 3 条已提交的用例是红的，
+  而本地一直是绿的（2026-09-19 发现）。
+  验法：**`pnpm verify:head`**（`scripts/verify-head.mjs`，已进仓库）—— 它把工作区
+  （**含未跟踪文件**）stash 起来、在 HEAD 上跑测试、再 pop 回来。别手写
+  `git stash && pnpm test && git stash pop`：测试红了 `&&` 链就断，改动会留在 stash 里。
+- **它已经挂在 `pre-push` 上**（`.githooks/pre-push`，`pnpm hooks:install` 启用），
+  所以「忘了跑」也被覆盖。选 push 而不是 commit：commit 是本地历史随时能 `reset`，
+  **push 才是「别人能看到」的时刻**，也正是这个错真正有害的时刻；push 频率低，
+  3 分钟等得起。跳过用 `git push --no-verify`。
+  **工具 ≠ 机制**：只给一条命令，用户忘了跑就等于没有 —— 这也是要挂 hook 的理由。
+- **一次改动横跨多个文件时（代码 + 测试 + i18n + CSS），`git add` 漏掉一个是最容易犯的错**，
+  而症状恰好是「本地一切正常」。提交前用 `git status` 对着改动清单核一遍。
+- 这个项目的 commit message 风格：**中文、带用户原话、写清「为什么」与「代价」**，
+  一条提交只讲一件事。别把几轮改动揉进一个提交。

@@ -40,7 +40,7 @@ export interface SyncDeps {
     getT(): LocaleStrings;
     /** `plugin.addStatusBarItem()` —— 该 API 在 Plugin 类上，不在 workspace 上。 */
     createStatusBarItem(): HTMLElement;
-    /** 点击状态栏条目时打开源码控制视图（主类上的入口）。 */
+    /** 点击状态栏条目时打开仓库同步视图（主类上的入口）。 */
     openSourceControlView(): void;
 }
 
@@ -79,6 +79,10 @@ export function createSyncModule(deps: SyncDeps): SyncModule | undefined {
 
     const automatics = new Automatics(service, () => ({
         enabled: deps.getSettings().sync.enabled,
+        // 策略也必须传进来：`reset` 与自动同步不能并存（见 `AutomaticsSettings`）。
+        // 只在设置页把开关灰掉是不够的 —— 库里**已经**存着 enabled + reset 的用户
+        // 根本不会去动设置页，定时器会照跑，而 UI 看起来一切正常。
+        syncStrategy: deps.getSettings().sync.syncStrategy,
         autoCommitMinutes: deps.getSettings().sync.autoCommitMinutes,
         autoPushMinutes: deps.getSettings().sync.autoPushMinutes,
         autoPullMinutes: deps.getSettings().sync.autoPullMinutes,

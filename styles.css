@@ -124,7 +124,43 @@
     word-break: break-all;
 }
 
-/* ── 源码控制视图（侧边栏面板） ──────────────────────────────────────────
+/*
+ * 设置页「仓库同步」标题下的注意事项。
+ *
+ * 刻意比 `setting-item-description`（小而灰）**重**一档：那两段说的是
+ * 「这样配会丢东西」，扫过去没看见就等于没写 —— 而灰字正是「扫过去看不见」
+ * 的原因，所以正文用正常色而不是 `--text-muted`。
+ *
+ * 但也不用 `mod-warning` 的橙色：那是「现在就出错了」，而这里是「别这么配」，
+ * 喊太响会让人以为插件已经出问题。左侧竖线足够把它和普通描述区分开。
+ */
+.obsync-settings .obsync-sync-notes {
+    margin: 0.5em 0 1em;
+    padding: 0.5em 0 0.5em 0.9em;
+    border-left: 3px solid var(--background-modifier-border);
+}
+
+.obsync-settings .obsync-sync-notes-heading {
+    font-size: var(--font-ui-small, 0.9em);
+    font-weight: 600;
+    color: var(--text-normal);
+    margin-bottom: 0.35em;
+}
+
+.obsync-settings .obsync-sync-notes ul {
+    margin: 0;
+    padding-left: 1.1em;
+    list-style: disc outside;
+}
+
+.obsync-settings .obsync-sync-notes li {
+    font-size: var(--font-ui-smaller, 0.85em);
+    color: var(--text-normal);
+    line-height: 1.5;
+    margin: 0.25em 0;
+}
+
+/* ── 仓库同步视图（侧边栏面板） ──────────────────────────────────────────
  *
  * 面板很窄（侧边栏宽度），所以每一处都在「信息够用」和「一行放得下」之间取舍：
  * 文件行用 `Setting` 渲染，名字区是「状态位 + 路径」，控件在右侧。
@@ -136,16 +172,75 @@
 }
 
 /*
- * 四个动作按钮（立即同步 / 提交 / 拉取 / 推送）同一行。
+ * 顶部工具条：提交 / 拉取 / 推送、分支下拉、立即同步、刷新，**同一行**。
  *
- * 侧边栏可以窄到 200px 上下，四个按钮放不下 —— Obsidian 的
- * `.setting-item-control` 是 `flex` 且默认**不换行**，于是按钮会被压扁或溢出。
- * 允许换行，是为了「窄的时候掉到第二行」，而不是「把按钮挤没」。
+ * 侧边栏可以窄到 200px 上下，六个控件放不下 —— Obsidian 的
+ * `.setting-item-control` 是 `flex` 且默认**不换行**，于是控件会被压扁或溢出。
+ * 允许换行，是为了「窄的时候掉到第二行」，而不是「把控件挤没」。
  */
 .obsync-actions .setting-item-control {
     flex-wrap: wrap;
     justify-content: flex-end;
     gap: var(--size-4-2, 8px);
+}
+
+/* 「立即同步」要的是**右侧**这个位置，而不只是「排在后面」：面板够宽时用
+   auto 外边距把剩下的空隙全吃掉，把它（以及它右边的刷新）顶到最右 —— 也顺带
+   把「分步动作」和「一键走完」在视觉上分开。窄面板没有富余空间，等于没写。 */
+.obsync-actions .setting-item-control .obsync-action-sync {
+    margin-left: auto;
+}
+
+/* 这条工具条**没有名称与描述**，而 `.setting-item-info` 是 `flex: 1` ——
+   留着一个空盒子只会白占宽度，把控件提前挤到换行。 */
+.obsync-actions .setting-item-info {
+    display: none;
+}
+
+/* 一行要放下六个控件，按钮默认的左右内边距在侧边栏里太占地方 ——
+   收紧一档，能少换一次行。 */
+.obsync-actions .setting-item-control button {
+    padding-left: var(--size-4-2, 8px);
+    padding-right: var(--size-4-2, 8px);
+}
+
+/* 仓库大小 / 待提交改动：**并排两栏**。
+   两个都是「一个标签 + 一个数值」，各占一行太浪费侧边栏的垂直空间。 */
+.obsync-metrics {
+    display: flex;
+    gap: var(--size-4-4, 16px);
+}
+
+.obsync-metrics .setting-item {
+    /* 两栏等宽；`min-width: 0` 是必须的 —— 否则长数值会把栏撑开、把另一栏挤扁 */
+    flex: 1 1 0;
+    min-width: 0;
+    /* 顶部对齐：两边的标签在同一基线上，数值行数不同也不会错位 */
+    align-items: flex-start;
+    /* Obsidian 给除第一个之外的 `.setting-item` 加了一条上边框。并排时只有
+       右栏有线，看着像画歪了 —— 这里统一去掉。 */
+    border-top: none;
+    padding-top: 0.2em;
+    padding-bottom: 0.2em;
+}
+
+.obsync-metrics .setting-item-info {
+    /* 「12 MB（1234 个对象）」这种要能在栏内换行，而不是溢出 */
+    overflow-wrap: anywhere;
+}
+
+/* 两栏是「标签 + 数值」的读法，而 `Setting` 的默认样式正好**反着**：
+   名称大而深（`--text-normal`）、描述小而灰（`--text-muted`）—— 照默认渲染，
+   一眼看到的是「仓库大小」这四个字，而不是「12 MB」。所以把标签压下去、
+   把数值提上来。 */
+.obsync-metrics .setting-item-name {
+    font-size: var(--font-ui-smaller, 0.85em);
+    font-weight: 400;
+    color: var(--text-muted);
+}
+
+.obsync-metrics .setting-item-description {
+    color: var(--text-normal);
 }
 
 /* 文件行：`Setting` 默认的上下内边距在密集列表里太空，收紧一些。
@@ -474,7 +569,7 @@ body.obsync-status-bar-full-width .status-bar:has(.obsync-status-bar-item) {
     margin-right: auto;
 }
 
-/* 条目可点（点开源码控制视图）—— 给指针与悬停反馈，
+/* 条目可点（点开仓库同步视图）—— 给指针与悬停反馈，
    否则它看起来和旁边那些不可点的条目一模一样。 */
 .obsync-status-bar-clickable {
     cursor: pointer;
