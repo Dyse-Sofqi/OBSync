@@ -23,6 +23,7 @@ import {
     refreshPluginManifests,
     reloadPlugin,
     resolvePluginFolder,
+    resolvePluginFolderInfo,
 } from "./pluginFolder";
 import { setPendingRestart, SELF_PLUGIN_ID, SELF_REPO } from "./selfUpdate";
 import {
@@ -779,6 +780,81 @@ export class InstallerService {
         delete settings.installer.mirrorSuggestions[availableUpdateKey(tracked)];
 
         await this.deps.saveSettings();
+    }
+
+    // ── 记录与磁盘的校正 ──────────────────────────────────────────────────
+
+    /**
+     * 用**磁盘上真实的 manifest** 校正记录里的版本号，并报告有哪些目录在抢同一个 id。
+     *
+     * 为什么必须有这一步：`installedVersion` 是**装的那一刻**的事实，写进 `data.json`
+     * 之后就再没人核对过。任何外部改动都会让它变成谎话 —— 别的工具/安装器动过文件、
+     * 随库同步时把旧文件带了回来、或者像实测那样 `plugins/` 里多出一份同 id 的残留
+     * 备份（Obsidian 重启后加载了那份 2.5.16，而记录里还是 2.6.4）。后果是更新检查
+     * 拿着过期的版本去比远端，于是**永远报「已是最新」**，用户被卡在旧版本上还查不出原因。
+     *
+     * 判据取 Obsidian 实际加载的那个目录（`resolvePluginFolderInfo` 会优先问它）——
+     * 那才是用户真正在跑的代码，也才是「装了什么」的正确答案。
+     *
+     * @returns 校正过的条目名（供调用方提示），以及发现重复 id 的条目名
+     */
+    async reconcileInstalledVersions(items?: TrackedItem[]): Promise<{
+        corrected: string[];
+        duplicated: Array<{ name: string; count: number }>;
+    }> {
+        const settings = this.settings;
+        const targets = items ?? settings.installer.tracked;
+        const corrected: string[] = [];
+        const duplicated: Array<{ name: string; count: number }> = [];
+        let dirty = false;
+
+        for (const item of targets) {
+            const record = settings.installer.tracked.find(
+                (candidate) => candidate.kind === item.kind && candidate.id === item.id
+            );
+            if (!record) continue;
+
+            if (record.kind === "plugin") {
+                const lookup = await resolvePluginFolderInfo(this.app, record.id);
+                if (lookup.duplicates.length > 0) {
+                    // count 含正在使用的那一份 —— 提示语说的是「有几个目录抢这个 id」
+                    duplicated.push({ name: record.name, count: lookup.duplicates.length + 1 });
+                    logger.warn(
+                        `${record.id} is declared by several plugin folders ` +
+                            `(using ${lookup.folder}): ${lookup.duplicates.join(", ")}`
+                    );
+                }
+
+                const manifest = await readManifestInFolder(this.app, lookup.folder);
+                // 读不到 = 目录被删了/坏了 —— 记成「未安装」，这样更新检查会给出
+                // 「可更新」，用户点一下就能装回来（比停在旧版本上强）。
+                const actual = manifest?.version ?? "";
+                if (record.installedVersion !== actual) {
+                    logger.info(
+                        `${record.id}: recorded version ${record.installedVersion || "(none)"} ` +
+                            `does not match the installed files (${actual || "missing"}) — correcting`
+                    );
+                    record.installedVersion = actual;
+                    corrected.push(record.name);
+                    dirty = true;
+                }
+            } else {
+                // 主题的版本存在目录里的 manifest.json 里（没有时为空串，列表本来就不显示）。
+                const manifest = await readManifestInFolder(
+                    this.app,
+                    await resolveThemeFolder(this.app, record.id)
+                );
+                const actual = manifest?.version ?? "";
+                if (record.installedVersion !== actual) {
+                    record.installedVersion = actual;
+                    corrected.push(record.name);
+                    dirty = true;
+                }
+            }
+        }
+
+        if (dirty) await this.deps.saveSettings();
+        return { corrected, duplicated };
     }
 
     // ── 疑似镜像的确认 ────────────────────────────────────────────────────

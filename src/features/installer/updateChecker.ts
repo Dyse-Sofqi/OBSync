@@ -102,6 +102,15 @@ export class UpdateChecker {
     }
 
     async checkOne(item: TrackedItem): Promise<UpdateCheckResult> {
+        // 先拿磁盘上的事实校正记录：`installedVersion` 是**装的那一刻**的快照，
+        // 之后被别的工具改过、被同步回来的旧文件覆盖过、或者 `plugins/` 里多出一份
+        // 同 id 的残留备份（Obsidian 加载了那份）—— 都会让这个数变成谎话。
+        // 不校正的话，检查就是拿过期版本去比远端，**永远报「已是最新」**：
+        // 用户被卡在旧版本上，而界面说他装的就是最新版。
+        //
+        // 这里传单个条目（`item` 与记录是同一个对象），所以校正后下面读到的
+        // `installedVersion` 就是磁盘上的真实版本。
+        await this.service.reconcileInstalledVersions([item]);
         return item.kind === "theme" ? this.checkTheme(item) : this.checkPlugin(item);
     }
 

@@ -16,7 +16,8 @@ import { MANIFEST_FILE, type PluginManifest } from "./types";
 /** Obsidian 内部插件管理 API。未进 typings，只能收窄。 */
 interface InternalPluginManager {
     enabledPlugins?: Set<string>;
-    manifests?: Record<string, unknown>;
+    /** 已扫描到的插件 manifest，键是**插件 id**（Obsidian 的插件列表用的就是它）。 */
+    manifests?: Record<string, { dir?: string } | undefined>;
     loadManifest?(path: string): Promise<void>;
     loadManifests?(): Promise<void>;
     enablePluginAndSave?(id: string): Promise<void>;
@@ -27,8 +28,47 @@ function pluginManager(app: App): InternalPluginManager | undefined {
     return (app as unknown as { plugins?: InternalPluginManager }).plugins;
 }
 
+/** 一次目录定位的结果。 */
+export interface PluginFolderLookup {
+    /** 文件该读该写的目录。 */
+    folder: string;
+    /**
+     * **其他也声明了同一 id 的目录**（通常是一份残留备份）。
+     *
+     * 只要它非空，就说明 `plugins/` 里有两个目录抢同一个插件 id —— 而 Obsidian
+     * 认哪一个**是不定的**（实测：重启后它加载了备份那份 2.5.16，而 OBSync 按
+     * `md-razor/` 的 manifest 记着 2.6.4，于是更新检查永远报「已是最新」）。
+     */
+    duplicates: string[];
+    /** 这个目录是不是 Obsidian 自己给的（即它**实际加载**的那一份）。 */
+    fromObsidian: boolean;
+}
+
+/** 扫描 `plugins/` 下所有声明了该 id 的目录。 */
+async function findFoldersDeclaringId(app: App, pluginId: string): Promise<string[]> {
+    const found: string[] = [];
+    try {
+        const listing = await app.vault.adapter.list(itemRoot(app, "plugin"));
+        for (const folder of listing.folders) {
+            // 快路径：目录名就是 id（绝大多数插件走这条，省一次 manifest 读取）。
+            const name = folder.slice(folder.lastIndexOf("/") + 1);
+            if (name === pluginId) {
+                found.push(folder);
+                continue;
+            }
+
+            const manifest = await readManifestAtPath(app, filePathIn(folder, MANIFEST_FILE));
+            if (manifest?.id === pluginId) found.push(folder);
+        }
+    } catch (err) {
+        // 插件根目录还不存在（全新库）—— 不是错误。
+        logger.debug("could not scan plugin folders", err);
+    }
+    return found;
+}
+
 /**
- * 解析插件在磁盘上的**真实目录**。
+ * 解析插件在磁盘上的**真实目录**，并报告「同一个 id 有几个目录」。
  *
  * 目录名**不保证等于** manifest id：手动解压 release、或别的安装器用仓库名建目录，
  * 都会造成错位 —— 实测本机 32 个插件里有 5 个（`MDRazor/` → id `md-razor`、
@@ -37,25 +77,65 @@ function pluginManager(app: App): InternalPluginManager | undefined {
  * 会造出同 id 的第二份安装。
  *
  * 因此：**目录名只用于定位文件，插件身份一律以 manifest id 为准**。
- * 找不到匹配目录时返回默认位置 —— 全新安装的落点。
+ *
+ * ## 优先听 Obsidian 的：它加载的那一份才是真的
+ *
+ * 同一个 id 有两个目录时（实测：一份残留备份），Obsidian 自己也不定 ——
+ * 它按 manifest id 建索引，谁最后被扫到谁赢。所以这里**先问 Obsidian**
+ * （`manifests[id].dir`，未进 typings 的 API，与 `app.customCss` 一样带守卫），
+ * 它给出的目录才是用户实际在跑的那份；拿不到时才退回「同名优先」的猜测。
+ *
+ * 调用方**必须**看看 `duplicates`：非空意味着用户机器上有一份看不见的第二安装，
+ * 它会让「实际装的是什么」与「OBSync 显示的是什么」长期不一致。
  */
-export async function resolvePluginFolder(app: App, pluginId: string): Promise<string> {
-    try {
-        const listing = await app.vault.adapter.list(itemRoot(app, "plugin"));
-        for (const folder of listing.folders) {
-            const name = folder.slice(folder.lastIndexOf("/") + 1);
-            // 快路径：目录名就是 id（绝大多数插件走这条，省一次 manifest 读取）。
-            if (name === pluginId) return folder;
+export async function resolvePluginFolderInfo(
+    app: App,
+    pluginId: string
+): Promise<PluginFolderLookup> {
+    const candidates = await findFoldersDeclaringId(app, pluginId);
 
-            const manifest = await readManifestAtPath(app, filePathIn(folder, MANIFEST_FILE));
-            if (manifest?.id === pluginId) return folder;
-        }
-    } catch (err) {
-        // 插件根目录还不存在（全新库）—— 不是错误。
-        logger.debug("could not scan plugin folders", err);
+    // ① Obsidian 实际加载的那一份（权威）
+    const loadedDir = pluginManager(app)?.manifests?.[pluginId]?.dir;
+    if (loadedDir && candidates.includes(loadedDir)) {
+        return {
+            folder: loadedDir,
+            duplicates: candidates.filter((folder) => folder !== loadedDir),
+            fromObsidian: true,
+        };
     }
 
-    return defaultItemFolder(app, "plugin", pluginId);
+    // ② 目录名恰好等于 id（没有重复时与 ① 同解）
+    const exact = candidates.find(
+        (folder) => folder.slice(folder.lastIndexOf("/") + 1) === pluginId
+    );
+    if (exact) {
+        return {
+            folder: exact,
+            duplicates: candidates.filter((folder) => folder !== exact),
+            fromObsidian: false,
+        };
+    }
+
+    // ③ 任意声明了该 id 的目录
+    if (candidates.length > 0) {
+        return {
+            folder: candidates[0]!,
+            duplicates: candidates.slice(1),
+            fromObsidian: false,
+        };
+    }
+
+    // ④ 全新安装的落点
+    return {
+        folder: defaultItemFolder(app, "plugin", pluginId),
+        duplicates: [],
+        fromObsidian: false,
+    };
+}
+
+/** 只要目录、不关心有没有重复 —— 大多数调用方要的就是这个。 */
+export async function resolvePluginFolder(app: App, pluginId: string): Promise<string> {
+    return (await resolvePluginFolderInfo(app, pluginId)).folder;
 }
 
 /** 读取指定路径的 manifest，失败返回 undefined。 */

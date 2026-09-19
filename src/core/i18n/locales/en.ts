@@ -200,6 +200,11 @@ export const en = {
         mirrorLine: (host: string, repo: string) =>
             `${host} mirror · ${repo} · used for downloads`,
         /** The confirm-a-mirror flow. Mirrors are never adopted without these screens. */
+        versionCorrected: (names: string) =>
+            `The installed version did not match the recorded one — corrected from the files on disk: ${names}`,
+        duplicateFolders: (name: string, count: number) =>
+            `${name}: ${count} plugin folders declare the same id, so which one Obsidian loads is undefined. ` +
+            `Move the extra one (usually a leftover backup) out of the plugins folder and restart.`,
         mirrorSuggestionLine: (host: string, repo: string) =>
             `Possible ${host} mirror · ${repo} · not in use yet, needs confirmation`,
         mirrorConfirmTitle: "Confirm mirror source",

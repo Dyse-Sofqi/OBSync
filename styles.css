@@ -371,3 +371,17 @@
     opacity: 1;
     text-decoration: underline dotted;
 }
+
+/* 「同一个 id 有几个插件目录」的警告（设置页「已跟踪」列表上方）。
+   这条说的是「你现在跑的不一定是你以为的那份」，所以要显眼：警示色 + 左边框。
+   颜色只用主题变量，深浅色主题都读得清。 */
+.obsync-settings .obsync-duplicate-warning {
+    margin: 0.4em 0;
+    padding: 0.6em 0.8em;
+    border-left: 3px solid var(--text-warning, #b98a00);
+    border-radius: var(--radius-s, 4px);
+    background: var(--background-secondary);
+    color: var(--text-warning, #b98a00);
+    font-size: var(--font-ui-smaller, 0.85em);
+    line-height: 1.5;
+}

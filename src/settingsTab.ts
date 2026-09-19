@@ -6,6 +6,7 @@ import {
     type TextComponent,
 } from "obsidian";
 import { LANGUAGE_OPTIONS, type LanguageSetting, type LocaleStrings } from "./core/i18n";
+import { logger } from "./core/logger";
 import type {
     DiagnosticCheck,
     DiagnosticsReport,
@@ -48,6 +49,15 @@ export class ObsyncSettingsTab extends PluginSettingTab {
     /** 当前选中的标签页。显示顺序即数组顺序（见 renderTabs）。 */
     private activeTab: SettingsTabId = "tracked";
 
+    /**
+     * 打开设置页时发现的「重复插件 id」条目（列表上方据此给出警告）。
+     *
+     * 实测坑：`plugins/` 里多出一份同 id 的残留备份，Obsidian 重启后加载了那份
+     * 旧版本，而 OBSync 记录里还写着新版本 —— 更新检查永远报「已是最新」。
+     * 这种状态只能靠人清理，所以必须摆到界面上，而不是只写进日志。
+     */
+    private duplicateFolders: Array<{ name: string; count: number }> = [];
+
     constructor(private readonly obsync: ObsyncPlugin) {
         super(obsync.app, obsync);
     }
@@ -79,7 +89,38 @@ export class ObsyncSettingsTab extends PluginSettingTab {
                 break;
         }
 
-        if (justOpened) void this.autoCheckOnOpen();
+        if (justOpened) {
+            void this.autoCheckOnOpen();
+            void this.reconcileOnOpen();
+        }
+    }
+
+    /**
+     * 打开设置页时用**磁盘上的事实**校正记录里的版本号。
+     *
+     * 记录里的 `installedVersion` 是装的那一刻的快照，之后被别的工具改过、被同步回来
+     * 的旧文件覆盖过，它都不会知道 —— 于是更新检查拿着过期版本去比远端，永远报
+     * 「已是最新」。这里顺手校正并告知用户（不静默改数据）。
+     */
+    private async reconcileOnOpen(): Promise<void> {
+        const t = this.obsync.t;
+        try {
+            const { corrected, duplicated } =
+                await this.obsync.installer.service.reconcileInstalledVersions();
+
+            const duplicatesChanged =
+                JSON.stringify(duplicated) !== JSON.stringify(this.duplicateFolders);
+            this.duplicateFolders = duplicated;
+
+            if (corrected.length > 0) {
+                this.obsync.notifier.info(t.installer.versionCorrected(corrected.join("、")));
+            }
+            // 有变化才重绘：`display()` 这一次的 `justOpened` 已是 false，不会递归。
+            if (corrected.length > 0 || duplicatesChanged) this.display();
+        } catch (err) {
+            // 校正失败不该影响设置页。
+            logger.debug("could not reconcile installed versions", err);
+        }
     }
 
     hide(): void {
@@ -182,6 +223,15 @@ export class ObsyncSettingsTab extends PluginSettingTab {
                     }
                 })
             );
+
+        // 重复 id 警告放在列表**上方**：它说的是「你看到的不一定是你跑的」，
+        // 放在列表下面会被当成脚注忽略掉。
+        for (const duplicate of this.duplicateFolders) {
+            this.containerEl.createEl("p", {
+                cls: "obsync-duplicate-warning",
+                text: t.installer.duplicateFolders(duplicate.name, duplicate.count),
+            });
+        }
 
         renderTrackedItems(this.containerEl, {
             app: this.obsync.app,

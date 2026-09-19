@@ -232,6 +232,18 @@ export const zhCN = {
          * 拍板 —— 所以 `mirrorWarn*` 那几条不是客套话，是让用户能判断该不该绑的
          * 全部依据（判据只有「两边 manifest 的 id 相同」，那只证明是同一个插件）。
          */
+        /**
+         * 记录与磁盘不一致时的校正提示，以及「同一个 id 有几个目录」的警告。
+         *
+         * 这两条都来自实测的一个坑：`plugins/` 里多出一份同 id 的残留备份，
+         * Obsidian 重启后加载了那份旧版本，而记录里还写着新版本 —— 更新检查
+         * 于是永远报「已是最新」，用户被卡住且看不出原因。
+         */
+        versionCorrected: (names: string) =>
+            `检测到实际安装的版本与记录不一致，已按磁盘上的文件更正：${names}`,
+        duplicateFolders: (name: string, count: number) =>
+            `${name}：有 ${count} 个插件目录声明同一个 id，Obsidian 加载哪一个是不定的。` +
+            `建议把多余的（通常是残留备份）移出插件目录后重启。`,
         mirrorSuggestionLine: (host: string, repo: string) =>
             `疑似 ${host} 镜像 · ${repo} · 尚未使用，待确认`,
         mirrorConfirmTitle: "确认镜像来源",
