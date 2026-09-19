@@ -157,10 +157,18 @@ export class SourceControlView extends ItemView {
                     .onClick(() => void this.render())
             );
 
-        // 「一步到位」的两个动作放在一行，因为它们是一类：都会替你提交。
-        // 区别只在**要不要先拉取**：立即同步会拉（避免推送被拒），
-        // 提交并推送不会 —— 拉取会动工作区，有些人就是不想让它动。
+        // 四个动作**同一行**：立即同步（提交 → 拉取 → 推送）是完整的一条，
+        // 后面三个是它的分步版本 —— 放在一起，一眼就能看出「一个顶三个」。
+        //
+        // 曾经这里还有第五个按钮「提交并推送」（= 立即同步去掉拉取）。用户判定它是
+        // 多余的：立即同步已经是万全之策，而「不想拉取」的人用「提交」+「推送」
+        // 两步就够 —— 于是连同命令与服务方法一起删掉了（别再加回来，除非有人
+        // 真需要「不拉取」的单步动作）。
+        //
+        // 侧边栏窄，四个按钮在窄面板里可能换行 —— 交给 CSS（`.obsync-actions`），
+        // 换行总比溢出把按钮挤没了好。
         new Setting(contentEl)
+            .setClass("obsync-actions")
             .addButton((button) =>
                 button
                     .setButtonText(t.sync.actSync)
@@ -168,21 +176,6 @@ export class SourceControlView extends ItemView {
                     .setCta()
                     .onClick(() => void this.run(() => this.deps.service.sync()))
             )
-            .addButton((button) =>
-                button
-                    .setButtonText(t.sync.actCommitPush)
-                    .setTooltip(t.sync.actCommitPushHint)
-                    .onClick(() =>
-                        void this.run(() =>
-                            this.deps.service.commitAndPush({ announceIfUpToDate: true })
-                        )
-                    )
-            );
-
-        // 三个单一动作的悬停提示不是装饰：**「提交全部」与「推送」是两件事**，
-        // 而按钮只有两个字。用户的原话就是「推送按钮是单纯的推送还是提交全部加推送，
-        // 如果是后者应该写清楚」—— 他是问了才知道的，那就得让界面自己说清楚。
-        new Setting(contentEl)
             .addButton((button) =>
                 button
                     .setButtonText(t.sync.actCommit)

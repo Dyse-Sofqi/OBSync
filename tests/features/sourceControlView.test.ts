@@ -7,6 +7,7 @@ import {
 } from "../../src/features/sync/ui/SourceControlView";
 import { createdSettings, resetCreatedSettings, Setting } from "../stubs/obsidian";
 import { zhCN } from "../../src/core/i18n/locales/zh-cn";
+import { en } from "../../src/core/i18n/locales/en";
 import type { LocaleStrings } from "../../src/core/i18n";
 import type { SyncService } from "../../src/features/sync/syncService";
 import type { SimpleGitManager } from "../../src/features/sync/simpleGitManager";
@@ -147,9 +148,6 @@ function harness(options: {
         commitAll: async () => {
             calls.push("commitAll");
         },
-        commitAndPush: async () => {
-            calls.push("commitAndPush");
-        },
         pull: async () => {
             calls.push("pull");
         },
@@ -249,24 +247,34 @@ describe("SourceControlView 渲染", () => {
         expect(zhCN.sync.cmdOpenView).toMatch(/^OBSync/);
     });
 
-    it("「提交并推送」按钮走的是 commitAndPush（不是「立即同步」那条带拉取的链）", async () => {
-        // 两个按钮的区别只有「要不要先拉取」，而拉取**会动工作区** ——
-        // 点错了按钮的后果不是多一步，而是可能触发合并/冲突。
+    it("四个动作**在同一行**，顺序是 立即同步 → 提交 → 拉取 → 推送", async () => {
+        // 用户的要求：立即同步是完整的一条，三个分步动作跟在后面 ——
+        // 放一行才能一眼看出「一个顶三个」。分两行是他明确否掉的布局。
         const h = harness({});
         await h.view.onOpen();
 
-        const button = createdSettings
-            .flatMap((setting) => setting.buttons)
-            .find((item) => item.text === zhCN.sync.actCommitPush);
+        const rows = createdSettings.filter(
+            (setting) => setting.buttons.length >= 2 && setting.buttons[0]!.text !== ""
+        );
+        const actionRow = rows.find((setting) =>
+            setting.buttons.some((button) => button.text === zhCN.sync.actSync)
+        );
 
-        expect(button).toBeDefined();
-        expect(button!.tooltip).toBe(zhCN.sync.actCommitPushHint);
+        expect(actionRow, "没有找到动作行").toBeDefined();
+        expect(actionRow!.buttons.map((button) => button.text)).toEqual([
+            zhCN.sync.actSync,
+            zhCN.sync.actCommit,
+            zhCN.sync.actPull,
+            zhCN.sync.actPush,
+        ]);
+        // 窄面板里换行交给 CSS（这个类就是干这个的）
+        expect(actionRow!.classes).toContain("obsync-actions");
+    });
 
-        button!.click();
-        await Promise.resolve();
-
-        expect(h.calls).toContain("commitAndPush");
-        expect(h.calls).not.toContain("sync");
+    it("「提交」按钮的文案就是两个字（不是「提交全部」）", async () => {
+        // 用户明确要求改短 —— 四个按钮要挤一行。
+        expect(zhCN.sync.actCommit).toBe("提交");
+        expect(en.sync.actCommit).toBe("Commit");
     });
 
     it("三个动作按钮的悬停提示说清了「提交」与「推送」的区别", async () => {

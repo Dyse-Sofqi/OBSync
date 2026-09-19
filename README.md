@@ -71,24 +71,22 @@ Chinese-first UI with an equal English one.
 
 依赖系统 git，因此**仅桌面端可用**（Windows / macOS / Linux）。
 
-- **立即同步** —— 提交 → 拉取 → 推送，一条链走完；也可以单独执行「提交全部更改」「从远端拉取」「推送到远端」。
-  **「推送」是单纯的推送**（`git push`）：它只把**已经提交**的内容送上去，**不会顺手提交** ——
+- **立即同步** —— 提交 → 拉取 → 推送，一条链走完。源码控制视图里**四个按钮同一行**：
+  `立即同步`（完整的一条）后面跟着它的三个分步版本 `提交` / `拉取` / `推送`。
+  **「提交」只写本地仓库，「推送」只发送已提交的内容** —— 它不会顺手提交，
   带着未提交的改动点它，改动一个字节都不会上去（这时它会明确告诉你还有几个更改没提交）。
-  想把改动一起送上去，用「立即同步」（提交 → 拉取 → 推送）或先「提交全部更改」。
   「自动提交并同步」定时器走的也是「立即同步」那条完整链路
-- **提交并推送** —— 提交 → 推送，**不拉取**。与「立即同步」只差这一步，而这一步不是小事：
-  拉取**会动工作区**（可能合并、可能冲突）。适合「我确定远端没有别人的新东西，别来合并我的文件」；
-  代价是远端真有新提交时推送会被拒（这时它提示你先拉取再推送 —— 报错比悄悄合并安全）
 - **提交信息不用你填** —— 由设置里的**提交信息模板**自动生成（默认 `vault backup: {{date}}`，
   支持 `{{date}}` / `{{hostname}}` / `{{numFiles}}` / `{{files}}`）。全程没有输入框，
-  点「提交全部」/「提交并推送」/「立即同步」都不会弹窗问你要备注
+  点「提交」/「立即同步」都不会弹窗问你要备注
 - **为什么「立即同步」里要有拉取** —— 因为 git 的 `push` 只能**快进**：远端存在你没有的提交时，
   推送会被**直接拒绝**（接受它就等于丢掉那些提交）。而这个插件的用途就是多设备同步，
   所以「提交 → 推送」在两台设备上会**稳定失败**，不是偶发失败。拉取排在提交**之后**，
   是因为提交先把你的改动收进一个可恢复的提交里，之后整合远端出问题还能「放弃本次合并」
   回到拉取之前；先拉取的话，工作区的未提交改动会和冲突标记混在一起，谁也分不清。
   拉取也是你唯一能**收到**别的设备改动的方式 —— 只推不拉是单向的。
-  整合方式见设置页的「拉取整合策略」（默认合并；**「重置」会丢弃本地提交，慎用**）
+  整合方式见设置页的「拉取整合策略」（默认合并；**「重置」会丢弃本地提交，慎用**）。
+  如果你确实不想让拉取动工作区，就分两步走：`提交` → `推送`
 - **初始化仓库** —— 顺便建一份 `.gitignore`（默认排除 `.obsidian/workspace.json` 这类
   **每台设备各自维护**的文件，同步它们只会制造冲突）。**已存在的 `.gitignore` 绝不覆盖**，
   另有「编辑 .gitignore」命令可以随时改它
@@ -177,10 +175,9 @@ Chinese-first UI with an equal English one.
 先在设置页的「仓库同步」里填远端地址（命令 **OBSync：编辑远端地址**），然后：
 
 - 还不是 git 仓库的话，先执行 **OBSync：初始化仓库**（源码控制视图里也有这个按钮）
-- **OBSync：立即同步** —— 提交 → 拉取 → 推送，一条链走完
-- **OBSync：提交并推送** —— 提交 → 推送，不拉取（拉取会动工作区，见上）
-- 「提交全部」「推送」是**两个动作**，不是一个：提交只写本地仓库，推送只发送**已提交**的
-  内容。想一步到位就用「立即同步」或「提交并推送」
+- **OBSync：立即同步** —— 提交 → 拉取 → 推送，一条链走完（源码控制视图里四个按钮同一行）
+- 「提交」「推送」是**两个动作**，不是一个：提交只写本地仓库，推送只发送**已提交**的
+  内容。想一步到位就用「立即同步」
 - 提交信息不用填：它在设置里配模板，每次自动生成
 - 也可以在源码控制视图里逐个文件操作（暂存 / 取消暂存、点开文件、看历史），
   或点侧边栏的状态栏条目把它打开
@@ -312,16 +309,12 @@ Chinese-first UI with an equal English one.
 
 Needs the system `git` binary, so it is **desktop-only** (Windows / macOS / Linux).
 
-- **Sync now** — commit → pull → push in one chain; commit, pull and push are also available separately.
-  **"Push" is a plain push** (`git push`): it sends **already committed** content only and
-  **never commits for you** — with uncommitted changes, nothing of yours goes up (and it says so,
-  including how many changes are still uncommitted). To send your changes too, use "Sync now"
-  (commit → pull → push) or "Commit all" first. The "auto commit and sync" timer runs that same
-  full chain
-- **Commit and push** — commit → push, **without pulling**. That single difference matters: pulling
-  **touches your working tree** (it may merge, it may conflict). Use it when you know the remote has
-  nothing new and you do not want a merge. The trade-off: if the remote does have new commits the
-  push is rejected and it tells you to pull first — an error is safer than a silent merge
+- **Sync now** — commit → pull → push in one chain. In the source-control view **all four buttons
+  share one row**: `Sync now` (the complete chain) followed by its three step-by-step versions
+  `Commit` / `Pull` / `Push`. **"Commit" writes to the local repository only, and "Push" sends
+  committed content only** — it never commits for you, so with uncommitted changes nothing of yours
+  goes up (and it says so, including how many changes are still uncommitted). The "auto commit and
+  sync" timer runs that same full chain
 - **You never have to type a commit message** — it is generated from the **commit message template**
   in the settings (default `vault backup: {{date}}`, supporting `{{date}}`, `{{hostname}}`,
   `{{numFiles}}` and `{{files}}`). No dialog ever asks you for a message
@@ -333,7 +326,8 @@ Needs the system `git` binary, so it is **desktop-only** (Windows / macOS / Linu
   and be back where you started — pulling first would leave your uncommitted edits mixed with
   conflict markers. Pulling is also the only way you ever **receive** another device's changes.
   Integration is configurable ("Pull integration strategy"; the default is merge, and **"reset"
-  discards local commits — use with care**)
+  discards local commits — use with care**). If you really do not want the pull to touch your
+  working tree, do it in two steps: `Commit` → `Push`
 - **Initialize repository** — also creates a `.gitignore` (excluding per-device files such as
   `.obsidian/workspace.json`, which only ever produce conflicts). An existing `.gitignore` is
   **never overwritten**, and there is an "Edit .gitignore" command

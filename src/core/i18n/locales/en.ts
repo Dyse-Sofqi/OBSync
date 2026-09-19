@@ -464,7 +464,6 @@ export const en = {
             `${count} conflicted file(s) detected. A conflict list has been written; resolve them and commit manually.`,
 
         cmdSync: "OBSync: Sync now (commit → pull → push)",
-        cmdCommitPush: "OBSync: Commit and push (no pull)",
         cmdCommit: "OBSync: Commit all changes",
         cmdPush: "OBSync: Push to remote",
         cmdPull: "OBSync: Pull from remote",
@@ -486,10 +485,7 @@ export const en = {
         actSyncHint: "Commit → pull → push, in one chain",
         actCommitHint: "Commit all changes to the local repository (no push)",
         actPushHint: "Pushes **committed** content only; it never commits for you",
-        actCommitPush: "Commit and push",
-        actCommitPushHint:
-            "Commit all changes and push them (**no pull**; rejected if the remote has new commits)",
-        actCommit: "Commit all",
+        actCommit: "Commit",
         actPull: "Pull",
         actPush: "Push",
         actEditRemote: "Edit remote…",

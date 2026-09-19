@@ -135,6 +135,19 @@
     margin-top: 0.5em;
 }
 
+/*
+ * 四个动作按钮（立即同步 / 提交 / 拉取 / 推送）同一行。
+ *
+ * 侧边栏可以窄到 200px 上下，四个按钮放不下 —— Obsidian 的
+ * `.setting-item-control` 是 `flex` 且默认**不换行**，于是按钮会被压扁或溢出。
+ * 允许换行，是为了「窄的时候掉到第二行」，而不是「把按钮挤没」。
+ */
+.obsync-actions .setting-item-control {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--size-4-2, 8px);
+}
+
 /* 文件行：`Setting` 默认的上下内边距在密集列表里太空，收紧一些。
    最后一行去掉下边框 —— 列表结束时那条线看起来像还有内容。 */
 .obsync-change-list .obsync-change-row {
