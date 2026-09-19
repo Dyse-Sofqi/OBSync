@@ -53,7 +53,7 @@ Chinese-first UI with an equal English one.
 **English**
 
 - **Vault sync** — commit → pull → push in one chain · conflict guide (no auto-resolution) ·
-  auto commit/push/pull timers · source-control view (sidebar, openable from the status bar) ·
+  auto commit/push/pull timers · repository sync view (sidebar, openable from the status bar) ·
   status-bar item · `.gitignore` created on init ·
   open file/history/commit on the remote · edit remote · connection test
 - **Plugins & themes** — address recognition (GitHub / Gitee) · release assets **and** repository source fallback ·
@@ -334,16 +334,16 @@ Chinese-first UI with an equal English one.
 
 Needs the system `git` binary, so it is **desktop-only** (Windows / macOS / Linux).
 
-- **Sync now** — commit → pull → push in one chain. In the source-control view **all four buttons
-  share one row**: `Sync now` (the complete chain) followed by its three step-by-step versions
-  `Commit` / `Pull` / `Push`. **"Commit" writes to the local repository only, and "Push" sends
+- **Sync now** — commit → pull → push in one chain. The repository sync view's **toolbar is a single
+  row**: `Commit` / `Pull` / `Push`, the branch dropdown, **`Sync now` pushed to the right**, and
+  **`Refresh` at the far right**. **"Commit" writes to the local repository only, and "Push" sends
   committed content only** — it never commits for you, so with uncommitted changes nothing of yours
   goes up (and it says so, including how many changes are still uncommitted). The "auto commit and
   sync" timer runs that same full chain
 - **You never have to type a commit message** — it is generated from the **commit message template**
   in the settings (default `vault backup: {{date}}`, supporting `{{date}}`, `{{hostname}}`,
   `{{numFiles}}` and `{{files}}`). No dialog ever asks you for a message
-- **Repository size and pending changes** — the source-control view shows two rows: **repository
+- **Repository size and pending changes** — shown **side by side in two columns**: **repository
   size** (the `.git` object store plus object count, via `git count-objects`, local-only) and
   **pending changes** (the summed size of changed files). They answer different questions: "how big
   is this vault / how much will a push transfer" and "how much goes up this time". When it cannot be
@@ -360,28 +360,35 @@ Needs the system `git` binary, so it is **desktop-only** (Windows / macOS / Linu
   a recoverable commit, so if integrating the remote goes wrong you can still "Abort current merge"
   and be back where you started — pulling first would leave your uncommitted edits mixed with
   conflict markers. Pulling is also the only way you ever **receive** another device's changes.
-  Integration is configurable ("Pull integration strategy"; the default is merge, and **"reset"
-  discards local commits — use with care**). If you really do not want the pull to touch your
-  working tree, do it in two steps: `Commit` → `Push`
+  Integration is configurable ("Pull integration strategy"; the default is merge, and **picking
+  "reset" suspends automatic sync** — every automatic run would otherwise discard what was just
+  committed). If you really do not want the pull to touch your working tree, do it in two steps:
+  `Commit` → `Push`
 - **Initialize repository** — also creates a `.gitignore` (excluding per-device files such as
-  `.obsidian/workspace.json`, which only ever produce conflicts). An existing `.gitignore` is
-  **never overwritten**, and there is an "Edit .gitignore" command
+  `.obsidian/workspace.json` and `.obsidian/plugins/obsync/data.json`, which only ever produce
+  conflicts). An existing `.gitignore` is **never overwritten**, and there is an "Edit .gitignore"
+  command
 - **Conflicts** — on conflict OBSync writes a resolution guide listing the conflicted files and
   **stops the chain** (continuing would commit conflict markers or push them upstream).
   Resolve by hand and sync again, or use "Abort current merge"
 - **Auto sync** (off by default) — separate intervals for auto commit / push / pull in minutes (0 = off).
   Timing is based on the **last run** and persists per vault, so restarting Obsidian does not reset
-  the cycle and multiple vaults do not interfere
-- **Source-control view** (sidebar) — open it from the **git ribbon icon**, by **clicking the
-  status-bar item**, or via the command **OBSync: Open source control panel**. It shows a branch
-  switcher, the remote URL (redacted) with an edit entry, `ahead / behind`, a conflict section
+  the cycle and multiple vaults do not interfere. The settings page carries **two notes** under the
+  "Vault sync" heading (reset suspends automatic sync; the risk of editing the same file on several
+  devices) — worth reading before you configure it
+- **Repository sync view** (sidebar) — open it from the **git ribbon icon**, by **clicking the
+  status-bar item**, or via the command **OBSync: Open repository sync panel**. Its **single-row
+  toolbar** holds `Commit` / `Pull` / `Push`, the branch dropdown, **`Sync now` pushed right** and
+  **`Refresh` at the far right**; below that are the remote URL (redacted) with an edit entry,
+  `ahead / behind`, repository size and pending changes **side by side**, a conflict section
   (conflicted files + abort merge), the changed files **grouped into staged / changes**
   (per-file stage / unstage, click a file name to open the note, open the file on the remote) and
   the last 10 commits (click a hash to view that commit on the remote). When the vault is not a git
   repository it offers an "Initialise repository" button. The panel is **live**: auto commits,
   outside edits and command-palette actions refresh it
 - **Status-bar item** — branch / `↑ahead ↓behind` / `~dirty` / `⚠conflicts` plus the action in progress;
-  pinned to the **far left** of the status bar on purpose, and **clickable** (opens the source-control view).
+  pinned to the **far left** of the status bar on purpose, and **clickable** (opens the repository
+  sync view).
   Pinning it there requires stretching the status bar to the full window width, and **that changes how
   the status bar looks**, so the General tab has a switch for it (**"Status bar spans the full width"**,
   on by default): turning it off restores Obsidian's own layout (a bottom-right cluster) with the sync
@@ -439,6 +446,51 @@ Needs the system `git` binary, so it is **desktop-only** (Windows / macOS / Linu
 - **Loads on mobile** — plugin installation and theme binding are pure network operations;
   the sync module is not loaded there
 
+### Usage
+
+#### Installing community plugins
+
+1. Command palette → **OBSync: Add plugin repository** (or the button in the settings page)
+2. Enter an `owner/repo` shorthand or paste a full URL (GitHub or Gitee)
+3. Click "Resolve" → pick a version → install
+
+You can also click **Browse community plugins** to search the official directory — note that it is
+Obsidian's own index and **covers GitHub only** (there is no Gitee equivalent), so Gitee plugins
+have to be entered by address.
+
+Already-installed plugins do not have to be typed in one by one: the command
+**OBSync: Bind plugins and themes already installed in this vault** (or "Bind existing" in the
+settings) scans the plugin and theme folders, resolves their source repositories from the manifest
+`id`, and tracks them all at once.
+
+To switch a version later (for example rolling back after a bad update), click **Version manager**
+on that row under "Tracked plugins and themes" and pick a release — an older one is a rollback,
+while "Latest release" resumes following the newest.
+
+> Every command starts with `OBSync:` in the palette, so searching the plugin name finds them all.
+
+#### Syncing the vault
+
+First set the remote in the settings page under "Vault sync" (command
+**OBSync: Edit remote address**), then:
+
+- If the vault is not a git repository yet, run **OBSync: Initialize repository** first (the
+  repository sync view has the same button)
+- **OBSync: Sync now** — commit → pull → push in one chain (the view's toolbar has it too)
+- "Commit" and "Push" are **two separate actions**: commit writes to the local repository only,
+  push sends **committed** content only. Use "Sync now" to do both
+- No commit message to type: it comes from the template in the settings
+- You can also work per file in the repository sync view (stage / unstage, open a file, view
+  history), or click the status-bar item to open it
+- To view a file in the browser: command **OBSync: Open current file in browser**, or right-click
+  the file and pick **Open on the remote**
+
+Automatic sync is off by default. Turn it on by setting the "auto commit-and-sync / auto push /
+auto pull" intervals (minutes) in the settings.
+
+**On conflict**, OBSync does not decide which side wins — it writes a resolution guide and stops,
+waiting for you.
+
 ### Settings
 
 | Tab | Contents |
@@ -465,6 +517,43 @@ Two release locations (same artifacts — use whichever is reachable):
 - Gitee mirror: [sofqi/OBSync/releases](https://gitee.com/sofqi/OBSync/releases)
 
 Vault sync needs the system `git` binary and is **desktop-only**; plugin installation works on mobile.
+
+### Why another one
+
+**Vault sync**: `obsidian-git` is mature, but it only knows GitHub and GitLab.
+**Plugin install**: `obsidian42-brat` is also GitHub-only, and requires the plugin to have published
+a release.
+
+OBSync extends both:
+
+| | obsidian-git / BRAT | OBSync |
+| --- | --- | --- |
+| Platforms | GitHub / GitLab | **GitHub + Gitee** |
+| UI language | English | **Chinese-first**, English equal |
+| Plugin source | Requires a release | Release assets **or** repository source files |
+| Failed install | No backup, no rollback | **Backup before write, rollback on failure** |
+| Updates | Auto-installed at startup | **Reports only; installing is always manual** |
+
+### Notes on Gitee
+
+**Setting a Gitee access token is strongly recommended.** Gitee's anonymous API quota is measured to
+be very low — a dozen or so consecutive requests return `403 Rate Limit Exceeded`, and it does not
+recover within a minute. Without a token OBSync degrades to reading repository source files
+directly, which still works, but it cannot list versions or detect updates.
+
+A few platform differences that are already handled (do not undo them if you touch the code):
+
+- Gitee's release list is **ascending by default** (GitHub is descending); `direction=desc` must be
+  passed explicitly, otherwise a very old version is installed silently
+- Gitee's API raw endpoint returns **401 for anonymous requests** even on public repositories, so
+  anonymous file reads go through the web raw channel
+- Gitee takes its token as an `access_token` **query parameter**; GitHub uses an `Authorization` header
+- Gitee's git Basic auth only accepts the account name / `oauth2` / `gitee.com` as the username;
+  `git` (the GitHub habit) is rejected outright by the server
+- Most Gitee plugin repositories **publish no releases**, so the source-file channel is required
+- Gitee's release asset objects carry **no `id`** (only `name` and `browser_download_url`), so the
+  private-repo API attachment endpoint is only used when an id is really present; otherwise it falls
+  back to the public download URL (with the same token)
 
 ### Development
 

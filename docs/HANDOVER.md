@@ -1457,7 +1457,69 @@ simple-git 的 config 传递（不碰网络、不需令牌）。
 | 权威声明被缩小 | `tsc` | 从 `SUPPORTED_HOSTS` 删掉 `"gitee"` → 31 个类型错误，而那 5 条测试全绿 |
 | 声明了但没人读（接线漏了） | `scripts/checks.mjs` 第 6 项 | 改 `enabled: true` → 测试全绿、类型通过，只有自查报错 |
 
-## 八、交接习惯（沿用 WorkBuddy 的做法）
+## 八、社区插件审核规范复查（0.1.2 发版前）
+
+按 [Submission requirements for plugins](https://docs.obsidian.md/Plugins/Releasing/Submission+requirements+for+plugins)
+与 `eslint-plugin-obsidianmd` 的规则逐条核对。**全部通过**，只有一处需要解释。
+
+### 特别点名的那条
+
+> Sets styles directly instead of using CSS classes, `setCssProps`, or `setCssStyles`
+
+`src/` 里**零处**直接样式赋值 —— `.style.`、`setAttribute("style", …)`、
+`attr: { style: … }` 三种写法都扫过，全无。所有样式都在 `styles.css` 里、靠类名挂上去，
+`styles.css` 里也**没有一处 `!important`**。
+
+这条能一直保持，是因为项目从一开始就走「给元素加类、规则写在 `styles.css`」这条路：
+`main.ts` 的 `applyStatusBarWidth` 甚至为此**主动放弃了改内联样式**的方案
+（那会与主题/其他插件互相覆盖，插件卸载后留下的内联样式更难清干净）。
+
+### 官方提交要求
+
+| 要求 | 本项目 |
+| --- | --- |
+| `minAppVersion` 合适 | `1.8.7`，由 `pnpm check` 第 1 项持续保证 |
+| description 短、以句号结尾、无 emoji、≤250 字符 | 78 字符，符合 |
+| 只用 `fundingUrl` 链财务支持；不接受捐赠就移除 | 未配置 |
+| 命令 ID 不带插件 ID（Obsidian 会自动加前缀） | 10 个命令全不带 |
+| Node / Electron API 只能桌面端 | 见下（唯一需要解释的一处） |
+| 移除示例代码 | 无示例代码 |
+
+### 唯一需要解释的一处：`isDesktopOnly: false` 却用了 Node API
+
+官方原文是 **「If your plugin uses any of these APIs, you must set `isDesktopOnly` to `true`」**。
+本项目用了 `simple-git`（Node），却写着 `false` —— 这是**刻意的**：安装器是纯网络操作、
+移动端能用，把整个插件标成桌面端会让移动端用户连安装器都用不上。
+
+规则要防的是「插件在移动端一启用就崩」，而这条已被**动态导入**解决：`main.ts` 的
+`loadSyncModule()` 推迟到 `Platform.isDesktopApp` 之后，移动端根本不加载同步模块。
+`scripts/verify-mobile-load.mjs`（`pnpm verify:mobile`）拿**真实产物**证明加载阶段不抛错，
+`scripts/checks.mjs` 的「移动端安全」再从静态导入图做快速守卫 —— 两道防线都有。
+
+### 其余常见红线（全过）
+
+| 检查 | 结果 |
+| --- | --- |
+| `document.createElement` | 0 处（都用 Obsidian 的 `createEl` / `createDiv`） |
+| `innerHTML` / `outerHTML` | 0 处 |
+| `eval` / `new Function` | 0 处 |
+| `console.*` 直接调用 | 只在 `core/logger.ts` 的统一出口（`debug` 受设置里的开关控制） |
+| 内部 API（`app.plugins.*` 等） | 0 处（`existingPlugins.ts` 里只出现在注释中，说明「为什么扫文件系统」） |
+| `!important` | 0 处 |
+
+### 一处**未改**的建议项
+
+`window.setTimeout` / `window.clearTimeout` / `window.open` / `document.body` 共 7 处，
+属于 eslint 的 `prefer-active-doc` **建议**（warn 级，为的是支持弹出窗口），
+不在官方提交要求里。**刻意不改**：
+
+- `window.setTimeout` / `clearTimeout` 带 `window.` 前缀是为了**类型正确**
+  （返回 `number`，而不是 Node 的 `Timeout` 对象）；
+- `document.body.toggleClass(...)` 加的是**主窗口** body 的类 —— 状态栏全宽本就是主窗口的
+  概念，而弹出窗口里没有状态栏；
+- `window.open` 打开的是系统浏览器，与窗口上下文无关。
+
+## 九、交接习惯（沿用 WorkBuddy 的做法）
 
 - **边做边写文档**：本文件随代码一起更新；当日工作日志追加到
   `.workbuddy-ai/memory/YYYY-MM-DD.md`；新的"实测发现/踩坑"一定记入第七节。
