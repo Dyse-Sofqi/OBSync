@@ -300,6 +300,15 @@ export const en = {
             apiUnavailableFallback: (host: string) =>
                 `The ${host} API is temporarily unavailable; falling back to installing from source files.`,
             rateLimited: (host: string) => `${host} API rate limit reached.`,
+            /**
+             * "The release does list the file, but the download failed" — kept apart from
+             * `missingRequiredFiles` because the next step is completely different
+             * (check your network instead of asking the author).
+             */
+            assetDownloadFailed: (repo: string, files: string, of: string) =>
+                `Could not download ${files} from ${repo}: the ${of}'s release does list the file, ` +
+                `so this is a failed download rather than a missing file (release asset CDNs are ` +
+                `often unreachable from mainland China). Check your network and retry, or use the Gitee mirror.`,
         },
 
         browse: "Browse community plugins",

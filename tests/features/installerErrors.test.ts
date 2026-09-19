@@ -30,6 +30,7 @@ const SAMPLES: InstallerErrorDetail[] = [
     { kind: "manifestBadId", context: "demo", id: "BAD ID" },
     { kind: "missingManifest", repo: "o/r", of: "plugin" },
     { kind: "missingRequiredFiles", repo: "o/r", files: "main.js", of: "plugin" },
+    { kind: "assetDownloadFailed", repo: "o/r", files: "main.js", of: "plugin" },
     { kind: "missingBuildArtifacts" },
     { kind: "incompatibleApp", name: "Demo", minVersion: "1.9.0" },
     { kind: "pluginIdConflict", pluginId: "demo", repo: "o/r" },

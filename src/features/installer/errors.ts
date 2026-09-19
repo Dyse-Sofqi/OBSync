@@ -29,6 +29,15 @@ export type InstallerErrorDetail =
     | { kind: "manifestBadId"; context: string; id: string }
     | { kind: "missingManifest"; repo: string; of: TrackedKind }
     | { kind: "missingRequiredFiles"; repo: string; files: string; of: TrackedKind }
+    /**
+     * release 里**挂着**该文件，但这次没取回来（网络/传输层问题）。
+     *
+     * 与 `missingRequiredFiles` 分开是因为两者给用户的下一步完全不同：
+     * 那条是「作者没发这个文件」（去改发布流程），这条是「下载失败」
+     * （检查网络后重试，或换 Gitee 镜像）。实测踩过 2026-09-19：GitHub 的
+     * release 资产冷连接超时而报成「找不到 main.js」。
+     */
+    | { kind: "assetDownloadFailed"; repo: string; files: string; of: TrackedKind }
     | { kind: "missingBuildArtifacts" }
     | { kind: "incompatibleApp"; name: string; minVersion: string }
     | { kind: "pluginIdConflict"; pluginId: string; repo: string }
@@ -88,6 +97,8 @@ export function describeInstallerError(
             return e.missingManifest(detail.repo, ofKind(detail.of));
         case "missingRequiredFiles":
             return e.missingRequiredFiles(detail.repo, detail.files, ofKind(detail.of));
+        case "assetDownloadFailed":
+            return e.assetDownloadFailed(detail.repo, detail.files, ofKind(detail.of));
         case "missingBuildArtifacts":
             return e.missingBuildArtifacts;
         case "incompatibleApp":

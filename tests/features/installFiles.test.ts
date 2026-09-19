@@ -138,7 +138,7 @@ describe("fetchFiles（插件）的通道选择", () => {
         expect(downloads).toEqual(["manifest.json", "main.js", "styles.css"]);
     });
 
-    it("**资产通道网络不可达时，后续文件不再试它**（否则白等三次超时）", async () => {
+    it("**资产通道网络不可达时，源码里有的文件不再试它**（否则白等三次超时）", async () => {
         const { host, downloads, reads } = createHost({
             assets: { "manifest.json": "network", "main.js": "ok", "styles.css": "ok" },
             source: { "manifest.json": PLUGIN_MANIFEST, "main.js": "// from source" },
@@ -146,11 +146,50 @@ describe("fetchFiles（插件）的通道选择", () => {
 
         const result = await load(host, RELEASE_SOURCE, PLUGIN_SPEC);
 
-        // 只试了第一个 —— 记住「这条通道不通」正是这段逻辑存在的理由
-        expect(downloads).toEqual(["manifest.json"]);
-        // 三个文件都改走源码通道
+        // manifest.json 失败之后就记住了「资产通道不通」：源码里拿得到的 main.js
+        // 不再白试一次资产 —— 这正是这段逻辑存在的理由。
+        expect(downloads).toEqual(["manifest.json", "styles.css"]);
+        // 三个文件都试过源码通道
         expect(reads).toEqual(["manifest.json", "main.js", "styles.css"]);
         expect(result.files.get("main.js")).toBe("// from source");
+        // 而源码里**没有**的那个仍然回到资产去要：短路是为了省时间，
+        // 不是把「只有资产里才有的文件」丢掉（丢了插件能跑但界面是坏的）。
+        expect(result.files.get("styles.css")).toBe("/* from asset */");
+    });
+
+    it("**资产通道被短路、而这些文件源码里也没有 → 为它们各重试一次资产**", async () => {
+        // 这条来自一次真机失败（2026-09-19，Trefoil）：manifest.json 的资产在冷连接上
+        // 超时 → 回退源码成功 → 记住「资产通道不通」→ main.js / styles.css 被跳过
+        // 资产通道 → 而它们是构建产物（仓库里没有）→ 报「缺 main.js」，装不上。
+        // 实测那台机器对该资产域名的**第一次**请求要 17~25 秒，**第二次只要 ~600ms**，
+        // 所以这次重试正是「本该成功的那一下」。
+        const { host, downloads } = createHost({
+            assets: { "manifest.json": "network", "main.js": "ok", "styles.css": "ok" },
+            // 与真机一致：源码里有 manifest.json，**没有** main.js / styles.css
+            source: { "manifest.json": PLUGIN_MANIFEST },
+        });
+
+        const result = await load(host, RELEASE_SOURCE, PLUGIN_SPEC);
+
+        // 短路之后仍为这两个文件各试了一次资产
+        expect(downloads).toEqual(["manifest.json", "main.js", "styles.css"]);
+        expect(result.files.get("main.js")).toBe("// from asset");
+        // styles.css 也必须拿到 —— 少了它插件能跑但界面是坏的
+        expect(result.files.get("styles.css")).toBe("/* from asset */");
+    });
+
+    it("**资产 404 时不为它重试**（那是「远端确实没有」，多试只是白打一次请求）", async () => {
+        const { host, downloads } = createHost({
+            assets: { "manifest.json": "not-found", "main.js": "not-found" },
+        });
+
+        await expectInstallerError(
+            () => load(host, RELEASE_SOURCE, PLUGIN_SPEC),
+            "assetDownloadFailed"
+        );
+
+        // 每个文件各试一次 —— 没有第二次
+        expect(downloads).toEqual(["manifest.json", "main.js"]);
     });
 
     it("**资产 404 不算通道不可用** —— 后续文件仍应走资产通道", async () => {
@@ -227,7 +266,7 @@ describe("fetchFiles（插件）的必需/可选文件", () => {
     });
 
     it("有 manifest 但缺 main.js 报 missingRequiredFiles（作者没提交构建产物）", async () => {
-        const { host } = createHost({
+        const { host, downloads } = createHost({
             assets: { "manifest.json": "ok" },
             source: { "manifest.json": PLUGIN_MANIFEST },
         });
@@ -236,18 +275,33 @@ describe("fetchFiles（插件）的必需/可选文件", () => {
             () => load(host, RELEASE_SOURCE, PLUGIN_SPEC),
             "missingRequiredFiles"
         );
+
+        // release 里根本没有 main.js 这个资产 —— 没什么可重试的
+        expect(downloads).toEqual(["manifest.json"]);
     });
 
-    it("必需文件在两条通道上**都读不到**时，报「缺文件」而不是网络错误", async () => {
+    it("文件在 release 与源码里**都不存在**时，报「缺文件」而不是网络错误", async () => {
         // 「读不到」和「读失败」是两回事：前者是文件不存在（可能是仓库不对），
-        // 后者是网络问题（该重试）。这条锁的是前者。
+        // 后者是网络问题（该重试）。这条锁的是前者 —— 所以这里**没有资产**。
+        const { host } = createHost({ assets: {} });
+
+        await expectInstallerError(
+            () => load(host, RELEASE_SOURCE, PLUGIN_SPEC),
+            "missingManifest"
+        );
+    });
+
+    it("**资产挂着却没下下来**时，报「下载失败」而不是「缺文件」", async () => {
+        // 与上一条的差别正是用户下一步该做什么：这条要做的是检查网络 / 换镜像，
+        // 上一条才该去看作者的发布流程。真机上报错过（2026-09-19，Trefoil）：
+        // 资产冷连接超时，界面却说「找不到 main.js」。
         const { host } = createHost({
             assets: { "manifest.json": "not-found", "main.js": "not-found" },
         });
 
         await expectInstallerError(
             () => load(host, RELEASE_SOURCE, PLUGIN_SPEC),
-            "missingManifest"
+            "assetDownloadFailed"
         );
     });
 

@@ -323,6 +323,15 @@ export const zhCN = {
                 `${repo} 里找不到 manifest.json，它可能不是 Obsidian ${of}仓库。`,
             missingRequiredFiles: (repo: string, files: string, of: string) =>
                 `${repo} 里找不到 ${files}，无法安装该${of}。`,
+            /**
+             * 「资产里挂着，但没下下来」—— 与上一条分开，因为下一步完全不同：
+             * 上一条要做的是去问作者（或去看发布流程），这一条是检查自己的网络。
+             * 分开的由来见 `installFiles.ts` 里 `assetNames` 的注释（实测踩过）。
+             */
+            assetDownloadFailed: (repo: string, files: string, of: string) =>
+                `从 ${repo} 下载 ${files} 失败：${of}的 release 里确实挂着这个文件，` +
+                `是这次没取回来（通常是网络问题，不是作者没上传 —— 它的资产 CDN ` +
+                `在国内经常连不上）。检查网络后重试，或改用 Gitee 镜像。`,
             missingBuildArtifacts:
                 "如果这是源码仓库，作者可能没有把构建产物提交进仓库。",
             incompatibleApp: (name: string, minVersion: string) =>

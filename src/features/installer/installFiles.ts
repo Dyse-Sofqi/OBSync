@@ -91,6 +91,13 @@ interface FileLoadResult<N extends string> {
     content: string | undefined;
     /** 资产通道因**传输层**原因失败（不是"文件不存在"）。 */
     assetUnreachable: boolean;
+    /**
+     * 资产通道**试过但没成**的原因：`transport` = 网络/超时，`not-found` = 资产 404。
+     * `undefined` 表示这一次**根本没试**资产（被短路跳过了，或 release 里没这个资产）。
+     *
+     * 这个区分只服务一件事：决定「还要不要再试一次资产」。见 `fetchFromRelease`。
+     */
+    assetError?: "transport" | "not-found";
     name: N;
 }
 
@@ -140,6 +147,7 @@ async function loadReleaseFile<N extends string>(
                 // 反过来，网络超时才是「这条通道现在都不通」，那时记住它、
                 // 后面的文件直接走源码，可以少等两次超时。
                 assetUnreachable: !(err instanceof NotFoundError),
+                assetError: err instanceof NotFoundError ? "not-found" : "transport",
                 name,
             };
         }
@@ -171,21 +179,92 @@ async function fetchFromRelease<N extends string, M>(
      * 这条很重要：每个文件各试一次资产，而每次失败都要等一个超时 ——
      * 不记住的话，在资产 CDN 不可达的网络下（国内常态），
      * 装一个插件要白等三次超时。记住之后只付一次。
+     *
+     * 但它**只是省时间的优化，不是「资产通道确实不可用」的结论** ——
+     * 所以下面有一条：文件在源码里也拿不到时，为它再试一次资产。
      */
     let skipAssets = false;
 
     for (const name of spec.fileSet.all) {
         onProgress?.(name);
-        const result = await fetchOne(
-            () =>
-                loadReleaseFile(host, repoRef, name, release, token, repoLabel, skipAssets),
-            required.has(name),
-            name,
-            repoLabel
-        );
+
+        const requiredFile = required.has(name);
+        /** release 里**确实挂着**这个名字的资产（与「作者没传」是两件事）。 */
+        const hasAsset = release.assets.some((asset) => asset.name === name);
+
+        let result: FileLoadResult<N> | undefined;
+        let failure: unknown;
+
+        try {
+            result = await loadReleaseFile(host, repoRef, name, release, token, repoLabel, skipAssets);
+        } catch (err) {
+            failure = err;
+        }
 
         if (result?.assetUnreachable) skipAssets = true;
-        if (result?.content !== undefined) files.set(name, result.content);
+
+        /**
+         * 源码通道也拿不到时，**为这个文件再试一次资产通道**。
+         *
+         * 为什么必须有这一条 —— 上面的短路会把一次本可成功的安装变成失败：
+         *
+         * 1. 第一个文件（`manifest.json`）的资产下载在冷连接上超时 → 回退源码成功
+         *    → 记住「资产通道不通」；
+         * 2. `main.js` / `styles.css` 因此被**跳过资产通道**，只去源码里找；
+         * 3. 而它们都是构建产物（`.gitignore` 掉的），仓库里根本没有 ——
+         *    于是「源码里找不到」被当成「这个插件缺 main.js」，安装失败。
+         *
+         * 实测（2026-09-19，本机）：`github.com/.../releases/download/...` 的**第一次**
+         * 请求因为冷连接要 17~25 秒（超时阈值 20 秒），**第二次只要 ~600ms**。
+         * 也就是说第 2 步里那些「被跳过」的资产，重试一次多半就能拿到 ——
+         * 真机失败（Trefoil）正是卡在这里。
+         *
+         * 只在文件已经确定拿不到之后才重试，代价最多是这一次超时；而那条路径
+         * 本来就要失败了，所以这笔时间买到的是「本来能装成」。
+         *
+         * 唯一的例外是**资产干净地 404**：那说明远端确实没有这个文件（作者的发布
+         * 流程问题），再试一次只是多打一个请求 —— 留给上层报「缺文件」。
+         */
+        const unobtainable = result?.content === undefined;
+        const assetDefinitelyGone = result?.assetError === "not-found";
+        if (unobtainable && hasAsset && !assetDefinitelyGone) {
+            logger.info(
+                `could not get ${name} for ${repoLabel} from the source files — ` +
+                    `retrying its release asset once`
+            );
+            try {
+                result = await loadReleaseFile(
+                    host,
+                    repoRef,
+                    name,
+                    release,
+                    token,
+                    repoLabel,
+                    false
+                );
+                failure = undefined;
+            } catch (err) {
+                failure = err;
+            }
+            if (result?.assetUnreachable) skipAssets = true;
+        }
+
+        if (result?.content !== undefined) {
+            files.set(name, result.content);
+            continue;
+        }
+
+        // 拿不到。必需文件要把错误抛出去（网络问题不该被当成「文件不存在」），
+        // 可选文件吞掉 —— 与 `fetchOne` 的区分一致，见文件头的说明。
+        if (requiredFile) {
+            if (failure !== undefined) throw failure;
+            // 没抛错说明两条通道都「读到了但没有这个文件」—— 留给 fetchFiles
+            // 统一报错（那里才知道缺的是不是 manifest，以及是不是资产问题）。
+            continue;
+        }
+        if (failure !== undefined) {
+            logger.debug(`optional file ${name} unavailable for ${repoLabel}`, failure);
+        }
     }
 
     return files;
@@ -238,6 +317,16 @@ export async function fetchFiles<N extends string, M>(
 
     let files: Map<N, string>;
     let channel: InstallChannel;
+    /**
+     * release 通道里**挂着**的资产名。
+     *
+     * 只用来把「同一个缺文件」的两种成因分开：① 仓库/资产里确实没有它 ——
+     * 那是作者的发布流程问题；② 挂在那儿但这次没下下来 —— 那是网络问题，
+     * 重试或换 Gitee 镜像就能解决。不区分的话用户会被指去检查一个没问题的
+     * 地方。实测踩过（2026-09-19）：GitHub 的 release 资产冷连接超时，
+     * 而界面报的是「找不到 main.js」。
+     */
+    let assetNames: Set<string> | undefined;
 
     if (source.kind === "release") {
         const release = await host.getReleaseByTag(repoRef, source.tag, token);
@@ -247,6 +336,7 @@ export async function fetchFiles<N extends string, M>(
             files = await fetchFromRaw(host, repoRef, source.ref, token, repoLabel, spec, onProgress);
             channel = "raw";
         } else {
+            assetNames = new Set(release.assets.map((asset) => asset.name));
             files = await fetchFromRelease(host, repoRef, release, token, repoLabel, spec, onProgress);
             channel = "release";
         }
@@ -257,6 +347,18 @@ export async function fetchFiles<N extends string, M>(
 
     const missing = spec.fileSet.required.filter((file) => !files.has(file));
     if (missing.length > 0) {
+        // 先分「资产里挂着、却没取回来」：这种失败**不是**「这个文件不存在」，
+        // 说成「找不到它」会把用户指去改一个没问题的发布流程。
+        const fromAssets = missing.filter((file) => assetNames?.has(file));
+        if (fromAssets.length > 0) {
+            throw new InstallerError({
+                kind: "assetDownloadFailed",
+                repo: repoLabel,
+                files: fromAssets.join("、"),
+                of: spec.kind,
+            });
+        }
+
         // 分开报错：没有 manifest.json 说明这多半不是这类仓库；
         // 缺别的文件说明是这类仓库但作者没提交构建产物。
         if (missing.includes(manifestFile)) {
