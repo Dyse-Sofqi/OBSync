@@ -180,6 +180,23 @@ export const en = {
         versionLabel: "Version to install",
         versionLatest: "Latest release",
         versionListFailed: "Could not fetch the version list; the latest version will be used.",
+        /** The version manager on a tracked plugin row (plugins only — themes are never pinned). */
+        versionManage: "Version manager (roll back to a specific version)",
+        versionManageTitle: "Choose a version",
+        versionManageDesc:
+            "Switch this plugin to another published version — picking an older one rolls it back. " +
+            "Pick \"Latest release\" to follow the newest release again.",
+        versionInstalled: (version: string) => `Installed: ${version}`,
+        versionInstalledUnknown: "Installed: version unknown",
+        versionCurrent: "current",
+        versionLoading: "Fetching the version list…",
+        versionNoneAvailable:
+            "This repository publishes no releases (source install only), so there is no version to switch to.",
+        versionFetchFailed: "Could not fetch the version list.",
+        versionApply: "Switch to this version",
+        versionSwitched: (name: string, version: string, source: string) =>
+            `Switched ${name} to ${version} (from ${source})`,
+        versionPinned: (version: string) => `Pinned to ${version}`,
         enableAfterInstall: "Enable after installing",
         install: "Install",
         installing: "Installing…",

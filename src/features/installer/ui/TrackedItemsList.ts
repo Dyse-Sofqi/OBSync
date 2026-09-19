@@ -1,13 +1,14 @@
-import { Setting, type App } from "obsidian";
+import { Setting, type App, type ExtraButtonComponent } from "obsidian";
 import type { LocaleStrings } from "../../../core/i18n";
 import { availableUpdateKey } from "../../../core/settings";
 import { formatRepoId, repoWebUrl } from "../../../host/repoRef";
 import type { RepoRef } from "../../../host/types";
 import { downloadSourceLabel, hostLabel } from "../downloadSource";
-import type { InstallerService } from "../installerService";
+import type { InstallerService, VersionOption } from "../installerService";
 import type { UpdateChecker } from "../updateChecker";
-import { itemRepoRef, type TrackedItem } from "../types";
+import { itemRepoRef, type TrackedItem, type TrackedPlugin } from "../types";
 import { ConfirmMirrorModal } from "./ConfirmMirrorModal";
+import { VersionManagerModal } from "./VersionManagerModal";
 
 /**
  * 设置页里的「已跟踪的插件与主题」列表。
@@ -29,6 +30,10 @@ import { ConfirmMirrorModal } from "./ConfirmMirrorModal";
  * 这里只负责两件展示上的事：名称后的**类型徽标**，以及要删除的东西是
  * 什么（移除确认的文案不同）。
  * 分作两个列表的代价是两套渲染与操作代码 —— BRAT 就是插件、主题各写一份。
+ *
+ * 唯一的**刻意不对称**是第七个按钮「版本管理」：只有插件有。主题在设计上
+ * 没有版本钉选（`TrackedTheme` 上没有 `requestedVersion`，`updateTheme`
+ * 永远按最新走），给它一个能选版本的按钮就等于承诺一件做不到的事。
  */
 
 export interface TrackedItemsContext {
@@ -153,6 +158,17 @@ function renderRow(
         });
         setting.setClass("obsync-has-update");
     }
+    // 钉在某个版本上（用户从「版本管理」里选了具体版本）。
+    //
+    // 必须显示出来：它只存在于 `data.json` 的 `requestedVersion` 里，而它的后果
+    // 是「重装会装回旧版」。不写的话，用户看到版本号是旧的，分不清那是自己选的、
+    // 还是更新失败留下的 —— 正是这个项目最忌讳的那类「改了有作用但界面不承认」的状态。
+    if (item.kind === "plugin" && item.requestedVersion !== "latest") {
+        setting.nameEl.createSpan({
+            text: t.installer.versionPinned(item.requestedVersion),
+            cls: "obsync-badge obsync-badge-muted",
+        });
+    }
     if (item.frozen) {
         setting.nameEl.createSpan({
             text: t.installer.frozen,
@@ -228,6 +244,9 @@ function renderRow(
         if (update) button.extraSettingsEl.addClass("obsync-action-primary");
         return button;
     });
+
+    // 版本管理（**只有插件有** —— 主题在设计上就没有版本钉选，见文件头的说明）
+    if (item.kind === "plugin") appendVersionButton(setting, ctx, item);
 
     // 重装
     setting.addExtraButton((button) =>
@@ -312,6 +331,87 @@ function renderRow(
                 }
             })
     );
+}
+
+/**
+ * 「版本管理」按钮 —— 把一个已跟踪的插件切到另一个已发布的版本。
+ *
+ * 这是 `requestedVersion`（「用户要求的版本」）在界面上的**唯一入口**：
+ * 它以前只由「添加插件仓库」弹窗写过一次，之后既改不了也看不见。
+ *
+ * 只有插件这一个 kind 调用它，因为只有插件有这个字段 —— 主题的版本永远
+ * 跟着最新走（见 `installer/types.ts`）。
+ */
+function appendVersionButton(
+    setting: Setting,
+    ctx: TrackedItemsContext,
+    plugin: TrackedPlugin
+): void {
+    const t = ctx.t;
+    setting.addExtraButton((button) =>
+        button
+            // 时钟 + 回退箭头：它管的是「换成哪一版」，与旁边「更新到最新」的
+            // 下载箭头是两件事 —— 后者只往最新走，前者能往回走。
+            .setIcon("history")
+            .setTooltip(t.installer.versionManage)
+            .onClick(() => {
+                new VersionManagerModal(
+                    ctx.app,
+                    ctx.service,
+                    t,
+                    {
+                        name: plugin.name,
+                        // 版本列表要按**实际使用**的来源查（走镜像时即镜像）——
+                        // 与更新检查、下载同源（见 `itemRepoRef` 的注释）。
+                        repoRef: itemRepoRef(plugin),
+                        installedVersion: plugin.installedVersion,
+                        requestedVersion: plugin.requestedVersion,
+                    },
+                    (option) => void switchVersion(ctx, plugin, option, button)
+                ).open();
+            })
+    );
+}
+
+/**
+ * 用户选定了版本之后要做的事。
+ *
+ * 走 `install` 而**不是** `reinstall`：后者读的是记录里的 `requestedVersion`，
+ * 而这里要装的正是用户刚选的那一个。`install` 会把它写回记录 ——
+ * 也就是「钉在这一版」：此后「重装」装回它，而「更新到最新版本」会把记录改回
+ * `latest`（恢复跟随最新）。这条语义是现成的，这里不另造一套。
+ */
+async function switchVersion(
+    ctx: TrackedItemsContext,
+    plugin: TrackedPlugin,
+    option: VersionOption,
+    button: ExtraButtonComponent
+): Promise<void> {
+    const t = ctx.t;
+    button.setDisabled(true);
+    try {
+        const result = await ctx.service.install({
+            repo: formatRepoId(plugin),
+            version: option.value,
+            // 与这一行上的「更新到最新」「重装」同一口径：装完保持可用。
+            enableAfterInstall: true,
+            defaultHost: plugin.host,
+        });
+        // 报**实际装成的版本**（manifest 里那个，可能与 tag 不同形：
+        // tag `v1.2.0` → version `1.2.0`）与来源。
+        ctx.service.deps.notifier.success(
+            t.installer.versionSwitched(
+                plugin.name,
+                result.version,
+                downloadSourceLabel(t, result)
+            )
+        );
+        ctx.refresh();
+    } catch (err) {
+        ctx.service.deps.notifier.reportError(err, t.installer.installFailed);
+    } finally {
+        button.setDisabled(false);
+    }
 }
 
 /**

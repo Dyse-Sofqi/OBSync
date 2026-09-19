@@ -187,6 +187,38 @@ export const zhCN = {
         versionLabel: "安装版本",
         versionLatest: "最新版本",
         versionListFailed: "无法获取版本列表，将按最新版本安装。",
+
+        /**
+         * 「版本管理」—— 已跟踪插件行上的按钮（**只有插件有**，主题没有版本钉选）。
+         *
+         * 这几条要交代清楚三件事，缺一件用户就会踩坑：选旧版本是**回退**、
+         * 选「最新版本」是**解开钉住的选择**、以及这个选择会被「重装」沿用
+         * （所以列表上挂一个「已固定」徽标）。
+         */
+        versionManage: "版本管理（可回退到指定版本）",
+        versionManageTitle: "选择版本",
+        versionManageDesc:
+            "切换到这个插件的另一个发布版本：选旧版本即为回退。选「最新版本」则恢复跟随最新发布。",
+        versionInstalled: (version: string) => `当前安装：${version}`,
+        /** 读不到 manifest 里的版本时（手工装的目录）—— 不写「当前安装：」，那后面空着像坏了。 */
+        versionInstalledUnknown: "当前安装：版本未知",
+        /** 标在**磁盘上装的那一版**后面（`1.2.3 · 当前`），否则一串 tag 里认不出自己在哪。 */
+        versionCurrent: "当前",
+        versionLoading: "正在获取版本列表…",
+        /** 「一个 release 都没发」与「这次没拉到」是两件事，文案也必须分开。 */
+        versionNoneAvailable: "这个仓库没有发布任何版本（只能从源码安装），没有可切换的版本。",
+        versionFetchFailed: "无法获取版本列表。",
+        versionApply: "切换到此版本",
+        versionSwitched: (name: string, version: string, source: string) =>
+            `已把 ${name} 切换到 ${version}（来源：${source}）`,
+        /**
+         * 列表上的「已固定」徽标。
+         *
+         * 这个状态只在 `data.json` 里（`requestedVersion`），而它的后果是
+         * 「重装会装回旧版」—— 不显示出来，用户看到旧版本号会分不清是自己选的
+         * 还是更新失败留下的。
+         */
+        versionPinned: (version: string) => `已固定 ${version}`,
         enableAfterInstall: "安装后立即启用",
         install: "安装",
         installing: "正在安装…",

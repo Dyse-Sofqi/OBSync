@@ -44,8 +44,8 @@ Chinese-first UI with an equal English one.
 - **笔记同步** — 提交 → 拉取 → 推送一条链 · 冲突指南（不自动解决）· 自动提交/推送/拉取定时器 ·
   源码控制视图 · 状态栏条目 · 初始化仓库时建 `.gitignore` · 在远端打开文件/历史 · 编辑远端 · 连接测试
 - **插件与主题** — 地址识别（GitHub / Gitee）· release 资产与仓库源码双通道 · 版本选择（含预发布回退）·
-  写入前备份 + 失败回滚 · 更新检查（单个/全部/启动/进入设置页）· 常驻更新徽标 · 冻结 · 重装 · 取消绑定（不删文件）·
-  绑定已装插件与主题 · Gitee 镜像发现 · 自我更新
+  写入前备份 + 失败回滚 · 更新检查（单个/全部/启动/进入设置页）· 常驻更新徽标 · 冻结 · 重装 ·
+  **版本回退** · 取消绑定（不删文件）· 绑定已装插件与主题 · Gitee 镜像发现 · 自我更新
 - **平台与体验** — 双平台适配层 · 令牌进系统密钥库并从日志脱敏 · 中文优先英文对等 ·
   错误文案走类型码 + locale · 移动端可加载（同步仅桌面）
 
@@ -57,7 +57,8 @@ Chinese-first UI with an equal English one.
 - **Plugins & themes** — address recognition (GitHub / Gitee) · release assets **and** repository source fallback ·
   version picker (with prerelease fallback) · backup before write + rollback on failure · update checks
   (single / all / on startup / on opening settings) · persistent update badges · freeze · reinstall ·
-  unbind (keeps files) · adopt already-installed plugins and themes · Gitee mirror discovery · self-update
+  **version rollback** · unbind (keeps files) · adopt already-installed plugins and themes ·
+  Gitee mirror discovery · self-update
 - **Platform & UX** — one platform layer for both hosts · tokens in the OS keychain, redacted from logs ·
   Chinese-first with an equal English UI · error text via type codes + locales ·
   loadable on mobile (sync is desktop-only)
@@ -92,10 +93,14 @@ Chinese-first UI with an equal English one.
 - **两条下载通道** —— 优先 release 资产，仓库没有发 release 时回退到**仓库源码文件**
   （Gitee 上大多数插件仓库没有 release，所以这条通道是必需的，不是补充）
 - **版本选择** —— 默认最新，也可以从 release 列表里挑具体版本；只有预发布版的仓库会回退到预发布版
+- **版本回退** —— 跟踪列表里每个插件都能切换版本：列出已发布的版本（**当前装的那一版会被标出来**），
+  选旧版本即回退。选「最新版本」则恢复跟随最新；选定的版本会被记住，此后「重装」按它走
+  （列表上有「已固定」徽标，主题不做版本钉选，所以没有这个按钮）
 - **写入前备份、失败整体回滚** —— 安装失败不会在库里留下半个插件
 - **更新检查** —— 单个检查 / 全部检查 / 启动后延迟检查 / 进入设置页时检查（可关）；
   有更新的行常驻徽标（Notice 一闪就错过）。**只检查并提示，安装永远手动**
-- **跟踪列表的每一项操作** —— 检查、更新、重装、冻结（不参与更新检查）、打开仓库页、
+- **跟踪列表的每一项操作** —— 检查、更新、**版本管理（切到另一个发布版本，选旧版本就是回退）**、
+  重装、冻结（不参与更新检查）、打开仓库页、
   取消绑定（**只移出列表，不删任何文件**）
 - **绑定库里已装的插件与主题** —— 扫描插件目录与主题目录，按 manifest id / 主题目录名反查官方社区索引，
   一次性纳入跟踪；来源识别不出来的主题可以手填仓库地址
@@ -130,6 +135,9 @@ Chinese-first UI with an equal English one.
 库里已经装好的插件不用一个个手输：命令 **OBSync：绑定库里已安装的插件与主题**
 （或设置页的「绑定已有插件」）会扫描插件与主题目录，按 manifest id 反查来源仓库，一次性纳入跟踪。
 
+装完之后想换版本（比如新版有问题要退回旧版）：在设置页「已跟踪插件与主题」里点那一行右侧的
+**版本管理**按钮，选一个版本即可 —— 旧版本就是回退，选「最新版本」则恢复跟随最新。
+
 > 所有命令在命令面板里都以 `OBSync：` 开头，直接搜插件名就能找到。
 
 #### 同步笔记仓库
@@ -149,7 +157,7 @@ Chinese-first UI with an equal English one.
 
 | 标签 | 内容 |
 | --- | --- |
-| 已跟踪插件与主题 | 已安装/添加的插件与主题列表，含更新徽标、检查、更新、重装、冻结、打开仓库、取消绑定（不删文件） |
+| 已跟踪插件与主题 | 已安装/添加的插件与主题列表，含更新徽标、检查、更新、版本管理（回退）、重装、冻结、打开仓库、取消绑定（不删文件） |
 | 插件安装器 | 启用开关、更新检查时机、Gitee 镜像发现、**访问令牌**（GitHub / Gitee）、OBSync 自身更新 |
 | 仓库同步 | 同步开关、自动提交/推送/拉取间隔、提交信息模板、整合策略、git 路径、**连接测试** |
 | 通用 | 界面语言、提示开关、调试日志 |
@@ -282,10 +290,15 @@ Needs the system `git` binary, so it is **desktop-only** (Windows / macOS / Linu
   most Gitee plugin repos publish no releases, so this fallback is required, not optional
 - **Version picker** — latest by default, or a specific release; repositories that only publish
   prereleases fall back to those
+- **Version rollback** — every tracked plugin can be switched to another published release from the
+  tracked list (the installed one is marked), so rolling back after a bad update is two clicks.
+  Picking "Latest release" follows the newest again, and reinstall honours the version you picked
+  (the row shows a "pinned" badge; themes are never pinned, so they have no such button)
 - **Backup before write, rollback on failure** — a failed install never leaves half a plugin behind
 - **Update checks** — single item, all items, after startup, and when opening settings (toggleable);
   rows with updates keep a persistent badge. **OBSync only reports; installing is always manual**
-- **Per-item actions** — check, update, reinstall, freeze (excluded from update checks),
+- **Per-item actions** — check, update, **version manager (roll back to an older release)**,
+  reinstall, freeze (excluded from update checks),
   open repo page, unbind (**removes the entry only, deletes no files**)
 - **Adopt installed plugins and themes** — scans the plugin and theme folders and resolves their source
   repositories through the official community index; themes that cannot be resolved can be bound by URL
@@ -312,7 +325,7 @@ Needs the system `git` binary, so it is **desktop-only** (Windows / macOS / Linu
 
 | Tab | Contents |
 | --- | --- |
-| Tracked plugins & themes | The list, with update badges, check, update, reinstall, freeze, open repo, unbind |
+| Tracked plugins & themes | The list, with update badges, check, update, version manager (rollback), reinstall, freeze, open repo, unbind |
 | Plugin installer | Enable switch, update-check timing, Gitee mirror discovery, **access tokens**, self-update |
 | Vault sync | Enable switch, auto commit/push/pull intervals, commit message template, strategy, git path, connection test |
 | General | UI language, notices, debug logging |

@@ -1,6 +1,12 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { App } from "obsidian";
-import { createdSettings, resetCreatedSettings, type Setting } from "../stubs/obsidian";
+import {
+    createdSettings,
+    resetCreatedSettings,
+    type ButtonComponent,
+    type DropdownComponent,
+    type Setting,
+} from "../stubs/obsidian";
 import { zhCN } from "../../src/core/i18n/locales/zh-cn";
 import { Notifier } from "../../src/core/notice";
 import { renderTrackedItems } from "../../src/features/installer/ui/TrackedItemsList";
@@ -56,8 +62,14 @@ function render(
 function fakeService(options: {
     repoRef: RepoRef;
     origin?: RepoRef;
-}): { service: InstallerService; notices: string[] } {
+}): {
+    service: InstallerService;
+    notices: string[];
+    /** 安装请求 —— 「版本管理」要断言装的是**哪一版**。 */
+    installs: Array<{ repo: string; version?: string }>;
+} {
     const notices: string[] = [];
+    const installs: Array<{ repo: string; version?: string }> = [];
     const notifier = new Notifier({ getShowNotices: () => true, getT: () => zhCN });
     notifier.success = (message: string) => notices.push(message);
 
@@ -73,12 +85,21 @@ function fakeService(options: {
 
     const service = {
         deps: { notifier },
-        install: async () => result,
+        install: async (request: { repo: string; version?: string }) => {
+            installs.push(request);
+            return result;
+        },
         updateTheme: async () => ({ ...result, wasActive: false }),
         reinstall: async () => result,
+        // 版本管理弹窗要的列表。真实实现在 installerService.listVersions 里，
+        // 这里只要求形状对得上（第一项固定是「最新版本」）。
+        listVersions: async () => [
+            { value: "latest", label: zhCN.installer.versionLatest, prerelease: false },
+            { value: "1.0.0", label: "1.0.0", prerelease: false },
+        ],
     } as unknown as InstallerService;
 
-    return { service, notices };
+    return { service, notices, installs };
 }
 
 function renderWith(
@@ -192,14 +213,30 @@ describe("renderTrackedItems", () => {
         expect(empty.cls).toContain("obsync-empty");
     });
 
-    it("两种对象的六个操作按钮都在（检查 / 更新 / 重装 / 冻结 / 打开 / 取消绑定）", () => {
+    it("插件比主题多一个「版本管理」按钮 —— 这条不对称是刻意的", () => {
         const { rows } = render([plugin(), theme()]);
         // 取消绑定用 unlink 而不是垃圾桶 —— 它不删文件
-        const expected = ["search", "download", "refresh-cw", "unlock", "external-link", "unlink"];
+        const shared = ["search", "download", "refresh-cw", "unlock", "external-link", "unlink"];
 
-        for (const row of rows) {
-            expect(row.buttons.map((button) => button.icon)).toEqual(expected);
-        }
+        // 插件有「用户要求的版本」这个字段（可以回退到指定版本），主题没有 ——
+        // 主题的更新永远按最新走（见 installer/types.ts）。
+        expect(rows[0]!.buttons.map((button) => button.icon)).toEqual([
+            "search",
+            "download",
+            "history",
+            "refresh-cw",
+            "unlock",
+            "external-link",
+            "unlink",
+        ]);
+        // 给主题一个能选版本的按钮就等于承诺一件做不到的事，所以它不出现。
+        expect(rows[1]!.buttons.map((button) => button.icon)).toEqual(shared);
+
+        // history 的位置紧跟 download：两个都是「装哪一版」，一个只往最新走、
+        // 一个能往回走，摆在一起才读得出来。
+        expect(rows[0]!.buttons.map((button) => button.tooltip)).toContain(
+            zhCN.installer.versionManage
+        );
     });
 });
 
@@ -278,9 +315,19 @@ describe("镜像行", () => {
 
         expect(extraLines(rows[0]!)).toHaveLength(1);
         expect(badges(rows[0]!)).toContain(zhCN.installer.frozen);
-        expect(rows[0]!.buttons).toHaveLength(6);
+        expect(rows[0]!.buttons).toHaveLength(7);
     });
 });
+
+const GITHUB: RepoRef = { host: "github", owner: "owner", repo: "demo" };
+const GITEE: RepoRef = { host: "gitee", owner: "owner", repo: "demo" };
+
+/** 点某个图标对应的操作按钮（图标见上面那组「插件比主题多一个」的用例）。 */
+async function clickIcon(row: Setting, icon: string): Promise<void> {
+    const button = row.buttons.find((candidate) => candidate.icon === icon);
+    if (!button) throw new Error(`这一行没有 ${icon} 按钮`);
+    await button.click();
+}
 
 /**
  * 更新 / 重装之后的提示**必须报出来源**。
@@ -291,16 +338,6 @@ describe("镜像行", () => {
  * （可能就是这一趟才发现的镜像），不是跟踪记录里那个。
  */
 describe("完成提示里的来源", () => {
-    const GITHUB: RepoRef = { host: "github", owner: "owner", repo: "demo" };
-    const GITEE: RepoRef = { host: "gitee", owner: "owner", repo: "demo" };
-
-    /** 点第 n 个图标对应的操作按钮（见上面那组「六个操作按钮都在」的用例）。 */
-    async function clickIcon(row: Setting, icon: string): Promise<void> {
-        const button = row.buttons.find((candidate) => candidate.icon === icon);
-        if (!button) throw new Error(`这一行没有 ${icon} 按钮`);
-        await button.click();
-    }
-
     it("命中镜像时点名「Gitee 镜像」（只写 Gitee 会让人以为跟踪的地址被换了）", async () => {
         const { service, notices } = fakeService({ repoRef: GITEE, origin: GITHUB });
         const { rows } = renderWith(service, [plugin({ host: "gitee", origin: GITHUB })]);
@@ -380,6 +417,7 @@ describe("疑似镜像的提议", () => {
         expect(rows[0]!.buttons.map((button) => button.icon)).toEqual([
             "search",
             "download",
+            "history",
             "refresh-cw",
             "unlock",
             "external-link",
@@ -388,10 +426,79 @@ describe("疑似镜像的提议", () => {
         ]);
     });
 
-    it("没有提议时不多这个按钮（正常行仍是六个）", () => {
+    it("没有提议时不多这个按钮（正常行仍是七个：插件的六项 + 版本管理）", () => {
         const rows = renderWithSuggestion(undefined);
 
-        expect(rows[0]!.buttons).toHaveLength(6);
+        expect(rows[0]!.buttons).toHaveLength(7);
         expect(extraLines(rows[0]!)).toEqual([]);
+    });
+});
+
+/**
+ * 「版本管理」在列表这一层的契约。
+ *
+ * 弹窗自己怎么列版本、怎么标「当前」由 `versionManagerModal.test.ts` 守；
+ * 这里守的是**接线**与**可见性**：
+ *
+ * 1. 按钮只给插件 —— 主题在设计上没有版本钉选（`TrackedTheme` 上没有
+ *    `requestedVersion`，`updateTheme` 永远按最新走），给它这个按钮等于承诺
+ *    一件做不到的事；
+ * 2. 选中之后装的是**选中的那一版**（这是「回退」的全部含义）；
+ * 3. 钉住的状态必须显示出来 —— 它只存在于 `data.json` 里，后果却是
+ *    「重装会装回旧版」。不显示的话，用户看到旧版本号分不清是自己选的还是
+ *    更新失败留下的（与 `sync.enabled` 那个「死开关」是同一类问题）。
+ */
+describe("版本管理", () => {
+    /** 弹窗里的版本下拉框 —— 列表本身没有下拉框，按「有下拉框的那一行」找。 */
+    function versionDropdown(): DropdownComponent {
+        const row = [...createdSettings].reverse().find((setting) => setting.dropdowns.length > 0);
+        if (!row) throw new Error("版本弹窗还没渲染出下拉框");
+        return row.dropdowns[0]!;
+    }
+
+    function versionApplyButton(): ButtonComponent {
+        const row = [...createdSettings]
+            .reverse()
+            .find((setting) =>
+                setting.buttons.some((button) => button.text === zhCN.installer.versionApply)
+            );
+        if (!row) throw new Error("版本弹窗还没渲染出「切换」按钮");
+        return row.buttons.find((button) => button.text === zhCN.installer.versionApply)!;
+    }
+
+    it("插件行有版本管理按钮，主题行没有（主题没有版本钉选）", () => {
+        const { rows } = render([plugin(), theme()]);
+
+        expect(rows[0]!.buttons.some((button) => button.icon === "history")).toBe(true);
+        expect(rows[1]!.buttons.some((button) => button.icon === "history")).toBe(false);
+    });
+
+    it("选中一个版本之后按那个 tag 安装，并报出**实际装成的**版本与来源", async () => {
+        const { service, notices, installs } = fakeService({ repoRef: GITHUB });
+        const { rows } = renderWith(service, [plugin()]);
+
+        await clickIcon(rows[0]!, "history");
+        await vi.waitFor(() => expect(versionDropdown()).toBeDefined());
+        versionDropdown().select("1.0.0");
+        versionApplyButton().click();
+
+        await vi.waitFor(() => expect(installs).toHaveLength(1));
+        expect(installs[0]).toMatchObject({ repo: "owner/demo", version: "1.0.0" });
+        // 报服务装成的那个版本（tag `v1.2.0` 与 manifest 里的 `1.2.0` 经常不同形）
+        expect(notices).toEqual([
+            zhCN.installer.versionSwitched("Demo Plugin", "2.0.0", "GitHub"),
+        ]);
+    });
+
+    it("钉在某个版本上时挂「已固定」徽标 —— 这个状态在界面上只有这一处", () => {
+        const { rows } = render([plugin({ requestedVersion: "1.0.0" })]);
+
+        expect(badges(rows[0]!)).toContain(zhCN.installer.versionPinned("1.0.0"));
+    });
+
+    it("跟随最新时不挂那个徽标（默认状态不该多一个药丸）", () => {
+        const { rows } = render([plugin({ requestedVersion: "latest" })]);
+
+        expect(badges(rows[0]!).some((text) => text.includes("已固定"))).toBe(false);
     });
 });
