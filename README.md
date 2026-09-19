@@ -270,6 +270,7 @@ pnpm check       # 项目自查（只读，约 0.2 秒）
 pnpm typecheck
 pnpm test        # 单元测试（不碰网络）
 pnpm test:live   # 真实 API 测试，需要网络
+pnpm verify:head # 在 **HEAD** 上跑测试（提交后跑一次，见下）
 ```
 
 - 部署目标默认是 `F:/_Workspace/Plugin-Test/.obsidian/plugins/obsync`。
@@ -289,6 +290,10 @@ pnpm test:live   # 真实 API 测试，需要网络
   有没有「设置项声明了却没有任何代码读它」。
 - 改了 git 相关代码后注意：`simpleGitManager.test.ts` 会起真实 git 进程，
   在这台机器上单独跑约 150 秒 —— 它没挂，只是慢。
+- **提交后跑一次 `pnpm verify:head`**：`pnpm test` 读的是**工作区**，而工作区里还压着
+  未提交改动时，「本地全绿」说明不了 HEAD 是绿的 —— 可 HEAD 才是别人克隆时看到的东西。
+  这条命令把工作区 stash 起来、在 HEAD 上跑测试、再原样还给你。
+  （实测踩过：一次提交漏了 `src/settingsTab.ts`，HEAD 上三条用例红了，本地却一直是绿的。）
 - `pnpm test:live` 里 Gitee 的 API 用例在没有令牌且被限流时会**跳过**而不是失败。
   想跑绿就设 `OBSYNC_GITEE_TOKEN=<令牌>`。
 
@@ -462,6 +467,7 @@ pnpm check       # read-only project self-check (~0.2 s)
 pnpm typecheck
 pnpm test        # unit tests (no network)
 pnpm test:live   # live API tests (needs network)
+pnpm verify:head # runs the tests on **HEAD**, not the working tree (see below)
 ```
 
 The default deploy target is `F:/_Workspace/Plugin-Test/.obsidian/plugins/obsync`. The
@@ -470,6 +476,13 @@ separated by `;`, so one build can update multiple vaults; set it to an empty st
 skip deploying. Only `main.js`, `manifest.json` and `styles.css` are copied — never
 `data.json` (your settings and tracked list). A target that cannot be written is warned
 about without failing the build or the other targets.
+
+**Run `pnpm verify:head` after each commit.** `pnpm test` reads the *working tree*, so
+while uncommitted changes are lying around, "green locally" says nothing about HEAD —
+and HEAD is what everyone else clones. The command stashes the working tree (untracked
+files included), runs the suite on HEAD, then restores everything. It exists because of a
+real one: a commit shipped the tests and i18n keys but forgot `src/settingsTab.ts`, leaving
+three committed tests red on HEAD while everything stayed green locally.
 
 Architecture notes and a long list of field-tested pitfalls live in
 [`docs/HANDOVER.md`](docs/HANDOVER.md); the release checklist is in [`docs/RELEASE.md`](docs/RELEASE.md).

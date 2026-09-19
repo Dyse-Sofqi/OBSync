@@ -148,12 +148,13 @@
 
 ## 三、命令与环境
 ```
-pnpm dev        # esbuild watch + 自动部署到测试库
-pnpm build      # 自查 + typecheck + 生产构建 + 部署
-pnpm check      # 项目自查（见下），只读，约 0.2 秒
-pnpm typecheck  # tsc --noEmit
-pnpm test       # 单元测试（无网络，~2.5 分钟）
-pnpm test:live  # 真实 API 测试（OBSYNC_LIVE=1，需网络）
+pnpm dev         # esbuild watch + 自动部署到测试库
+pnpm build       # 自查 + typecheck + 生产构建 + 部署
+pnpm check       # 项目自查（见下），只读，约 0.2 秒
+pnpm typecheck   # tsc --noEmit
+pnpm test        # 单元测试（无网络，~2.5 分钟）
+pnpm test:live   # 真实 API 测试（OBSYNC_LIVE=1，需网络）
+pnpm verify:head # 在 **HEAD**（而不是工作区）上跑测试 —— 提交后跑，见下
 ```
 
 ### `pnpm check` 查什么（`scripts/checks.mjs`）
@@ -172,6 +173,29 @@ pnpm test:live  # 真实 API 测试（OBSYNC_LIVE=1，需网络）
 两张**带理由**的豁免表在脚本里（`KNOWN_SAFE` / `ALLOWED` / `NOT_A_CLASS` / `EXEMPT`）——
 加条目时必须写清为什么安全，否则它们会变成掩盖问题的地方。
 「设置项无人读取」的判据与它扫不到的两类写法，见第七节。
+
+### 提交后：`pnpm verify:head`（在 HEAD 上跑，而不是工作区）
+
+`pnpm test` 读的是**工作区文件**。工作区里还压着没提交的改动时，全绿只说明
+「我磁盘上这一坨是好的」，说明不了 **HEAD 是好的** —— 而 HEAD 才是别人克隆下来
+看到的东西。
+
+实测踩过（2026-09-19）：`d939df2`（状态栏全宽开关）提交了测试与 i18n 键，
+**唯独漏了 `src/settingsTab.ts`**，于是 HEAD 上三条已提交的用例是红的，而本地
+一直是绿的。这个错**只在别人克隆或 CI 上才会暴露**。
+
+`pnpm verify:head`（`scripts/verify-head.mjs`）把工作区（**含未跟踪文件**）stash
+起来、跑测试、再 pop 回来，于是跑的就是 HEAD。三个要点：
+
+- **每个提交后跑一次**，尤其是「一次改动横跨代码 + 测试 + i18n + CSS」的提交 ——
+  那正是最容易漏文件的情形；
+- `--include-untracked` 不是可选的：新加的测试文件若还没 `git add`，不 stash 掉就会
+  混进「HEAD 的测试」里，那验的就不是 HEAD 了；
+- 它**只发现「HEAD 红了」，发现不了「HEAD 缺了个改动而测试恰好不覆盖它」** ——
+  所以它是兜底，不是「提交前对着 `git status` 核一遍」的替代。
+
+> 中途 Ctrl+C 的话 `finally` 不会执行（SIGINT 直接终止进程，而 `spawnSync` 还阻塞着
+> 事件循环），改动会留在 stash 里。取回：`git stash list` → `git stash pop`。
 
 ### 移动端：为什么同步模块必须动态导入
 

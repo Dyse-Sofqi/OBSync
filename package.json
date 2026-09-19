@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit --skipLibCheck",
     "check": "node scripts/checks.mjs",
     "verify:mobile": "pnpm build && node scripts/verify-mobile-load.mjs",
+    "verify:head": "node scripts/verify-head.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:live": "cross-env OBSYNC_LIVE=1 vitest run tests/live"
