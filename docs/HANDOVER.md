@@ -194,6 +194,13 @@ pnpm verify:head # 在 **HEAD**（而不是工作区）上跑测试 —— 提�
 - 它**只发现「HEAD 红了」，发现不了「HEAD 缺了个改动而测试恰好不覆盖它」** ——
   所以它是兜底，不是「提交前对着 `git status` 核一遍」的替代。
 
+**它挂在 `pre-push` 上**（`.githooks/pre-push`，靠 `pnpm hooks:install` 设
+`core.hooksPath`）—— 所以「忘了跑」这一种也被覆盖了。选 pre-push 而不是 pre-commit：
+commit 是本地历史、随时能 `git reset`，**push 才是「别人能看到」的时刻**，也正是这个
+错真正有害的时刻；而 push 频率远低于 commit，3 分钟等得起。跳过用
+`git push --no-verify`。hook 放 `.githooks/` 而不是 `.git/hooks/`：后者不进版本控制，
+重新克隆就没了 —— 而「防漏提交」恰恰需要它一直在。
+
 > 中途 Ctrl+C 的话 `finally` 不会执行（SIGINT 直接终止进程，而 `spawnSync` 还阻塞着
 > 事件循环），改动会留在 stash 里。取回：`git stash list` → `git stash pop`。
 

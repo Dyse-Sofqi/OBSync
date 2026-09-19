@@ -294,6 +294,10 @@ pnpm verify:head # 在 **HEAD** 上跑测试（提交后跑一次，见下）
   未提交改动时，「本地全绿」说明不了 HEAD 是绿的 —— 可 HEAD 才是别人克隆时看到的东西。
   这条命令把工作区 stash 起来、在 HEAD 上跑测试、再原样还给你。
   （实测踩过：一次提交漏了 `src/settingsTab.ts`，HEAD 上三条用例红了，本地却一直是绿的。）
+- **它已经挂在 `pre-push` 上**（`.githooks/pre-push`，`pnpm hooks:install` 启用）：
+  push 前自动跑一遍，HEAD 红了就拦住 —— 所以「忘了跑」这种情况也被覆盖了。
+  选 push 而不是 commit，是因为 **push 才是「别人能看到」的时刻**，也正是这个错真正
+  有害的时刻；而 push 频率远低于 commit，3 分钟等得起。要跳过一次：`git push --no-verify`。
 - `pnpm test:live` 里 Gitee 的 API 用例在没有令牌且被限流时会**跳过**而不是失败。
   想跑绿就设 `OBSYNC_GITEE_TOKEN=<令牌>`。
 
@@ -483,6 +487,12 @@ and HEAD is what everyone else clones. The command stashes the working tree (unt
 files included), runs the suite on HEAD, then restores everything. It exists because of a
 real one: a commit shipped the tests and i18n keys but forgot `src/settingsTab.ts`, leaving
 three committed tests red on HEAD while everything stayed green locally.
+
+**It is also wired to `pre-push`** (`.githooks/pre-push`, enabled by `pnpm hooks:install`),
+so it runs before every push and blocks a red HEAD — which means "I forgot to run it" is
+covered too. Push rather than commit, because pushing is the moment others can see it and
+therefore when a red HEAD starts to hurt; and pushes are rare enough that the ~3 minutes
+are affordable. Skip it once with `git push --no-verify`.
 
 Architecture notes and a long list of field-tested pitfalls live in
 [`docs/HANDOVER.md`](docs/HANDOVER.md); the release checklist is in [`docs/RELEASE.md`](docs/RELEASE.md).

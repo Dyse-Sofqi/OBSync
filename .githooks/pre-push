@@ -1,0 +1,45 @@
+#!/bin/sh
+#
+# push 前在 **HEAD** 上跑一遍测试。
+#
+# ## 为什么挂在 push 而不是 commit
+#
+# - commit 是本地历史，随时能 `git reset`；**push 才是「别人能看到」的时刻** ——
+#   也正是「HEAD 是红的」真正有害的时刻（别人克隆下来跑测试会看到失败）。
+# - 每次提交都跑一遍要 3 分钟，不现实；push 的频率低得多。
+# - 它挡的是一类**静默**的错：改了代码却漏了 `git add`，于是 HEAD 上已有测试失败，
+#   而本地因为工作区是完整的、一直是绿的（2026-09-19 实测：一次提交漏了
+#   `src/settingsTab.ts`，HEAD 上三条已提交的用例红了，本地却全绿）。
+#
+# ## 跳过
+#
+#     git push --no-verify
+#
+# ## 启用 / 停用
+#
+#     pnpm hooks:install                      # git config core.hooksPath .githooks
+#     git config --unset core.hooksPath       # 停用
+#
+# 放在 `.githooks/` 而不是 `.git/hooks/`：后者不进版本控制，换台机器、重新克隆
+# 就没了 —— 而「防漏提交」这件事恰恰需要它一直在。
+
+# hook 由 git 用 sh 启动，PATH 不一定继承你终端里的那些。找不到 pnpm 时**放行**
+# 而不是拦下：一个装不上工具的环境不该把人锁在仓库外面。
+if ! command -v pnpm >/dev/null 2>&1; then
+    echo "pre-push 跳过：PATH 里找不到 pnpm。"
+    exit 0
+fi
+
+echo "pre-push：先在 HEAD 上跑一遍测试（约 3 分钟）…"
+echo "  跳过本次检查：git push --no-verify"
+echo
+
+if pnpm verify:head; then
+    exit 0
+fi
+
+echo
+echo "pre-push 已阻止本次推送：HEAD 上的测试没有全过。"
+echo "  最常见的原因：改了代码却漏了 git add —— HEAD 缺东西，而本地是绿的。"
+echo "  确要强推：git push --no-verify"
+exit 1
