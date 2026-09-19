@@ -79,6 +79,14 @@ Chinese-first UI with an equal English one.
 - **提交信息不用你填** —— 由设置里的**提交信息模板**自动生成（默认 `vault backup: {{date}}`，
   支持 `{{date}}` / `{{hostname}}` / `{{numFiles}}` / `{{files}}`）。全程没有输入框，
   点「提交」/「立即同步」都不会弹窗问你要备注
+- **仓库大小与待提交改动** —— 源码控制视图里显示两行：**仓库大小**（`.git` 对象库占用 +
+  对象数，`git count-objects`，只读本地）与**待提交改动**（有改动的文件大小之和）。
+  两者回答的是两个问题：「这个库有多大 / 推送要传多少」和「这次要传上去多少」。
+  读不到就写「读不到」，**不会编一个 0 B**（那会被当成空仓库）
+- **「与远端一致」是看得见的** —— 提交/同步结束且本地与远端完全一致（没有未提交改动、
+  不领先也不落后、无冲突）时，会有一条**醒目的提示**（✓ + 停留更久，并带上仓库大小）；
+  同时状态栏出现 `✓`，面板里那一行转成绿色。三处用的是**同一个判据**。
+  关掉「显示操作结果提示」的人看不到提示，但状态栏与面板仍然显示这个状态
 - **为什么「立即同步」里要有拉取** —— 因为 git 的 `push` 只能**快进**：远端存在你没有的提交时，
   推送会被**直接拒绝**（接受它就等于丢掉那些提交）。而这个插件的用途就是多设备同步，
   所以「提交 → 推送」在两台设备上会**稳定失败**，不是偶发失败。拉取排在提交**之后**，
@@ -318,6 +326,16 @@ Needs the system `git` binary, so it is **desktop-only** (Windows / macOS / Linu
 - **You never have to type a commit message** — it is generated from the **commit message template**
   in the settings (default `vault backup: {{date}}`, supporting `{{date}}`, `{{hostname}}`,
   `{{numFiles}}` and `{{files}}`). No dialog ever asks you for a message
+- **Repository size and pending changes** — the source-control view shows two rows: **repository
+  size** (the `.git` object store plus object count, via `git count-objects`, local-only) and
+  **pending changes** (the summed size of changed files). They answer different questions: "how big
+  is this vault / how much will a push transfer" and "how much goes up this time". When it cannot be
+  read it says so and **never invents a 0 B** (that would look like an empty repository)
+- **"In sync" is visible** — when a commit/sync finishes with the local branch fully matching the
+  remote (nothing uncommitted, neither ahead nor behind, no conflicts) you get a **prominent notice**
+  (✓, longer dwell, repository size included), the status bar shows `✓`, and that line in the panel
+  turns green. All three use the **same predicate**. With "show operation notices" turned off you
+  lose the notice, but the status bar and panel still show the state
 - **Why "Sync now" pulls** — because `git push` only fast-forwards: when the remote has commits you
   do not have, the push is **rejected outright** (accepting it would drop them). This plugin exists
   to sync a vault across devices, so "commit → push" **fails reliably** with two machines, not

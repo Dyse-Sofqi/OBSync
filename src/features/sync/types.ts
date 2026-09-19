@@ -41,6 +41,18 @@ export interface RepoStatus {
     behind: number | null;
 }
 
+/**
+ * 仓库对象库的体积（`git count-objects -v`）。
+ *
+ * `bytes` 是松散对象 + pack 的总和（KiB 换算而来）—— 这是仓库占用的绝大部分，
+ * 也是「推送要传多少」最接近的参考。对象数一起给出来，是因为同样大小的两个库
+ * 「12 MB / 30 个对象」和「12 MB / 12 万个对象」给人的判断完全不同。
+ */
+export interface RepoSize {
+    bytes: number;
+    objects: number;
+}
+
 /** 提交历史条目。 */
 export interface CommitInfo {
     hash: string;

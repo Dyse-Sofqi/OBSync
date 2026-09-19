@@ -2,9 +2,11 @@ import { ItemView, Setting, WorkspaceLeaf } from "obsidian";
 import type { LocaleStrings } from "../../../core/i18n";
 import { redactUrl } from "../../../host/redact";
 import { changeRows, type ChangeRow } from "../changeRows";
+import { formatBytes } from "../repoSize";
+import { isFullyInSync } from "../syncState";
 import type { SyncService } from "../syncService";
 import type { SimpleGitManager } from "../simpleGitManager";
-import type { CommitInfo, FileChangeStatus, RepoStatus } from "../types";
+import type { CommitInfo, FileChangeStatus, RepoSize, RepoStatus } from "../types";
 
 /**
  * 源码控制视图（侧边栏面板）。
@@ -174,13 +176,19 @@ export class SourceControlView extends ItemView {
                     .setButtonText(t.sync.actSync)
                     .setTooltip(t.sync.actSyncHint)
                     .setCta()
-                    .onClick(() => void this.run(() => this.deps.service.sync()))
+                    .onClick(() =>
+                        void this.run(() =>
+                            this.deps.service.sync({ announceInSync: true })
+                        )
+                    )
             )
             .addButton((button) =>
                 button
                     .setButtonText(t.sync.actCommit)
                     .setTooltip(t.sync.actCommitHint)
-                    .onClick(() => void this.run(() => this.deps.service.commitAll()))
+                    .onClick(() =>
+                        void this.run(() => this.deps.service.commitAll({ announce: true }))
+                    )
             )
             .addButton((button) =>
                 button
@@ -241,8 +249,32 @@ export class SourceControlView extends ItemView {
 
         contentEl.createEl("p", {
             text: remoteStateText(status, t),
-            cls: "obsync-remote-state",
+            cls: isFullyInSync(status)
+                ? "obsync-remote-state obsync-remote-synced"
+                : "obsync-remote-state",
         });
+
+        // 体积两行：仓库多大、这次要提交多少。两个问题不一样，所以分两行
+        // （见 repoSize.ts 的说明）。取不到就写「读不到」—— 不编一个 0 B，
+        // 那会被当成「空仓库」。
+        const repoSize = await this.safeRepoSize();
+        new Setting(contentEl)
+            .setName(t.sync.repoSizeLabel)
+            .setDesc(
+                repoSize
+                    ? t.sync.repoSizeDesc(formatBytes(repoSize.bytes), repoSize.objects)
+                    : t.sync.sizeUnknown
+            );
+
+        const pending = changeRows(status);
+        const pendingBytes = await this.deps.service.pendingChangeBytes(status);
+        new Setting(contentEl)
+            .setName(t.sync.pendingChangesLabel)
+            .setDesc(
+                pending.length === 0
+                    ? t.sync.nothingToCommit
+                    : t.sync.pendingChangesDesc(formatBytes(pendingBytes), pending.length)
+            );
     }
 
     // ── 冲突 ──────────────────────────────────────────────────────────────
@@ -467,6 +499,15 @@ export class SourceControlView extends ItemView {
     private async safeLog(): Promise<CommitInfo[] | undefined> {
         try {
             return await this.deps.git.log(HISTORY_LIMIT);
+        } catch {
+            return undefined;
+        }
+    }
+
+    /** 仓库体积；读不到时 undefined（面板显示「读不到」而不是编一个 0）。 */
+    private async safeRepoSize(): Promise<RepoSize | undefined> {
+        try {
+            return await this.deps.git.repoSize();
         } catch {
             return undefined;
         }

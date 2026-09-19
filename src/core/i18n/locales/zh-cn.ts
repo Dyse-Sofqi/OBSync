@@ -550,10 +550,11 @@ export const zhCN = {
         /**
          * 用户主动点「推送」而本地没有新提交时说的话。
          *
-         * 必须说出来：没有它，界面**一点变化都没有** —— 用户没法区分
-         * 「没东西可推」和「卡住了」（他报上来的原话就是「一直看到正在推送」）。
+         * **注意它不宣称「与远端一致」**：`ahead === 0` 只说明本地没有新提交，
+         * 完全可能还落后远端（别人推过）。真正「完全一致」有专门的
+         * `syncedInSync`（带 ✓ 的醒目提示）。
          */
-        pushUpToDate: "没有需要推送的内容，本地与远端一致。",
+        pushUpToDate: "没有需要推送的内容（本地没有新提交）。",
         /**
          * 同上，但工作区还有未提交的改动 —— 这才是最容易误会的那个状态：
          * 用户带着一堆改动点「推送」，等的是「我的改动上去了」，
@@ -561,11 +562,30 @@ export const zhCN = {
          */
         pushNeedsCommit: (count: number) =>
             `推送只发送**已提交**的内容，而你有 ${count} 个更改还没提交。` +
-            `请先点「提交全部」（或「立即同步」）。`,
+            `请先点「提交」（或「立即同步」）。`,
         /** 推送成功，但工作区还有未提交的改动。 */
         pushDonePending: (count: number) =>
             `已推送到远端。注意：另有 ${count} 个更改尚未提交，推送不会自动提交它们。`,
         pushDone: "已推送到远端。",
+        /** 「提交」之后：提交好了，但还没推上去。 */
+        commitsNotPushed: (count: number) =>
+            `已提交，另有 ${count} 个提交尚未推送（可点「推送」或「立即同步」）。`,
+        /**
+         * 「与远端完全一致」——**醒目**的那条（带 ✓、停留更久）。
+         *
+         * 用户的原话：「当提交结束与远端一致时，给出醒目的反馈」。
+         * 体积读得到就带上，读不到就只说状态（不编一个 0 B）。
+         */
+        syncedInSync: (size?: string) =>
+            size ? `已同步：本地与远端一致 · 仓库 ${size}` : "已同步：本地与远端一致",
+
+        // ── 体积 ──
+        repoSizeLabel: "仓库大小",
+        repoSizeDesc: (size: string, objects: number) => `${size}（${objects} 个对象）`,
+        pendingChangesLabel: "待提交改动",
+        pendingChangesDesc: (size: string, files: number) => `${size}（${files} 个文件）`,
+        /** 读不到体积时**不编数字** —— 0 B 会被当成「空仓库」。 */
+        sizeUnknown: "读不到",
         noRemote: "还没有配置远端仓库，请在设置中填写远端地址。",
         conflictDetected: (count: number) =>
             `检测到 ${count} 个冲突文件，已生成冲突清单，请手动处理后提交。`,

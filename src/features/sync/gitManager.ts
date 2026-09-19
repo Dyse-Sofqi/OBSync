@@ -1,4 +1,4 @@
-import type { CommitInfo, FileChange, FileChangeStatus, RepoStatus, SyncOutcome, SyncStrategy } from "./types";
+import type { CommitInfo, FileChange, FileChangeStatus, RepoSize, RepoStatus, SyncOutcome, SyncStrategy } from "./types";
 
 /**
  * Git 操作的抽象接口。
@@ -67,6 +67,14 @@ export interface GitManager {
 
     /** 远端 URL（origin）。没有远端时返回 undefined。 */
     getRemoteUrl(): Promise<string | undefined>;
+
+    /**
+     * 仓库对象库的体积与对象数（`git count-objects -v`）。
+     *
+     * **只读且只碰本地** —— 不连远端、不动任何引用。用它回答「我这个库有多大」。
+     * 解析不出体积时抛错（调用方显示「读不到」，而不是编一个 0）。
+     */
+    repoSize(): Promise<RepoSize>;
 
     /** 设置 / 修改 origin 的 URL。 */
     setRemoteUrl(url: string): Promise<void>;

@@ -8,7 +8,7 @@ import { StatusBar } from "../../src/features/sync/statusBar";
 import { SecretStore } from "../../src/core/secretStore";
 import type { GitManager } from "../../src/features/sync/gitManager";
 import { ConflictError, GitAuthError, PushRejectedError } from "../../src/features/sync/errors";
-import type { CommitInfo, FileChange, RepoStatus, SyncOutcome, SyncStrategy } from "../../src/features/sync/types";
+import type { CommitInfo, FileChange, RepoSize, RepoStatus, SyncOutcome, SyncStrategy } from "../../src/features/sync/types";
 import { createFakeApp, type FakeApp } from "../helpers/fakeApp";
 
 /**
@@ -27,6 +27,8 @@ class FakeGit implements GitManager {
     untracked: string[] = [];
     conflicted: string[] = [];
     ahead = 0;
+    /** 落后远端的提交数（`isFullyInSync` 也看它 —— 落后就不是「一致」）。 */
+    behind = 0;
     remoteUrl: string | undefined = "https://github.com/owner/repo.git";
 
     /** pull 的脚本：默认 up-to-date；设为 "conflict" 时抛 ConflictError；设为 "pulled" 时正常拉取。 */
@@ -56,8 +58,10 @@ class FakeGit implements GitManager {
             unstaged: this.unstaged.map((path) => ({ path, status: "modified" as const })),
             untracked: this.untracked.map((path) => ({ path, status: "untracked" as const })),
             conflicted: [...this.conflicted],
+            // 有远端（也就是有 upstream）时 ahead/behind 都是数字 —— 这正是
+            // 真实 `git status -b` 的语义；两者为 null 只表示「没有跟踪的远端分支」。
             ahead: this.remoteUrl ? this.ahead : null,
-            behind: null,
+            behind: this.remoteUrl ? this.behind : null,
         };
     }
     async stage(paths: string[]): Promise<void> {
@@ -77,6 +81,9 @@ class FakeGit implements GitManager {
         this.calls.push(`commit:${message}`);
         if (this.staged.length === 0) return false;
         this.staged = [];
+        // 真实提交会让本地领先远端一个提交（不模拟这一步的话，「提交后是否
+        // 与远端一致」永远算成一致 —— 而那正好是反的）。
+        this.ahead += 1;
         return true;
     }
     async pull(_strategy: SyncStrategy): Promise<SyncOutcome> {
@@ -99,6 +106,9 @@ class FakeGit implements GitManager {
     async push(): Promise<SyncOutcome> {
         this.calls.push("push");
         if (this.pushError) throw this.pushError;
+        // 真实推送成功 = 本地不再领先远端（不模拟这一步的话，「推送后是否
+        // 与远端一致」这类判断在测试里永远看不到一致的状态）。
+        this.ahead = 0;
         return { kind: "pushed" };
     }
     async fetch(): Promise<void> {
@@ -129,6 +139,17 @@ class FakeGit implements GitManager {
         return [];
     }
 
+    /** 仓库体积：给一个固定值，「与远端一致」的提示里会带上它。 */
+    sizeBytes = 12 * 1024 * 1024;
+    sizeObjects = 1234;
+    /** 设了就让它抛（验「读不到体积时不编数字」）。 */
+    sizeError: Error | undefined;
+
+    async repoSize(): Promise<RepoSize> {
+        if (this.sizeError) throw this.sizeError;
+        return { bytes: this.sizeBytes, objects: this.sizeObjects };
+    }
+
     /** testRemoteAccess 的行为脚本 —— 诊断用例靠它模拟各种失败。 */
     remoteAccessScript: "ok" | "auth-failed" | "unreachable" = "ok";
     remoteRefCount = 3;
@@ -152,6 +173,9 @@ function makeService(git: FakeGit, fake: FakeApp) {
     notifier.warn = (message: string) => notices.push(message);
     notifier.info = (message: string) => notices.push(message);
     notifier.success = (message: string) => notices.push(message);
+    // 「与远端一致」的醒目提示走单独一个方法（带对勾、停留更久）——
+    // 替身也要截住它，否则「说了什么」断言不到。
+    notifier.synced = (message: string) => notices.push(message);
 
     // 状态栏元素直接给个假 DOM 节点 —— StatusBar 只调 setText 与 addClass
     // （后者用于把条目贴到状态栏最左，见 statusBar.ts）。
@@ -777,7 +801,9 @@ describe("状态栏活动态：动作结束后必须恢复", () => {
  * 2. 用户带着未提交的改动点它时，必须**说清楚**（否则他会以为改动已经上去了）。
  */
 describe("推送：本地与远端一致时的反馈", () => {
-    it("用户主动推送时会说明「没有需要推送的内容」", async () => {
+    it("**已经与远端一致时，给的是那条醒目的「已同步」**（而不是「没有需要推送的内容」）", async () => {
+        // 用户的要求：「当提交结束与远端一致时，给出醒目的反馈」。
+        // 一致时那句「没有需要推送的内容」信息量太低 —— 它没说结论是「一切正常」。
         const git = new FakeGit();
         const fake = createFakeApp();
         const { service, notices } = makeService(git, fake);
@@ -786,7 +812,22 @@ describe("推送：本地与远端一致时的反馈", () => {
         const outcome = await service.push({ announceIfUpToDate: true });
 
         expect(outcome.kind).toBe("up-to-date");
+        expect(notices).toContain(zhCN.sync.syncedInSync("12 MB"));
+        expect(notices).not.toContain(zhCN.sync.pushUpToDate);
+    });
+
+    it("**落后远端时不说「与远端一致」**（原来那句话在这个状态下是假的）", async () => {
+        // ahead === 0 只说明本地没有新提交，完全可能还落后远端（别人推过）。
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service, notices } = makeService(git, fake);
+        git.ahead = 0;
+        git.behind = 3;
+
+        await service.push({ announceIfUpToDate: true });
+
         expect(notices).toContain(zhCN.sync.pushUpToDate);
+        expect(notices.some((message) => message.includes("与远端一致"))).toBe(false);
     });
 
     it("**有未提交的改动时，说清「推送只发送已提交的内容」并给出数量**", async () => {
@@ -834,15 +875,17 @@ describe("推送：本地与远端一致时的反馈", () => {
         expect(notices).not.toContain(zhCN.sync.pushDone);
     });
 
-    it("推送成功且工作区干净时，只说「已推送」", async () => {
+    it("推送成功且工作区干净时，同样给那条醒目的「已同步」", async () => {
         const git = new FakeGit();
         const fake = createFakeApp();
         const { service, notices } = makeService(git, fake);
         git.ahead = 2;
 
-        await service.push({ announceIfUpToDate: true });
+        const outcome = await service.push({ announceIfUpToDate: true });
 
-        expect(notices).toContain(zhCN.sync.pushDone);
+        expect(outcome.kind).toBe("pushed");
+        // 「已同步」比「已推送到远端」信息更全：它同时确认了没有遗留的改动。
+        expect(notices).toContain(zhCN.sync.syncedInSync("12 MB"));
     });
 
     it("**推送不会顺手提交** —— 有未提交改动时也只调 push", async () => {
@@ -896,6 +939,140 @@ describe("推送：本地与远端一致时的反馈", () => {
 
         expect(outcome.kind).toBe("pushed");
         expect(notices).not.toContain(zhCN.sync.pushUpToDate);
+    });
+});
+
+/**
+ * 「提交/同步结束且与远端一致」时的**醒目**反馈。
+ *
+ * 用户的要求：「当提交结束与远端一致时，给出醒目的反馈」。它走
+ * `Notifier.synced`（带对勾、停留更久），而不是一闪而过的普通提示；
+ * 判据是 `isFullyInSync`（干净 + 不领先 + 不落后 + 无冲突 + 有 upstream）。
+ */
+describe("与远端一致时的醒目反馈", () => {
+    it("立即同步（用户主动）结束且一致 → 说「已同步」并带上仓库体积", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service, notices } = makeService(git, fake);
+
+        await service.sync({ announceInSync: true });
+
+        expect(notices).toContain(zhCN.sync.syncedInSync("12 MB"));
+    });
+
+    it("**自动定时器不说**（每 N 分钟弹一次是噪音）", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service, notices } = makeService(git, fake);
+
+        await service.sync();
+
+        expect(notices).not.toContain(zhCN.sync.syncedInSync("12 MB"));
+    });
+
+    it("提交后有未推送的提交 → 说清「还没推上去」（不能说成已同步）", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service, notices } = makeService(git, fake);
+        git.unstaged = ["a.md"];
+
+        await service.commitAll({ announce: true });
+
+        expect(notices).toContain(zhCN.sync.commitsNotPushed(1));
+        expect(notices).not.toContain(zhCN.sync.syncedInSync("12 MB"));
+    });
+
+    it("没有更改可提交、而且本来就在远端一致 → 说「已同步」", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service, notices } = makeService(git, fake);
+
+        await service.commitAll({ announce: true });
+
+        expect(notices).toContain(zhCN.sync.syncedInSync("12 MB"));
+    });
+
+    it("**读不到体积时不编数字** —— 只说状态", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service, notices } = makeService(git, fake);
+        git.sizeError = new Error("count-objects failed");
+
+        await service.sync({ announceInSync: true });
+
+        expect(notices).toContain(zhCN.sync.syncedInSync(undefined));
+        expect(notices.some((message) => message.includes("0 B"))).toBe(false);
+    });
+
+    it("落后远端时不说「一致」（一致 = 不领先**且**不落后）", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service, notices } = makeService(git, fake);
+        git.behind = 2;
+
+        await service.sync({ announceInSync: true });
+
+        expect(notices.some((message) => message.includes("已同步"))).toBe(false);
+    });
+});
+
+describe("待提交改动的体积", () => {
+    it("把有改动的文件大小加起来（删除的文件算 0）", async () => {
+        const git = new FakeGit();
+        // 「a.md」在库里且内容是 5 个字节；「gone.md」已被删除（stat 取不到）
+        const fake = createFakeApp({ "a.md": "hello", "b.md": "world!" });
+        const { service } = makeService(git, fake);
+        const status = {
+            branch: "main",
+            staged: [],
+            unstaged: [
+                { path: "a.md", status: "modified" as const },
+                { path: "gone.md", status: "deleted" as const },
+            ],
+            untracked: [{ path: "b.md", status: "untracked" as const }],
+            conflicted: [],
+            ahead: 0,
+            behind: 0,
+        };
+
+        // 5 + 6 = 11（gone.md 取不到，按 0 计）
+        await expect(service.pendingChangeBytes(status)).resolves.toBe(11);
+    });
+
+    it("与视图列表同一套规则：去重、排除冲突文件", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp({ "a.md": "hello" });
+        const { service } = makeService(git, fake);
+        const status = {
+            branch: "main",
+            staged: [{ path: "a.md", status: "modified" as const }],
+            unstaged: [{ path: "a.md", status: "modified" as const }],
+            untracked: [],
+            conflicted: ["打架.md"],
+            ahead: 0,
+            behind: 0,
+        };
+
+        // a.md 只算一次；冲突文件在面板里是单独一栏，不算进「待提交改动」
+        await expect(service.pendingChangeBytes(status)).resolves.toBe(5);
+    });
+
+    it("没有改动时是 0", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service } = makeService(git, fake);
+
+        await expect(
+            service.pendingChangeBytes({
+                branch: "main",
+                staged: [],
+                unstaged: [],
+                untracked: [],
+                conflicted: [],
+                ahead: 0,
+                behind: 0,
+            })
+        ).resolves.toBe(0);
     });
 });
 

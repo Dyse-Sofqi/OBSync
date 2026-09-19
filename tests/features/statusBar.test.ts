@@ -162,6 +162,33 @@ describe("StatusBar 渲染", () => {
         expect(last()).toBe("OBSync: main ⚠ 2");
     });
 
+    it("**完全一致时给一个 ✓**（否则「同步完了吗」只能靠「没有标记」回答）", () => {
+        // 与同步结束时的醒目提示、面板里的绿色高亮是同一个判据
+        // （`isFullyInSync`）—— 三处不一致的话，用户会看到状态栏打了勾
+        // 而提示说没同步。
+        const { item, last } = createItem();
+        const bar = new StatusBar({ item, getT: () => zhCN });
+
+        bar.update(makeStatus({ branch: "main", ahead: 0, behind: 0 }));
+
+        expect(last()).toBe("OBSync: main ✓");
+    });
+
+    it("领先 / 落后 / 没有 upstream / 有改动时都**不**打勾", () => {
+        const cases: Array<[string, RepoStatus]> = [
+            ["领先", makeStatus({ branch: "main", ahead: 1, behind: 0 })],
+            ["落后", makeStatus({ branch: "main", ahead: 0, behind: 1 })],
+            ["没有 upstream", makeStatus({ branch: "main", ahead: null, behind: null })],
+            ["有改动", makeStatus({ branch: "main", ahead: 0, behind: 0, unstaged: [change("a.md")] })],
+        ];
+
+        for (const [label, value] of cases) {
+            const { item, last } = createItem();
+            new StatusBar({ item, getT: () => zhCN }).update(value);
+            expect(last(), label).not.toContain("✓");
+        }
+    });
+
     it("活动态盖过仓库状态，动作结束后能恢复", () => {
         const { item, last } = createItem();
         const bar = new StatusBar({ item, getT: () => zhCN });

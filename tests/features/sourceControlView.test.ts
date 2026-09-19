@@ -11,7 +11,7 @@ import { en } from "../../src/core/i18n/locales/en";
 import type { LocaleStrings } from "../../src/core/i18n";
 import type { SyncService } from "../../src/features/sync/syncService";
 import type { SimpleGitManager } from "../../src/features/sync/simpleGitManager";
-import type { CommitInfo, FileChange, RepoStatus } from "../../src/features/sync/types";
+import type { CommitInfo, FileChange, RepoSize, RepoStatus } from "../../src/features/sync/types";
 
 /**
  * 源码控制视图。
@@ -113,6 +113,10 @@ function harness(options: {
     commits?: CommitInfo[] | undefined;
     remoteUrl?: string | undefined;
     branches?: Array<{ name: string; current: boolean }>;
+    /** 仓库体积；显式给 null 表示「读不到」。 */
+    repoSize?: RepoSize | null;
+    /** 待提交改动的字节数。 */
+    pendingBytes?: number;
     t?: LocaleStrings;
 }): Harness {
     const calls: string[] = [];
@@ -166,12 +170,17 @@ function harness(options: {
         checkoutBranch: async (name: string) => {
             calls.push(`checkout:${name}`);
         },
+        pendingChangeBytes: async () => options.pendingBytes ?? 0,
     } as unknown as SyncService;
 
     const git = {
         listBranches: async () => options.branches ?? [{ name: "main", current: true }],
         getRemoteUrl: async () => options.remoteUrl ?? "https://github.com/owner/repo.git",
         log: async () => firstCommits,
+        repoSize: async () => {
+            if (options.repoSize === null) throw new Error("count-objects failed");
+            return options.repoSize ?? { bytes: 12 * 1024 * 1024, objects: 1234 };
+        },
     } as unknown as SimpleGitManager;
 
     const view = new SourceControlView(null as unknown as WorkspaceLeaf, {
@@ -313,6 +322,72 @@ describe("SourceControlView 渲染", () => {
 
         dropdown.select("dev");
         expect(h.calls).toContain("checkout:dev");
+    });
+
+    it("显示仓库体积与待提交改动的体积（两个问题不同，所以两行）", async () => {
+        const h = harness({
+            status: status({ unstaged: [change("a.md", "modified")] }),
+            repoSize: { bytes: 12 * 1024 * 1024, objects: 1234 },
+            pendingBytes: 1024 * 1024,
+        });
+
+        await h.view.onOpen();
+
+        expect(findSetting(zhCN.sync.repoSizeLabel).desc).toBe(
+            zhCN.sync.repoSizeDesc("12 MB", 1234)
+        );
+        expect(findSetting(zhCN.sync.pendingChangesLabel).desc).toBe(
+            zhCN.sync.pendingChangesDesc("1 MB", 1)
+        );
+    });
+
+    it("**读不到仓库体积时说「读不到」，不编一个 0 B**", async () => {
+        // 0 B 会被当成「空仓库」—— 那是个错误的结论，比「读不到」糟得多。
+        const h = harness({ repoSize: null });
+
+        await h.view.onOpen();
+
+        expect(findSetting(zhCN.sync.repoSizeLabel).desc).toBe(zhCN.sync.sizeUnknown);
+    });
+
+    it("没有未提交改动时，「待提交改动」写的是「没有需要提交的更改」", async () => {
+        const h = harness({ status: status({}) });
+
+        await h.view.onOpen();
+
+        expect(findSetting(zhCN.sync.pendingChangesLabel).desc).toBe(
+            zhCN.sync.nothingToCommit
+        );
+    });
+
+    it("与远端完全一致时，状态摘要那一行高亮（与状态栏的 ✓ 同一判据）", async () => {
+        const h = harness({ status: status({ ahead: 0, behind: 0 }) });
+
+        await h.view.onOpen();
+
+        const line = (
+            h.view.contentEl as unknown as {
+                children: Array<{ cls?: string; text?: string }>;
+            }
+        ).children.find((child) => (child.cls ?? "").includes("obsync-remote-state"));
+
+        expect(line?.cls).toContain("obsync-remote-synced");
+        expect(line?.text).toBe(zhCN.sync.inSyncWithRemote);
+    });
+
+    it("领先 / 落后远端时不高亮", async () => {
+        for (const partial of [{ ahead: 1, behind: 0 }, { ahead: 0, behind: 2 }]) {
+            const h = harness({ status: status(partial) });
+            await h.view.onOpen();
+
+            const line = (
+                h.view.contentEl as unknown as {
+                    children: Array<{ cls?: string }>;
+                }
+            ).children.find((child) => (child.cls ?? "").includes("obsync-remote-state"));
+
+            expect(line?.cls, JSON.stringify(partial)).not.toContain("obsync-remote-synced");
+        }
     });
 
     it("远端地址回显前脱敏（面板会把地址显示在屏幕上）", async () => {

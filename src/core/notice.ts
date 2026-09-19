@@ -28,6 +28,14 @@ import type { RepoRef } from "../host/types";
 const ERROR_NOTICE_TIMEOUT_MS = 8000;
 
 /**
+ * 「与远端一致」那条提示停留多久。
+ *
+ * 比普通提示长：它是**结论**（我做完了，现在一切正常），而普通提示多是过程性的。
+ * 与错误提示同为 8 秒，但语义相反 —— 一个是「出事了，看看」，一个是「成了」。
+ */
+const SYNCED_NOTICE_TIMEOUT_MS = 8000;
+
+/**
  * 错误翻译器：把某个功能模块自己的错误类型翻译成用户可读文案。
  *
  * 返回 `undefined` 表示「不是我认识的错误」，交给下一个翻译器或兜底逻辑。
@@ -120,6 +128,28 @@ export class Notifier {
     success(message: string): void {
         if (!this.showNotices) return;
         new Notice(message);
+    }
+
+    /**
+     * 「做完了，而且一切正常」的**醒目**提示（绿色对勾 + 停留更久）。
+     *
+     * 为什么不直接用 `success`：普通的成功提示一闪而过（默认 5 秒），而这一条
+     * 要回答的是用户主动发起的动作「到底成没成、现在是什么状态」——
+     * 用户的诉求原话是「当提交结束与远端一致时，给出醒目的反馈」。
+     * 所以它有三处不同：文案带 ✓、左侧一个绿色对勾元素、停留 8 秒。
+     *
+     * 仍然受「显示操作结果提示」设置控制（与 success/info 一致）——
+     * 状态栏的 ✓ 与面板里的绿色高亮是**不受设置影响**的那份反馈，
+     * 关掉提示的人也能看到「一致」这个状态。
+     */
+    synced(message: string): void {
+        if (!this.showNotices) return;
+        const notice = new Notice("", SYNCED_NOTICE_TIMEOUT_MS);
+        const el = notice.noticeEl;
+        el.empty();
+        el.addClass("obsync-notice-synced");
+        el.createSpan({ cls: "obsync-notice-check", text: "✓" });
+        el.createSpan({ text: message });
     }
 
     /** 一般信息。可被设置静音。 */

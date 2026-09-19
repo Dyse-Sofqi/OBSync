@@ -4,6 +4,8 @@ import type { LocaleStrings } from "../../core/i18n";
 import type { Notifier } from "../../core/notice";
 import { renderCommitMessage } from "./commitMessage";
 import { changeRows } from "./changeRows";
+import { formatBytes, sumFileBytes } from "./repoSize";
+import { isFullyInSync } from "./syncState";
 import type { GitManager } from "./gitManager";
 import { ConflictError, describeSyncError } from "./errors";
 import type { SecretStore } from "../../core/secretStore";
@@ -86,9 +88,9 @@ export class SyncService {
         });
     }
 
-    /** 动作结束后统一刷新状态栏。 */
-    private async refreshStatus(): Promise<void> {
-        await this.refresh();
+    /** 动作结束后统一刷新状态栏，并把新状态交给需要它的调用方。 */
+    private async refreshStatus(): Promise<RepoStatus | undefined> {
+        return this.refresh();
     }
 
     // ── 状态订阅（源码控制视图） ──────────────────────────────────────────
@@ -142,23 +144,38 @@ export class SyncService {
      *
      * 收在 `finally` 里，是因为**出错时更需要恢复**：失败会让用户盯着
      * 「正在推送…」等一个永远不会来的结果。
+     *
+     * `after` 是**成功之后**的收尾反馈（拿到刚刷新出来的状态）—— 失败时不调，
+     * 因为「与远端一致」这种话在出错后说出来只会让人困惑。
      */
     private async withActivity<T>(
         activity: StatusBarActivity,
-        run: () => Promise<T>
+        run: () => Promise<T>,
+        after?: (result: T, status: RepoStatus | undefined) => Promise<void>
     ): Promise<T> {
         this.statusBar.setActivity(activity);
         try {
-            return await run();
-        } finally {
+            const result = await run();
+            this.statusBar.setActivity("idle");
+            const status = await this.refreshStatus();
+            if (after) await after(result, status);
+            return result;
+        } catch (err) {
             this.statusBar.setActivity("idle");
             await this.refreshStatus();
+            throw err;
         }
     }
 
     /** 提交全部更改（暂存所有 + 提交）。没有更改时是静默的空操作。 */
-    async commitAll(): Promise<SyncOutcome> {
-        return this.enqueue(() => this.withActivity("committing", () => this.doCommitAll()));
+    async commitAll(options: { announce?: boolean } = {}): Promise<SyncOutcome> {
+        return this.enqueue(() =>
+            this.withActivity(
+                "committing",
+                () => this.doCommitAll(),
+                options.announce ? (_result, status) => this.announceAfterCommit(status) : undefined
+            )
+        );
     }
 
     /** 拉取。冲突时写指南文件并把 `ConflictError` 转成用户提示（不抛出）。 */
@@ -169,18 +186,21 @@ export class SyncService {
     /**
      * 推送。
      *
-     * **只推送已提交的内容** —— 它不会顺手提交（那是「立即同步」和「提交全部」的事）。
+     * **只推送已提交的内容** —— 它不会顺手提交（那是「立即同步」和「提交」的事）。
      * 这个区别必须让用户看得见：按钮上只有「推送」两个字，而用户带着一堆未提交的
      * 改动点它，预期多半是「我的改动该上去了」。
      *
      * `announceIfUpToDate` 只由**用户主动**的入口传 true（命令面板、视图里的按钮）。
-     * 自动推送定时器不传：本地没有新提交是常态，每 N 分钟弹一次
-     * 「没有需要推送的内容」纯属噪音。
+     * 自动推送定时器不传：本地没有新提交是常态，每 N 分钟弹一次纯属噪音。
      */
     async push(options: { announceIfUpToDate?: boolean } = {}): Promise<SyncOutcome> {
         return this.enqueue(() =>
-            this.withActivity("pushing", () =>
-                this.doPush(options.announceIfUpToDate === true)
+            this.withActivity(
+                "pushing",
+                () => this.doPush(),
+                options.announceIfUpToDate
+                    ? (outcome, status) => this.announceAfterPush(outcome, status)
+                    : undefined
             )
         );
     }
@@ -195,27 +215,141 @@ export class SyncService {
      * 「立即同步已经是万全之策」，而不想拉取的人用「提交」+「推送」两步即可。
      * 别再把它加回来 —— 除非有人真需要那个单步动作。
      */
-    async sync(): Promise<SyncOutcome> {
+    async sync(options: { announceInSync?: boolean } = {}): Promise<SyncOutcome> {
         return this.enqueue(() =>
-            this.withActivity("committing", async () => {
-                await this.doCommitAll();
-
-                // 每个阶段都更新活动状态 —— 只在开头设一次的话，
-                // 整条链路（含拉取、推送）都会显示「正在提交」，与实际不符。
-                this.statusBar.setActivity("pulling");
-                const pulled = await this.doPull();
-                if (pulled.kind === "conflict") return pulled;
-                if (pulled.kind === "pulled") {
-                    // 拉下来的文件可能又和本地未提交内容合并出新东西 ——
-                    // 二次提交后再推送，保证推上去的是完整状态。
-                    this.statusBar.setActivity("committing");
+            this.withActivity(
+                "committing",
+                async () => {
                     await this.doCommitAll();
-                }
 
-                this.statusBar.setActivity("pushing");
-                return await this.doPush();
-            })
+                    // 每个阶段都更新活动状态 —— 只在开头设一次的话，
+                    // 整条链路（含拉取、推送）都会显示「正在提交」，与实际不符。
+                    this.statusBar.setActivity("pulling");
+                    const pulled = await this.doPull();
+                    if (pulled.kind === "conflict") return pulled;
+                    if (pulled.kind === "pulled") {
+                        // 拉下来的文件可能又和本地未提交内容合并出新东西 ——
+                        // 二次提交后再推送，保证推上去的是完整状态。
+                        this.statusBar.setActivity("committing");
+                        await this.doCommitAll();
+                    }
+
+                    this.statusBar.setActivity("pushing");
+                    return await this.doPush();
+                },
+                options.announceInSync
+                    ? async (_outcome, status) => {
+                          await this.announceInSync(status);
+                      }
+                    : undefined
+            )
         );
+    }
+
+    // ── 结束反馈（只给用户主动发起的动作） ────────────────────────────────
+
+    /**
+     * 与远端完全一致时给一条**醒目**的成功提示，并返回是否说了话。
+     *
+     * 用户的原话：「当提交结束与远端一致时，给出醒目的反馈」。所以这条提示
+     * 走 `Notifier.synced`（带绿色对勾、停留更久），而不是一闪而过的普通提示。
+     *
+     * 判据在 `isFullyInSync` 里（只有一处定义，状态栏与面板共用同一个）。
+     */
+    private async announceInSync(status: RepoStatus | undefined): Promise<boolean> {
+        if (!isFullyInSync(status)) return false;
+        this.deps.notifier.synced(
+            this.deps.getT().sync.syncedInSync(await this.repoSizeText())
+        );
+        return true;
+    }
+
+    /** 仓库体积文案；读不到时返回 undefined（提示里就不提体积，不编数字）。 */
+    private async repoSizeText(): Promise<string | undefined> {
+        try {
+            return formatBytes((await this.git.repoSize()).bytes);
+        } catch (err) {
+            logger.debug("repository size unavailable", err);
+            return undefined;
+        }
+    }
+
+    /**
+     * 「提交」结束后的反馈。
+     *
+     * 三种情况各说各的：
+     * - **与远端完全一致** → 醒目提示（一切正常）；
+     * - **有提交但没推上去** → 明确说出来，否则用户以为提交完就上去了
+     *   （他此前的困惑就是这一类：「推送按钮是单纯的推送还是提交加推送」）；
+     * - 没有远端 / 没有 upstream → 什么都不说（`ahead` 为 null），
+     *   前面的警告或状态栏已经说明了。
+     */
+    private async announceAfterCommit(status: RepoStatus | undefined): Promise<void> {
+        if (await this.announceInSync(status)) return;
+        const ahead = status?.ahead;
+        if (ahead !== null && ahead !== undefined && ahead > 0) {
+            this.deps.notifier.info(this.deps.getT().sync.commitsNotPushed(ahead));
+        }
+    }
+
+    /**
+     * 「推送」结束后的反馈。
+     *
+     * 顺序有讲究：**先判「完全一致」**——那是最好的一句话，也是用户要的那条
+     * （推送成功且工作区干净时，说「已同步」比说「已推送到远端」信息更全：
+     * 它同时确认了没有遗留的改动）。
+     */
+    private async announceAfterPush(
+        outcome: SyncOutcome,
+        status: RepoStatus | undefined
+    ): Promise<void> {
+        const t = this.deps.getT();
+
+        // `ahead` 为 null = 没有跟踪的远端分支（可能是「没配远端」）——
+        // 那时无从谈「一致」，而 doPush 已经就「没有远端」给过警告了。
+        if (!status || status.ahead === null) return;
+
+        if (await this.announceInSync(status)) return;
+
+        const pending = changeRows(status).length;
+        if (outcome.kind === "pushed") {
+            // 推成功了，但本地还有没提交的东西 —— 不说的话用户会以为
+            // 「推送」把工作区一起带上去了。
+            this.deps.notifier.info(
+                pending > 0 ? t.sync.pushDonePending(pending) : t.sync.pushDone
+            );
+            return;
+        }
+
+        // 没有需要推送的内容：本地没有新提交。若工作区还有改动，说清「推送只发送
+        // 已提交的内容」并给出数量（不然听起来像「一切正常」，而真实情况是
+        // 「你的改动一个都没上去」）。
+        this.deps.notifier.info(
+            pending > 0 ? t.sync.pushNeedsCommit(pending) : t.sync.pushUpToDate
+        );
+    }
+
+    /**
+     * 本次待提交改动的体积（字节）。
+     *
+     * git 不直接给这个数，只能把有改动的文件大小加起来 —— 所以是**近似值**
+     * （实际传输量还看压缩率；删除的文件本来没有体积）。取不到大小的文件按 0 计。
+     *
+     * 公开是因为源码控制视图也要显示它，而它需要 `app.vault.adapter`（在 service 手上）。
+     */
+    async pendingChangeBytes(status: RepoStatus): Promise<number> {
+        const paths = changeRows(status).map((row) => row.path);
+        return sumFileBytes(paths, async (path) => {
+            try {
+                const stats = await this.deps.app.vault.adapter.stat(path);
+                return stats?.size;
+            } catch (err) {
+                // 文件可能刚被删掉（状态是几秒前的）—— 这只是个参考数字，
+                // 不该因为它失败而让面板画不出来。
+                logger.debug("could not stat changed file", err);
+                return undefined;
+            }
+        });
     }
 
     /** 放弃冲突现场（回到 pull 之前）。 */
@@ -498,47 +632,18 @@ export class SyncService {
      * 推送的**唯一**实现：`git push -u origin <当前分支>`。
      *
      * 里面**没有提交** —— 这个函数只把已经存在的提交送上去。用户带着未提交的改动
-     * 点「推送」时会得到一句说明（见下），而不是让他以为改动已经在远端了。
-     *
-     * `announceIfUpToDate` 只在用户主动点的时候为 true（自动定时器不传）。
+     * 点「推送」时会得到一句说明（见 `announceAfterPush`），而不是让他以为改动
+     * 已经在远端了。
      */
-    private async doPush(announceIfUpToDate = false): Promise<SyncOutcome> {
-        const t = this.deps.getT();
+    private async doPush(): Promise<SyncOutcome> {
         const status = await this.git.status();
         // 没有远端时 push 必然失败 —— 提前给出更有指导性的错误。
         if (!(await this.git.getRemoteUrl())) {
-            this.deps.notifier.warn(t.sync.noRemote);
+            this.deps.notifier.warn(this.deps.getT().sync.noRemote);
             return { kind: "up-to-date" };
         }
-
-        // 未提交的改动数：与源码控制视图里的列表**同一套规则**（去重、排除冲突），
-        // 否则提示里的数字会和用户在面板里看到的不一样。
-        const pending = changeRows(status).length;
-
-        if (status.ahead === 0) {
-            // 注意「没有远端」那条**不**走这里：它已经给过警告了，
-            // 再说一句「没有需要推送的内容」会让人以为远端一切正常。
-            if (announceIfUpToDate) {
-                // 这句话是这次用户提问的直接产物：「推送按钮是单纯的推送还是
-                // 提交全部加推送？」—— 他带着 12 个未提交的改动点了推送，
-                // 只被告知「没有需要推送的内容」，那听起来像「一切正常」，
-                // 而真实情况是「你的改动一个都没上去」。
-                this.deps.notifier.info(
-                    pending > 0 ? t.sync.pushNeedsCommit(pending) : t.sync.pushUpToDate
-                );
-            }
-            return { kind: "up-to-date" };
-        }
-
-        const outcome = await this.git.push();
-        if (announceIfUpToDate && pending > 0) {
-            // 推开成功了，但本地还有没提交的东西 —— 不说的话用户会以为
-            // 「推送」把工作区一起带上去了。
-            this.deps.notifier.info(t.sync.pushDonePending(pending));
-        } else if (announceIfUpToDate) {
-            this.deps.notifier.success(t.sync.pushDone);
-        }
-        return outcome;
+        if (status.ahead === 0) return { kind: "up-to-date" };
+        return this.git.push();
     }
 
     // ── 冲突指南 ──────────────────────────────────────────────────────────

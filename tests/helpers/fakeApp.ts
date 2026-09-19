@@ -169,6 +169,28 @@ export function createFakeApp(initialFiles: Record<string, string> = {}): FakeAp
             if (content === undefined) throw new Error(`ENOENT: ${path}`);
             return content;
         },
+        /**
+         * `stat` 是「待提交改动体积」那项功能要用的（`sumFileBytes`）。
+         *
+         * 必须真的返回**字节长度**：用空实现的话，那一项永远显示 `0 B`，
+         * 而测试仍然全绿 —— 这类「数字是假的」比报错更难发现。
+         */
+        async stat(path: string): Promise<{ size: number; mtime: number; ctime: number; type: string } | null> {
+            const content = files.get(path);
+            if (content === undefined) {
+                return folders.has(path)
+                    ? { size: 0, mtime: 0, ctime: 0, type: "folder" }
+                    : null;
+            }
+            // 用 UTF-8 字节数（与真实文件系统一致），不是字符数 ——
+            // 中文路径/内容的字节数和字符数不一样，用 length 会偏小。
+            return {
+                size: new TextEncoder().encode(content).length,
+                mtime: 0,
+                ctime: 0,
+                type: "file",
+            };
+        },
         async write(path: string, data: string): Promise<void> {
             if (state.failWriteOn?.(path)) {
                 throw new Error(`injected write failure: ${path}`);

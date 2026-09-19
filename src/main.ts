@@ -337,13 +337,21 @@ export default class ObsyncPlugin extends Plugin {
         this.addCommand({
             id: "sync-now",
             name: t.sync.cmdSync,
-            callback: () => void this.runSyncAction(() => this.sync!.service.sync()),
+            // `announceInSync`：用户主动发起的动作，结束且与远端一致时要说一声
+            // （醒目提示，见 SyncService.announceInSync）。自动定时器不传。
+            callback: () =>
+                void this.runSyncAction(() =>
+                    this.sync!.service.sync({ announceInSync: true })
+                ),
         });
 
         this.addCommand({
             id: "commit-all",
             name: t.sync.cmdCommit,
-            callback: () => void this.runSyncAction(() => this.sync!.service.commitAll()),
+            callback: () =>
+                void this.runSyncAction(() =>
+                    this.sync!.service.commitAll({ announce: true })
+                ),
         });
 
         this.addCommand({

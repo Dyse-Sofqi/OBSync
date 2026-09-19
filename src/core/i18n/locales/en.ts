@@ -452,13 +452,27 @@ export const en = {
         detachedHead:
             "HEAD is detached (not pointing at any branch), so pushing is not possible. Switch to a branch first.",
         nothingToCommit: "Nothing to commit.",
-        pushUpToDate: "Nothing to push — the local branch matches the remote.",
+        // Note: this does NOT claim "in sync with the remote" — ahead === 0 only
+        // means there is nothing new locally; you may still be behind.
+        pushUpToDate: "Nothing to push (no new local commits).",
         pushNeedsCommit: (count: number) =>
             `Push only sends **committed** content, and you have ${count} uncommitted change(s). ` +
-            `Use "Commit all" (or "Sync now") first.`,
+            `Use "Commit" (or "Sync now") first.`,
         pushDonePending: (count: number) =>
             `Pushed to the remote. Note: ${count} change(s) are still uncommitted — pushing does not commit them.`,
         pushDone: "Pushed to the remote.",
+        commitsNotPushed: (count: number) =>
+            `Committed; ${count} commit(s) are not pushed yet (use "Push" or "Sync now").`,
+        syncedInSync: (size?: string) =>
+            size
+                ? `In sync: the local branch matches the remote · repository ${size}`
+                : "In sync: the local branch matches the remote",
+
+        repoSizeLabel: "Repository size",
+        repoSizeDesc: (size: string, objects: number) => `${size} (${objects} object(s))`,
+        pendingChangesLabel: "Pending changes",
+        pendingChangesDesc: (size: string, files: number) => `${size} (${files} file(s))`,
+        sizeUnknown: "unavailable",
         noRemote: "No remote repository configured. Set the remote URL in settings.",
         conflictDetected: (count: number) =>
             `${count} conflicted file(s) detected. A conflict list has been written; resolve them and commit manually.`,

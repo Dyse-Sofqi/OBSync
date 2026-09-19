@@ -1,6 +1,7 @@
 import type { App } from "obsidian";
 import { logger } from "../../core/logger";
 import type { LocaleStrings } from "../../core/i18n";
+import { isFullyInSync } from "./syncState";
 import type { RepoStatus } from "./types";
 
 /**
@@ -128,6 +129,10 @@ export class StatusBar {
                 parts.push(`⚠ ${this.status.conflicted.length}`);
             } else if (dirty > 0) {
                 parts.push(`~${dirty}`);
+            } else if (isFullyInSync(this.status)) {
+                // 一切正常时给一个 ✓ —— 否则「同步完了吗」这个问题在状态栏上
+                // 只能靠「没有任何标记」来回答，而那和「还没看过」长得一样。
+                parts.push("✓");
             }
 
             this.item.setText(parts.length > 0 ? `OBSync: ${parts.join(" ")}` : "OBSync");

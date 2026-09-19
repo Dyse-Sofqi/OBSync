@@ -195,6 +195,31 @@
     overflow-wrap: anywhere;
 }
 
+/* 与远端完全一致时**反过来**：这一行是「一切正常」的结论，要看得见。
+   与状态栏那个 ✓、以及同步结束时的醒目提示是同一个判据（isFullyInSync）。 */
+.obsync-remote-synced {
+    color: var(--text-success, #4caf50);
+    font-weight: 600;
+    opacity: 1;
+}
+
+/* ── 「已同步」的醒目提示 ──
+   Notifier.synced 往提示条里放「对勾 + 文案」两个元素。提示条本身的背景/边框
+   由 Obsidian 主题决定，我们只让这一条**看起来是成功**（绿对勾 + 强调字重），
+   不去改主题的提示条外观。 */
+.obsync-notice-synced {
+    display: flex;
+    align-items: center;
+    gap: 0.4em;
+}
+
+.obsync-notice-check {
+    color: var(--text-success, #4caf50);
+    font-weight: 700;
+    font-size: 1.1em;
+    line-height: 1;
+}
+
 /* ── 最近提交 ── */
 
 .obsync-history {

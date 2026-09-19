@@ -17,11 +17,13 @@ import {
 import type {
     CommitInfo,
     FileChange,
+    RepoSize,
     RepoStatus,
     SyncOutcome,
     SyncStrategy,
 } from "./types";
 import { mapStatusChar } from "./gitManager";
+import { parseCountObjects } from "./repoSize";
 import type { FileStatusResult, StatusResult } from "simple-git";
 
 /**
@@ -466,6 +468,26 @@ export class SimpleGitManager implements GitManager {
 
     async getRemoteUrl(): Promise<string | undefined> {
         return this.rawGetRemoteUrl();
+    }
+
+    /**
+     * 仓库对象库的体积（`git count-objects -v`）。
+     *
+     * 只读、只碰本地：不连远端、不动引用、不写任何文件。解析交给
+     * `parseCountObjects`（纯函数，单独测）—— 这条命令的输出格式很稳定，
+     * 但认不出时**抛错**比返回一个 0 好：调用方会显示「读不到」，
+     * 而 0 B 会被当成「空仓库」。
+     */
+    async repoSize(): Promise<RepoSize> {
+        const git = await this.git();
+        const output = await wrap("reading repository size", () =>
+            git.raw(["count-objects", "-v"])
+        );
+        const size = parseCountObjects(output);
+        if (!size) {
+            throw new Error(`unrecognised count-objects output: ${output.trim().slice(0, 120)}`);
+        }
+        return size;
     }
 
     private async rawGetRemoteUrl(): Promise<string | undefined> {
