@@ -13,6 +13,8 @@ import {
     clearPendingRestart,
     describeSelfState,
     readPendingRestart,
+    resolveSelfRepo,
+    SELF_REPO,
 } from "../../src/features/installer/selfUpdate";
 import {
     createFakeApp,
@@ -174,6 +176,21 @@ describe("updateSelf（更新自己）", () => {
         expect(settings.installer.tracked).toEqual([]);
     });
 
+    it("来源取设置里的地址 —— 填了 Gitee 镜像就从 Gitee 拉，不碰官方仓库", async () => {
+        const fake = createFakeApp(installedObsync());
+        const { service, settings } = createService(fake);
+        settings.installer.selfUpdateSource = "https://gitee.com/sofqi/OBSync";
+        setupSelfRelease({ version: "0.2.0" });
+
+        await service.updateSelf("0.1.0");
+
+        expect(calls.some((url) => url.includes("gitee.com/api/v5/repos/sofqi/OBSync"))).toBe(true);
+        // 关键：**没有**任何请求打到官方仓库 —— 否则「我指定了来源」就是句空话
+        expect(
+            calls.some((url) => url.includes("api.github.com/repos/Dyse-Sofqi/OBSync"))
+        ).toBe(false);
+    });
+
     it("**可以重装同一个版本**（把一个坏掉的安装修回来是合理需求）", async () => {
         const fake = createFakeApp(installedObsync());
         const { service, settings } = createService(fake);
@@ -320,5 +337,41 @@ describe("describeSelfState（设置页那一行状态）", () => {
 
         expect(text).toBe(en.installer.selfPendingRestart("0.2.0"));
         expect(text).not.toMatch(/[\u4e00-\u9fff]/);
+    });
+});
+
+/**
+ * 「自身更新来源」的解析。
+ *
+ * 存在的理由：`github.com` 在本机会被时段性阻断，而 Gitee 镜像能直连。用户填一次就该
+ * 一直用它 —— 所以这是个**纯函数**，不需要探测，也不受「自动发现 Gitee 镜像」开关影响
+ * （那套是给用户装的插件用的：自动探测、只提议、要确认）。
+ */
+describe("resolveSelfRepo（自身更新来源）", () => {
+    it("留空 / 全空白 → 官方仓库", () => {
+        expect(resolveSelfRepo("")).toEqual(SELF_REPO);
+        expect(resolveSelfRepo("   ")).toEqual(SELF_REPO);
+    });
+
+    it("Gitee 完整地址 → host 是 gitee（**不是** GitHub 上的同名仓库）", () => {
+        expect(resolveSelfRepo("https://gitee.com/sofqi/OBSync")).toEqual({
+            host: "gitee",
+            owner: "sofqi",
+            repo: "OBSync",
+        });
+    });
+
+    it("简写按 GitHub 解释 —— 要 Gitee 就写全地址", () => {
+        expect(resolveSelfRepo("sofqi/OBSync")).toEqual({
+            host: "github",
+            owner: "sofqi",
+            repo: "OBSync",
+        });
+    });
+
+    it("地址非法时**抛错**，不静默回退到官方", () => {
+        // 静默回退会让用户以为在走镜像、实际走官方（或反过来）——
+        // 而「到底从哪更新」必须是他能确定的。错误由调用方按错误路径报出来。
+        expect(() => resolveSelfRepo("这不是一个仓库地址")).toThrow();
     });
 });

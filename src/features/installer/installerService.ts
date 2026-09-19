@@ -25,7 +25,7 @@ import {
     resolvePluginFolder,
     resolvePluginFolderInfo,
 } from "./pluginFolder";
-import { setPendingRestart, SELF_PLUGIN_ID, SELF_REPO } from "./selfUpdate";
+import { resolveSelfRepo, setPendingRestart, SELF_PLUGIN_ID } from "./selfUpdate";
 import {
     getActiveTheme,
     readThemeManifestVersion,
@@ -732,9 +732,9 @@ export class InstallerService {
      *
      * ## 两道守卫
      *
-     * - 远端 manifest 的 id 必须是 `obsync`。`SELF_REPO` 是个写死的常量，
-     *   万一指错地方，按错的 id 解析目录会把**别的插件**覆盖掉 —— 拦住，
-     *   而不是赌它没写错。
+     * - 远端 manifest 的 id 必须是 `obsync`。来源可能是写死的官方常量，也可能是
+     *   用户在设置里填的地址 —— 无论哪个，按错的 id 解析目录都会把**别的插件**
+     *   覆盖掉。拦住，而不是赌它没写错。
      * - **不允许降级**（远端比当前旧就中止）：「更新」不该把用户降回旧版本。
      *   版本相同则放行 —— 那是「重装修复」，把一个坏掉的安装修回来是合理需求。
      *
@@ -742,13 +742,22 @@ export class InstallerService {
      *   待重启期间磁盘上那份比运行中的新，拿它比就永远比不出「降级」。
      */
     async updateSelf(currentVersion: string): Promise<{ version: string; replaced: boolean }> {
+        // 来源由设置决定：空串 = 官方仓库，填了就用用户写下的那个**固定**来源
+        // （见 `resolveSelfRepo`）。
+        //
+        // **不做镜像发现**：那套是「自动探测 + 只提议、要用户确认」，每次都要探一遍；
+        // 而这里的来源是用户明确写下的，再探一次只会让「到底从哪更新」变得不确定。
+        const source = resolveSelfRepo(this.settings.installer.selfUpdateSource);
+
         const { files, manifest, repoRef } = await this.fetchItem(
             PLUGIN_SPEC,
-            formatRepoId(SELF_REPO),
+            formatRepoId(source),
             "latest",
-            // 不做镜像发现：那套是给「用户装的插件」找国内加速用的，
-            // 自己更新必须来自官方仓库。
-            { allowMirror: false }
+            // `formatRepoId` 只给 `owner/repo`（它**不带 host** —— 持久化与去重都用那个
+            // 形式），所以必须把 host 一并传下去。否则 `sofqi/OBSync` 会被当成 **GitHub**
+            // 上的同名仓库，用户填的 Gitee 地址就悄悄失效了 —— 而界面看起来一切正常
+            // （2026-09-20 被测试抓到，见 `selfUpdate.test.ts` 的「来源取设置里的地址」）。
+            { allowMirror: false, defaultHost: source.host }
         );
 
         if (manifest.id !== SELF_PLUGIN_ID) {

@@ -144,6 +144,19 @@ export const zhCN = {
             selfHeading: "OBSync 自身",
             selfDesc:
                 "更新 OBSync 自己。只写入新版本的文件，不重载正在运行的插件 —— 重启 Obsidian 后新版本才生效。",
+            /**
+             * 自身更新的来源。
+             *
+             * 文案必须点明两件事：**留空是什么**（否则用户不知道该不该填），
+             * 以及**填错了会怎样**（校验 id，所以不会误伤别的插件）——
+             * 后者是他敢不敢填的前提。
+             */
+            selfSource: "自身更新来源",
+            selfSourceDesc:
+                "留空 = 官方仓库（github.com/Dyse-Sofqi/OBSync）。国内访问 GitHub 慢或被阻断时，" +
+                "可以填 Gitee 镜像的地址 —— 填一次就一直用它，不再自动探测。" +
+                "更新前会校验远端 manifest 的 id 必须是 obsync，所以地址填错不会覆盖别的插件。",
+            selfSourcePlaceholder: "https://gitee.com/sofqi/OBSync",
             mirrorDiscovery: "自动发现 Gitee 镜像",
             mirrorDiscoveryDesc: "安装 GitHub 插件时，探测 Gitee 上的镜像仓库：同名仓库，以及你 Gitee 账号下的同名仓库（后者需要先填 Gitee 令牌）。命中则改用镜像源下载，国内速度更快。",
         },

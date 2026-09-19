@@ -551,6 +551,35 @@ src/
   也走 disable → enable，但那是官方支持的路径。本节的入口服务的是「没上架 /
   开发期」这段。
 
+### 更新来源可以指定（2026-09-20）
+
+`settings.installer.selfUpdateSource`（设置页「OBSync 自身」一节的输入框，默认空）：
+
+- **空串 → 官方 `SELF_REPO`**；
+- **填了 → `resolveSelfRepo()` 解析成 `RepoRef`**，检查与更新**都**用它
+  （`checkSelf` 与 `updateSelf` 同一来源 —— 否则会出现「检查说没有更新、更新却从另一个
+  仓库拉」这种自相矛盾）。
+
+它与「Gitee 镜像发现」是**两回事**，别混：那套是自动探测 + 只提议 + 要用户确认、每次都要
+探一遍；这里是用户写下的**固定来源**，填一次一直用，所以**不受 `discoverGiteeMirrors`
+开关影响**，也不需要探测。
+
+**为什么值得开这个口子**：`github.com` 在本机是时段性阻断的。没有这个字段时，想从镜像
+更新自己只能绕道「添加插件仓库」把自己加进跟踪列表 —— 而那条路会 `reloadPlugin`
+（disable → enable **正在运行的自己**，见本节开头）。给一个显式入口是在**降低**风险，
+不是增加：用户本来就能做到这件事，只是会以更危险的方式做。
+
+⚠ **踩过的坑（被测试抓到的）**：第一版写成
+`fetchItem(PLUGIN_SPEC, formatRepoId(source), …)`，而 **`formatRepoId` 只给
+`owner/repo`、不带 host** —— 于是 `sofqi/OBSync` 被 `resolveRepo` 按默认 host（github）
+重新解析，用户填的 Gitee 地址**悄悄失效**，而界面看起来一切正常。修法是把 host 一并
+传下去：`{ allowMirror: false, defaultHost: source.host }`（`installerService.ts` 第 528
+行有同样的先例）。
+
+**`selfUpdate.test.ts` 里那条「来源取设置里的地址」就是为此写的**：它断言「有请求打到
+gitee」**且**「**没有**任何请求打到官方仓库」—— 后者才是关键，只断言前者的话，
+一个「两边都请求一遍」的实现也能通过。
+
 ---
 
 ## 五点七、版本管理（回退到指定版本，2026-09-19）

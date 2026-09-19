@@ -56,6 +56,21 @@ export interface InstallerSettings {
      */
     pendingRestartVersion: string;
     /**
+     * **自身更新来源**（空串 = 官方仓库 `github.com/Dyse-Sofqi/OBSync`）。
+     *
+     * 为什么允许指定：`github.com` 在本机会被**时段性阻断**，而 Gitee 镜像能直连。
+     * 没有这个字段时，想从镜像更新自己只能绕道「添加插件仓库」把自己加进跟踪列表 ——
+     * 而那条路会 `reloadPlugin`（disable → enable **正在运行的自己**），
+     * 见 `selfUpdate.ts` 开头那段说明。给一个显式入口是在**降低**风险，不是增加。
+     *
+     * 它**不是**「镜像发现」那套（那套只提议、要用户确认、每次都要探测）：
+     * 这是用户写下的**固定来源**，填一次就一直用它，不再探测。
+     *
+     * 校验照旧：远端 manifest 的 `id` 必须是 `obsync`，否则拒绝写盘 ——
+     * 所以地址填错不会把别的插件覆盖掉。
+     */
+    selfUpdateSource: string;
+    /**
      * 已跟踪的插件与主题（同一个列表，靠 `kind` 判别）。
      *
      * 类型定义在 `features/installer/types.ts`（那里才是它的业务归属），
@@ -163,6 +178,7 @@ export const DEFAULT_SETTINGS: ObsyncSettings = {
         discoverGiteeMirrors: false,
         lastUpdateCheckAt: 0,
         pendingRestartVersion: "",
+        selfUpdateSource: "",
         tracked: [],
         availableUpdates: {},
         mirrorSuggestions: {},
@@ -295,6 +311,9 @@ export function normalizeSettings(loaded: unknown): ObsyncSettings {
     }
     if (typeof merged.installer.pendingRestartVersion !== "string") {
         merged.installer.pendingRestartVersion = "";
+    }
+    if (typeof merged.installer.selfUpdateSource !== "string") {
+        merged.installer.selfUpdateSource = "";
     }
     merged.sync.autoCommitMinutes = clamp(merged.sync.autoCommitMinutes, 0, 24 * 60);
     merged.sync.autoPushMinutes = clamp(merged.sync.autoPushMinutes, 0, 24 * 60);

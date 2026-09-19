@@ -1,6 +1,7 @@
 import type { LocaleStrings } from "../../core/i18n";
 import { logger } from "../../core/logger";
 import type { ObsyncSettings } from "../../core/settings";
+import { parseRepoRef } from "../../host/repoRef";
 import type { RepoRef } from "../../host/types";
 import type { SelfUpdateCheck } from "./types";
 
@@ -48,6 +49,28 @@ export const SELF_REPO: RepoRef = {
  * 以及自我更新时校验远端身份（不是这个 id 就不写盘）。
  */
 export const SELF_PLUGIN_ID = "obsync";
+
+/**
+ * 这次该从哪个仓库更新自己。
+ *
+ * `source` 是设置里的「自身更新来源」（`settings.installer.selfUpdateSource`）：
+ *
+ * - **空串 → 官方 `SELF_REPO`**（默认，也是唯一「永远可用」的那个）；
+ * - **填了 → 解析成 `RepoRef`**。写完整地址（`https://gitee.com/sofqi/OBSync`）或
+ *   `owner/repo` 简写都行；简写按 GitHub 解释，要 Gitee 就写全。
+ *
+ * 与「镜像发现」的区别很重要：那套是**自动探测 + 只提议、要用户确认**，每次都要
+ * 探一次；这里是用户**写死的固定来源**，填一次就一直用它 —— 所以它不需要探测，
+ * 也不该被 `discoverGiteeMirrors` 那个开关影响。
+ *
+ * 地址非法时 `parseRepoRef` 会抛 `InstallerError`，由调用方按错误路径报给用户。
+ * **刻意不静默回退到官方**：那会让用户以为自己在走镜像，实际走的是官方（或反过来）。
+ */
+export function resolveSelfRepo(source: string): RepoRef {
+    const trimmed = source.trim();
+    if (trimmed.length === 0) return SELF_REPO;
+    return parseRepoRef(trimmed, "github");
+}
 
 /** 上次会话下载了新版本但还没重启时，记录的是哪个版本（空串 = 没有）。 */
 export function readPendingRestart(settings: ObsyncSettings): string {

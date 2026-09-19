@@ -156,7 +156,9 @@ Chinese-first UI with an equal English one.
 - **长耗时动作看得见** —— 点下的那个图标按钮会变成转圈，同时一条带圆环的提示写明
   **在取哪个文件**（「Trefoil：正在获取 main.js…」）。国内网络下第一次访问 GitHub 的
   release 资产常常要等十几秒，没有这个反馈就分不清是在下载还是卡住了
-- **OBSync 自身更新** —— 设置页「OBSync 自身」一节：检查更新、更新（写新版本文件，重启 Obsidian 生效）
+- **OBSync 自身更新** —— 设置页「OBSync 自身」一节：检查更新、更新（写新版本文件，重启 Obsidian 生效）。
+  **可以指定更新来源**：留空走官方仓库；国内访问 GitHub 慢或被阻断时，填 Gitee 镜像的地址
+  （例如 `https://gitee.com/sofqi/OBSync`），填一次就一直用它，不再自动探测
 
 #### 🔐 平台与体验
 
@@ -208,7 +210,7 @@ Chinese-first UI with an equal English one.
 | 标签 | 内容 |
 | --- | --- |
 | 已跟踪插件与主题 | 已安装/添加的插件与主题列表，含更新徽标、检查、更新、版本管理（回退）、冻结、打开仓库、取消绑定（不删文件） |
-| 插件安装器 | 启用开关、更新检查时机、Gitee 镜像发现、**访问令牌**（GitHub / Gitee）、OBSync 自身更新 |
+| 插件安装器 | 启用开关、更新检查时机、Gitee 镜像发现、**访问令牌**（GitHub / Gitee）、OBSync 自身更新（含**更新来源**） |
 | 仓库同步 | 同步开关、自动提交/推送/拉取间隔、提交信息模板、整合策略、git 路径、**连接测试** |
 | 通用 | 界面语言、提示开关、调试日志、**状态栏占满整屏宽** |
 
@@ -433,7 +435,10 @@ Needs the system `git` binary, so it is **desktop-only** (Windows / macOS / Linu
 - **Long operations are visible** — the icon button you clicked turns into a spinner, and a notice with a
   spinner states **which file is being fetched** ("Trefoil: fetching main.js…"). The first request to GitHub's
   release asset CDN often takes 10+ seconds from mainland China; without this you cannot tell download from stall
-- **Self-update** — check and apply new versions of OBSync itself (restart required)
+- **Self-update** — check and apply new versions of OBSync itself (restart required). The
+  **source is configurable**: leave it empty for the official repository, or enter a mirror
+  (e.g. `https://gitee.com/sofqi/OBSync`) when GitHub is slow or blocked — it is then used
+  every time, with no automatic probing
 
 #### 🔐 Platform and UX
 

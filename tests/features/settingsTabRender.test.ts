@@ -99,6 +99,44 @@ describe("设置页 · 安装器页", () => {
         ]);
     });
 
+    it("「OBSync 自身」一节有「更新来源」输入框，初值来自设置", () => {
+        const fake = createFakeApp();
+        const tab = createTab(fake, {
+            installer: { selfUpdateSource: "https://gitee.com/sofqi/OBSync" },
+        });
+
+        renderInstallerPage(tab);
+
+        const row = createdSettings.find(
+            (setting) => setting.name === zhCN.settings.installer.selfSource
+        );
+        expect(row).toBeDefined();
+        expect(row?.desc).toBe(zhCN.settings.installer.selfSourceDesc);
+        expect(row?.texts[0]?.value).toBe("https://gitee.com/sofqi/OBSync");
+    });
+
+    it("改「更新来源」会**真的写进设置**（否则「填了没用」），并去掉首尾空白", async () => {
+        const fake = createFakeApp();
+        const tab = createTab(fake);
+        const plugin = (
+            tab as unknown as {
+                obsync: { settings: ReturnType<typeof normalizeSettings>; saved: number };
+            }
+        ).obsync;
+
+        renderInstallerPage(tab);
+        const row = createdSettings.find(
+            (setting) => setting.name === zhCN.settings.installer.selfSource
+        );
+
+        // 带首尾空白：从浏览器地址栏复制时经常带上，而它会让 parseRepoRef 解析失败
+        row!.texts[0]!.type("  https://gitee.com/sofqi/OBSync  ");
+        await Promise.resolve();
+
+        expect(plugin.settings.installer.selfUpdateSource).toBe("https://gitee.com/sofqi/OBSync");
+        expect(plugin.saved).toBe(1);
+    });
+
     it("状态行显示当前版本（还没查过时）", () => {
         const fake = createFakeApp();
         const tab = createTab(fake);

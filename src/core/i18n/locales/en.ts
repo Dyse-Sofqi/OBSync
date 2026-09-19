@@ -122,6 +122,14 @@ export const en = {
             selfHeading: "OBSync itself",
             selfDesc:
                 "Update OBSync itself. Only the new files are written; the running plugin is not reloaded — the new version takes effect after you restart Obsidian.",
+            /** Says what empty means, and what happens if the address is wrong — see the zh-cn note. */
+            selfSource: "Self-update source",
+            selfSourceDesc:
+                "Empty = the official repository (github.com/Dyse-Sofqi/OBSync). If GitHub is slow " +
+                "or blocked, enter a mirror address — it is then used every time, with no automatic " +
+                "probing. Before writing, the remote manifest's id must be obsync, so a wrong " +
+                "address cannot overwrite another plugin.",
+            selfSourcePlaceholder: "https://gitee.com/sofqi/OBSync",
             mirrorDiscovery: "Discover Gitee mirrors",
             mirrorDiscoveryDesc: "When installing a GitHub plugin, look for a Gitee mirror first: a same-named repository, or a same-named repository under your own Gitee account (the latter needs a Gitee token). Downloads then use the mirror — faster in mainland China.",
         },

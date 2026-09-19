@@ -11,7 +11,7 @@ import type {
     DiagnosticCheck,
     DiagnosticsReport,
 } from "./features/sync/types";
-import { describeSelfState } from "./features/installer/selfUpdate";
+import { describeSelfState, resolveSelfRepo } from "./features/installer/selfUpdate";
 import { shouldCheckOnSettingsOpen } from "./features/installer/updateChecker";
 import type { SelfUpdateCheck } from "./features/installer/types";
 import { renderTrackedItems } from "./features/installer/ui/TrackedItemsList";
@@ -585,7 +585,12 @@ export class ObsyncSettingsTab extends PluginSettingTab {
                 return button.setButtonText(t.installer.checkOne).onClick(async () => {
                     setBusy("checking");
                     try {
-                        check = await this.obsync.installer.checker.checkSelf(currentVersion);
+                        // 检查也要走**同一个来源** —— 否则会出现「检查说没有更新、
+                        // 更新却从另一个仓库拉」这种自相矛盾（`updateSelf` 内部同样读这个设置）。
+                        check = await this.obsync.installer.checker.checkSelf(
+                            currentVersion,
+                            resolveSelfRepo(this.obsync.settings.installer.selfUpdateSource)
+                        );
                     } finally {
                         setBusy(undefined);
                     }
@@ -618,6 +623,29 @@ export class ObsyncSettingsTab extends PluginSettingTab {
         // 状态行放在按钮行下方 —— 先渲染 Setting 再创建它，保证顺序。
         status = this.containerEl.createEl("p", { cls: "setting-item-description" });
         renderStatus();
+
+        /**
+         * 自身更新的**来源**。
+         *
+         * 放在按钮行下面而不是上面：它是「不常改、改了就一直生效」的配置，而上面那两个
+         * 按钮是每次发新版都要点的动作 —— 先把常用动作给出来。
+         *
+         * 留空 = 官方仓库（`selfUpdate.ts` 的 `SELF_REPO`）；填了就用它，**不再探测镜像**。
+         * 这与「Gitee 镜像发现」是两回事：那套是自动探测 + 只提议 + 要用户确认，每次都要
+         * 探一遍；这里是用户写下的固定来源。
+         */
+        new Setting(this.containerEl)
+            .setName(t.settings.installer.selfSource)
+            .setDesc(t.settings.installer.selfSourceDesc)
+            .addText((text) =>
+                text
+                    .setPlaceholder(t.settings.installer.selfSourcePlaceholder)
+                    .setValue(this.obsync.settings.installer.selfUpdateSource)
+                    .onChange(async (value) => {
+                        this.obsync.settings.installer.selfUpdateSource = value.trim();
+                        await this.commit();
+                    })
+            );
     }
 
     private async checkAllUpdates(options: { quietWhenNone?: boolean } = {}): Promise<void> {

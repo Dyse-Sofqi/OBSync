@@ -139,6 +139,12 @@ pnpm hooks:install  # 启用 .githooks/（把 verify:head 挂到 pre-push）
   回退分支形同虚设（2026-09-16 踩过，见 `HEAD_UNBORN_RE`）。
 
 ### host 层设计原则
+- **`formatRepoId(ref)` 只给 `owner/repo`，不带 host**（持久化与去重都用那个形式）。
+  所以**凡是要跨 host 传递的地方，必须把 host 单独带过去** —— 典型是
+  `fetchItem(spec, formatRepoId(ref), version, { defaultHost: ref.host })`，
+  否则 `gitee` 的坐标会被 `resolveRepo` 按默认 `"github"` 重新解析，**悄悄指向另一个仓库**
+  而界面毫无异常（2026-09-20 踩过：自身更新来源填 Gitee 镜像失效）。
+  先例：`installerService.ts` 里 `fetchItem(..., { defaultHost: tracked.host })`。
 - 平台差异**只允许出现在 `host/` 内部**。上层（安装器 / 同步）不得出现 `if (host === "gitee")`。
 - 鉴权注入是**接口方法**（`applyAuth`），不是共用工具函数 —— Gitee 用查询参数、GitHub 用请求头。
 - 状态码 → 错误类型的映射共用（`statusMapper.ts`），但**判定条件由各 host 提供**。
