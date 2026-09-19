@@ -341,6 +341,17 @@ export default class ObsyncPlugin extends Plugin {
         });
 
         this.addCommand({
+            id: "commit-push",
+            name: t.sync.cmdCommitPush,
+            // 与「立即同步」的区别只有「不拉取」—— 拉取会动工作区，
+            // 而有人就是不想让它动（见 SyncService.commitAndPush）。
+            callback: () =>
+                void this.runSyncAction(() =>
+                    this.sync!.service.commitAndPush({ announceIfUpToDate: true })
+                ),
+        });
+
+        this.addCommand({
             id: "commit-all",
             name: t.sync.cmdCommit,
             callback: () => void this.runSyncAction(() => this.sync!.service.commitAll()),

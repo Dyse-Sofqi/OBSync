@@ -76,6 +76,12 @@ Chinese-first UI with an equal English one.
   带着未提交的改动点它，改动一个字节都不会上去（这时它会明确告诉你还有几个更改没提交）。
   想把改动一起送上去，用「立即同步」（提交 → 拉取 → 推送）或先「提交全部更改」。
   「自动提交并同步」定时器走的也是「立即同步」那条完整链路
+- **提交并推送** —— 提交 → 推送，**不拉取**。与「立即同步」只差这一步，而这一步不是小事：
+  拉取**会动工作区**（可能合并、可能冲突）。适合「我确定远端没有别人的新东西，别来合并我的文件」；
+  代价是远端真有新提交时推送会被拒（这时它提示你先拉取再推送 —— 报错比悄悄合并安全）
+- **提交信息不用你填** —— 由设置里的**提交信息模板**自动生成（默认 `vault backup: {{date}}`，
+  支持 `{{date}}` / `{{hostname}}` / `{{numFiles}}` / `{{files}}`）。全程没有输入框，
+  点「提交全部」/「提交并推送」/「立即同步」都不会弹窗问你要备注
 - **初始化仓库** —— 顺便建一份 `.gitignore`（默认排除 `.obsidian/workspace.json` 这类
   **每台设备各自维护**的文件，同步它们只会制造冲突）。**已存在的 `.gitignore` 绝不覆盖**，
   另有「编辑 .gitignore」命令可以随时改它
@@ -165,8 +171,10 @@ Chinese-first UI with an equal English one.
 
 - 还不是 git 仓库的话，先执行 **OBSync：初始化仓库**（源码控制视图里也有这个按钮）
 - **OBSync：立即同步** —— 提交 → 拉取 → 推送，一条链走完
+- **OBSync：提交并推送** —— 提交 → 推送，不拉取（拉取会动工作区，见上）
 - 「提交全部」「推送」是**两个动作**，不是一个：提交只写本地仓库，推送只发送**已提交**的
-  内容。想一步到位就用「立即同步」
+  内容。想一步到位就用「立即同步」或「提交并推送」
+- 提交信息不用填：它在设置里配模板，每次自动生成
 - 也可以在源码控制视图里逐个文件操作（暂存 / 取消暂存、点开文件、看历史），
   或点侧边栏的状态栏条目把它打开
 - 想在浏览器里看某个文件：命令 **OBSync：在浏览器中打开当前文件**，或右键文件选「**在远端打开**」
@@ -303,6 +311,13 @@ Needs the system `git` binary, so it is **desktop-only** (Windows / macOS / Linu
   including how many changes are still uncommitted). To send your changes too, use "Sync now"
   (commit → pull → push) or "Commit all" first. The "auto commit and sync" timer runs that same
   full chain
+- **Commit and push** — commit → push, **without pulling**. That single difference matters: pulling
+  **touches your working tree** (it may merge, it may conflict). Use it when you know the remote has
+  nothing new and you do not want a merge. The trade-off: if the remote does have new commits the
+  push is rejected and it tells you to pull first — an error is safer than a silent merge
+- **You never have to type a commit message** — it is generated from the **commit message template**
+  in the settings (default `vault backup: {{date}}`, supporting `{{date}}`, `{{hostname}}`,
+  `{{numFiles}}` and `{{files}}`). No dialog ever asks you for a message
 - **Initialize repository** — also creates a `.gitignore` (excluding per-device files such as
   `.obsidian/workspace.json`, which only ever produce conflicts). An existing `.gitignore` is
   **never overwritten**, and there is an "Edit .gitignore" command

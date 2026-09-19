@@ -186,6 +186,34 @@ export class SyncService {
     }
 
     /**
+     * 提交并推送（**不拉取**）。
+     *
+     * 与 `sync()` 的区别只有一处：不先拉取。为什么两个都要有 ——
+     *
+     * - `sync()`（立即同步）会先拉取，代价是**动工作区**（可能产生合并、冲突）；
+     * - 这一条不动工作区，只是把本地改动变成提交再送上去。适合「我确定远端没有
+     *   别人的新东西，别来合并我的文件」这种场景。
+     *
+     * 代价也要说清楚：远端若真有新提交，推送会被拒（`PushRejectedError`），
+     * 用户看到的就是「先拉取再推送」那句提示 —— 这是**故意**的，报错比悄悄
+     * 合并安全。想避免这一步就用「立即同步」。
+     *
+     * 用户主动发起时 `announceIfUpToDate` 传 true（与 `push()` 同一套说法）。
+     */
+    async commitAndPush(
+        options: { announceIfUpToDate?: boolean } = {}
+    ): Promise<SyncOutcome> {
+        return this.enqueue(() =>
+            this.withActivity("committing", async () => {
+                await this.doCommitAll();
+                // 提交完就该推了 —— 活动态跟着换，否则整条链路都显示「正在提交」。
+                this.statusBar.setActivity("pushing");
+                return await this.doPush(options.announceIfUpToDate === true);
+            })
+        );
+    }
+
+    /**
      * 完整同步：提交 → 拉取 → 推送。
      *
      * 这是自动同步和「立即同步」命令共用的链路。拉取产生冲突时**必须停**：

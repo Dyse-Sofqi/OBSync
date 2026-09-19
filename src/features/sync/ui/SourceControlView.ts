@@ -155,16 +155,31 @@ export class SourceControlView extends ItemView {
                     .setIcon("refresh-cw")
                     .setTooltip(t.sync.actRefresh)
                     .onClick(() => void this.render())
-            )
+            );
+
+        // 「一步到位」的两个动作放在一行，因为它们是一类：都会替你提交。
+        // 区别只在**要不要先拉取**：立即同步会拉（避免推送被拒），
+        // 提交并推送不会 —— 拉取会动工作区，有些人就是不想让它动。
+        new Setting(contentEl)
             .addButton((button) =>
                 button
                     .setButtonText(t.sync.actSync)
                     .setTooltip(t.sync.actSyncHint)
                     .setCta()
                     .onClick(() => void this.run(() => this.deps.service.sync()))
+            )
+            .addButton((button) =>
+                button
+                    .setButtonText(t.sync.actCommitPush)
+                    .setTooltip(t.sync.actCommitPushHint)
+                    .onClick(() =>
+                        void this.run(() =>
+                            this.deps.service.commitAndPush({ announceIfUpToDate: true })
+                        )
+                    )
             );
 
-        // 三个动作的悬停提示不是装饰：**「提交全部」与「推送」是两件事**，
+        // 三个单一动作的悬停提示不是装饰：**「提交全部」与「推送」是两件事**，
         // 而按钮只有两个字。用户的原话就是「推送按钮是单纯的推送还是提交全部加推送，
         // 如果是后者应该写清楚」—— 他是问了才知道的，那就得让界面自己说清楚。
         new Setting(contentEl)

@@ -572,6 +572,7 @@ export const zhCN = {
 
         // 命令名（命令面板里显示）
         cmdSync: "OBSync：立即同步（提交 → 拉取 → 推送）",
+        cmdCommitPush: "OBSync：提交并推送（不拉取）",
         cmdCommit: "OBSync：提交全部更改",
         cmdPush: "OBSync：推送到远端",
         cmdPull: "OBSync：从远端拉取",
@@ -599,6 +600,14 @@ export const zhCN = {
         actSyncHint: "提交 → 拉取 → 推送，一条链走完",
         actCommitHint: "把所有更改提交到本地仓库（不推送）",
         actPushHint: "只推送**已提交**的内容，不会自动提交",
+        /**
+         * 「提交并推送」= 立即同步**去掉拉取**。
+         *
+         * 两个都要有：立即同步会拉取，而拉取会动工作区（可能合并、可能冲突）；
+         * 有些人就是不想让它动，只想把自己的改动变成提交再送上去。
+         */
+        actCommitPush: "提交并推送",
+        actCommitPushHint: "提交所有更改并推送到远端（**不拉取**，远端有新提交时会被拒）",
         actCommit: "提交全部",
         actPull: "拉取",
         actPush: "推送",

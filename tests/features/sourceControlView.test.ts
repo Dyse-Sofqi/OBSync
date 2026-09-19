@@ -147,6 +147,9 @@ function harness(options: {
         commitAll: async () => {
             calls.push("commitAll");
         },
+        commitAndPush: async () => {
+            calls.push("commitAndPush");
+        },
         pull: async () => {
             calls.push("pull");
         },
@@ -244,6 +247,26 @@ describe("SourceControlView 渲染", () => {
         expect(h.view.getDisplayText()).toBe(zhCN.sync.viewTitle);
         expect(zhCN.sync.viewTitle).not.toMatch(/^OBSync/);
         expect(zhCN.sync.cmdOpenView).toMatch(/^OBSync/);
+    });
+
+    it("「提交并推送」按钮走的是 commitAndPush（不是「立即同步」那条带拉取的链）", async () => {
+        // 两个按钮的区别只有「要不要先拉取」，而拉取**会动工作区** ——
+        // 点错了按钮的后果不是多一步，而是可能触发合并/冲突。
+        const h = harness({});
+        await h.view.onOpen();
+
+        const button = createdSettings
+            .flatMap((setting) => setting.buttons)
+            .find((item) => item.text === zhCN.sync.actCommitPush);
+
+        expect(button).toBeDefined();
+        expect(button!.tooltip).toBe(zhCN.sync.actCommitPushHint);
+
+        button!.click();
+        await Promise.resolve();
+
+        expect(h.calls).toContain("commitAndPush");
+        expect(h.calls).not.toContain("sync");
     });
 
     it("三个动作按钮的悬停提示说清了「提交」与「推送」的区别", async () => {
