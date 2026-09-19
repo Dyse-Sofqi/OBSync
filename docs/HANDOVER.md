@@ -903,6 +903,28 @@ simple-git 的 config 传递（不碰网络、不需令牌）。
     实测 Trefoil 正是这一种 —— GitHub owner 是 `Dyse-Sofqi`（Gitee 上没这个 owner），
     镜像是 `gitee.com/sofqi/Trefoil`。手填地址那条路
     （`InstallerService.setMirror`，见五点七节）就是为此存在的。
+21. **Gitee 的 release 资产对象没有 `id`**（2026-09-19 实测）—— 整个对象只有两个键：
+
+    ```json
+    { "browser_download_url": "https://gitee.com/sofqi/Trefoil/releases/download/1.0.3/main.js",
+      "name": "main.js" }
+    ```
+
+    连 `size` 都没有（`GiteeAsset` 的 `id?` / `size?` 就是照这个改的）。
+    实现里原来写的是 `id: String(asset.id)`：缺字段时得到字符串 `"undefined"`，
+    而它是**真值** —— 于是 `downloadAsset` 判定「这个资产有 id」，去拼私有仓库的附件
+    端点 `/releases/{id}/attach_files/undefined/download`，**三个资产全 404**。
+    症状只出现在**配了 Gitee 令牌**的人身上（那条分支要 token 才进）：控制台三条
+    「downloading asset … failed, falling back to the source file at 1.0.3」，
+    最后 `assetDownloadFailed: main.js` —— 而同一个地址**匿名**下载是 200、3 秒。
+
+    两处修复：① 缺字段就保持 `undefined`（`optionalId`）；② 附件端点失败时**回落**到
+    公开下载地址（带上同一个令牌）—— 令牌过期、企业版差异也都会以 404 的形式出现，
+    一条可选通道失败不该让整次安装失败（与 GitHub 的 raw → contents 回退同一个道理）。
+
+    > 教训：**测试 fixture 要按实测响应写，不能按类型写。** 这一组原来的 fixture 给资产
+    > 造了 `id: 991` 与 `size: 1234`，于是「字段缺席」这条路径从来没被测过 ——
+    > `GiteeHost.downloadAsset` 在那个 bug 存在期间**一个用例都没有**。
 
 ### 死代码清点（2026-09-16，2026-09-17 更新）
 

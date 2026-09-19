@@ -1,3 +1,4 @@
+import { logger } from "../core/logger";
 import { encodePathSegments, getHeader, httpJson, httpRequest } from "./http";
 import type {
     DownloadAssetOptions,
@@ -38,9 +39,16 @@ import type {
 const API_BASE = "https://gitee.com/api/v5";
 
 interface GiteeAsset {
-    id: number;
+    /**
+     * ⚠ **Gitee 实际上不给这个字段**（2026-09-19 实测）。
+     *
+     * 真实响应里的资产对象只有两个键：`{"browser_download_url": "...", "name": "main.js"}`。
+     * 类型上仍然保留可选，是因为别的接口/版本可能给 —— 而「可能没有」正是这里
+     * 必须按可选处理的原因（见 `mapRelease` 与 `downloadAsset`）。
+     */
+    id?: number;
     name: string;
-    size: number;
+    size?: number;
     browser_download_url: string;
 }
 
@@ -64,9 +72,25 @@ interface GiteeUser {
     login: string;
 }
 
+/**
+ * 平台没给这个 id 时**保持 `undefined`**。
+ *
+ * ⚠ 千万不要写成 `String(value)`：平台缺字段时那会得到字符串 `"undefined"`，
+ * 而它是**真值** —— 于是下游的 `if (token && release?.id && asset.id)` 判定
+ * 「这个资产有 id」，拿它去拼 Gitee 的私有仓库附件端点
+ * （`/releases/{id}/attach_files/undefined/download`），拿到 404。
+ *
+ * 这不是假想的：2026-09-19 实测，**配了 Gitee 令牌**的用户从这个地址装插件时
+ * 三个资产全部 404（同一地址匿名下载是 200），回退源码后又因为 `main.js` 是构建
+ * 产物而报「下载失败」。没配令牌的人反而不会踩到（那条分支要 token 才进）。
+ */
+function optionalId(value: number | undefined | null): string | undefined {
+    return value === undefined || value === null ? undefined : String(value);
+}
+
 function mapRelease(raw: GiteeRelease): Release {
     return {
-        id: String(raw.id),
+        id: optionalId(raw.id),
         tag: raw.tag_name,
         name: raw.name ?? raw.tag_name,
         prerelease: Boolean(raw.prerelease),
@@ -74,9 +98,10 @@ function mapRelease(raw: GiteeRelease): Release {
         publishedAt: raw.created_at,
         assets: (raw.assets ?? []).map(
             (asset): ReleaseAsset => ({
-                id: String(asset.id),
+                id: optionalId(asset.id),
                 name: asset.name,
-                size: asset.size,
+                // 缺 size 时用 0：它只用于展示，不参与任何判断。
+                size: asset.size ?? 0,
                 downloadUrl: asset.browser_download_url,
             })
         ),
@@ -253,19 +278,37 @@ export class GiteeHost implements IRepoHost {
         const { token, release } = options;
         const id = formatRepoId(ref);
 
-        // 私有仓库：browser_download_url 需要登录态，走 API 附件端点。
+        /**
+         * 私有仓库：`browser_download_url` 需要登录态，所以走 API 附件端点。
+         *
+         * 前提是**两边的 id 都真的拿到了**。`asset.id` 在 Gitee 上通常是缺的
+         * （见 `GiteeAsset` / `optionalId`）—— 那种情况下这里必须**跳过**，
+         * 直接用公开下载地址（带上令牌）。拿一个 `"undefined"` 去拼 URL 的后果
+         * 是实测过的 404，见 `optionalId` 的注释。
+         */
         if (token && release?.id && asset.id) {
-            const res = await httpRequest({
-                url: withToken(
-                    `${API_BASE}/repos/${id}/releases/${release.id}/attach_files/${asset.id}/download`,
-                    token
-                ),
-                headers: this.baseHeaders(),
-            });
-            if (res.status !== 200) {
-                this.fail(res.status, res.headers, res.text, ref, `downloading ${asset.name}`);
+            const url = withToken(
+                `${API_BASE}/repos/${id}/releases/${release.id}/attach_files/${asset.id}/download`,
+                token
+            );
+            try {
+                const res = await httpRequest({ url, headers: this.baseHeaders() });
+                if (res.status === 200) return res.arrayBuffer;
+                // 附件端点不通就**回落**到公开地址：Gitee 这条端点的行为实测不稳
+                // （资产 id 缺席、令牌过期、企业版与社区版差异都会变成 404），
+                // 而公开地址带上同一个令牌往往能成 —— 一次安装不该因为一条
+                // 可选通道失败而失败（与 GitHub 的 raw → contents 回退同一个道理）。
+                logger.warn(
+                    `the Gitee attachment endpoint failed for ${asset.name} of ${id} ` +
+                        `(HTTP ${res.status}) — falling back to its public download URL`
+                );
+            } catch (err) {
+                logger.warn(
+                    `the Gitee attachment endpoint is unreachable for ${asset.name} of ${id} ` +
+                        `— falling back to its public download URL`,
+                    err
+                );
             }
-            return res.arrayBuffer;
         }
 
         const res = await httpRequest({

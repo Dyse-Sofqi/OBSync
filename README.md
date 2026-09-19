@@ -217,6 +217,8 @@ OBSync 针对这两点做了扩展：
 - Gitee 的 git Basic 认证只接受 账号名 / `oauth2` / `gitee.com` 三种用户名，
   填 `git`（GitHub 的习惯写法）会被服务端直接拒绝
 - 大多数 Gitee 插件仓库**没有发布 release**，所以源码文件通道是必需的
+- Gitee 的 release 资产对象**没有 `id`**（只有 `name` 与 `browser_download_url`），
+  所以私有仓库的 API 附件端点只在真的拿到 id 时才用；否则回落到公开下载地址（带同一个令牌）
 
 ### 开发
 
