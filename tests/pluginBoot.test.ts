@@ -36,6 +36,7 @@ function createPlugin(fake: FakeApp): ObsyncPlugin & {
         views: string[];
         settingTabs: number;
         ribbonIcons: number;
+        ribbons: Array<{ icon: string; title: string; onClick: () => void }>;
         statusBarItems: number;
     };
 } {
@@ -113,10 +114,45 @@ describe("桌面端启动", () => {
         await plugin.onload();
 
         expect(plugin.registered.settingTabs).toBe(1);
-        expect(plugin.registered.ribbonIcons).toBe(1);
+        // 两个图标：一个开同步面板，一个开安装器。原来只有一个，而它打开的是
+        // 安装器 —— 于是「同步面板在哪」在界面上无解。
+        expect(plugin.registered.ribbonIcons).toBe(2);
         // 状态栏元素由主类创建后传给 sync 模块 —— 这条断言锁的就是当年踩的那个坑
         // （挂到 workspace 上而不是 Plugin 上）。
         expect(plugin.registered.statusBarItems).toBe(1);
+    });
+
+    it("侧栏的同步图标真的会请求打开源码控制视图", async () => {
+        const plugin = createPlugin(fake);
+        await plugin.onload();
+
+        const ribbons = plugin.registered.ribbons;
+        expect(ribbons.map((ribbon) => ribbon.icon)).toEqual(["git-fork", "download"]);
+
+        // 点第一个（同步）→ 让 Obsidian 在右侧边栏打开那个视图
+        ribbons[0]!.onClick();
+        await Promise.resolve();
+
+        expect(fake.workspaceLeaves.viewStates.map((state) => state.type)).toContain(
+            "obsync-sync-view"
+        );
+
+        // 再点一次不该开第二个（已经开着就把它显示出来）
+        ribbons[0]!.onClick();
+        await Promise.resolve();
+        expect(fake.workspaceLeaves.viewStates).toHaveLength(1);
+        expect(fake.workspaceLeaves.revealed).toHaveLength(2);
+    });
+
+    it("侧栏两个图标的悬停文案各自说清打开的是什么", async () => {
+        const plugin = createPlugin(fake);
+        await plugin.onload();
+
+        const ribbons = plugin.registered.ribbons;
+
+        expect(ribbons[0]!.title).toBe(plugin.t.plugin.ribbonSync);
+        expect(ribbons[1]!.title).toBe(plugin.t.plugin.ribbonInstaller);
+        expect(ribbons[0]!.title).not.toBe(ribbons[1]!.title);
     });
 
     it("注册了源码控制视图", async () => {

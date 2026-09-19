@@ -225,6 +225,8 @@ export class ButtonComponent {
     /** 真实组件暴露的元素，列表用它给「主操作」加类（见 TrackedItemsList）。 */
     readonly extraSettingsEl = document.createElement("div");
     cta = false;
+    /** 「危险动作」标记（真实的 ButtonComponent 会把它渲染成警示色）。 */
+    warning = false;
     tooltip = "";
     icon = "";
     clicks = 0;
@@ -248,6 +250,10 @@ export class ButtonComponent {
     }
     setCta(): this {
         this.cta = true;
+        return this;
+    }
+    setWarning(): this {
+        this.warning = true;
         return this;
     }
     onClick(callback: () => unknown): this {
@@ -428,6 +434,14 @@ export class Plugin {
         views: [] as string[],
         settingTabs: 0,
         ribbonIcons: 0,
+        /**
+         * 侧栏图标的内容。
+         *
+         * 只数个数是不够的 —— 「唯一那个图标打开的是安装器，于是没人找得到
+         * 同步面板」正是只数个数漏掉的问题。这里连图标名、悬停文案与点击
+         * 回调一起记下来，测试才能验「点这个图标会发生什么」。
+         */
+        ribbons: [] as Array<{ icon: string; title: string; onClick: () => void }>,
         statusBarItems: 0,
         events: 0,
     };
@@ -454,8 +468,9 @@ export class Plugin {
     addSettingTab(): void {
         this.registered.settingTabs += 1;
     }
-    addRibbonIcon(): HTMLElement {
+    addRibbonIcon(icon: string, title: string, onClick: () => void): HTMLElement {
         this.registered.ribbonIcons += 1;
+        this.registered.ribbons.push({ icon, title, onClick });
         return document.createElement("div");
     }
     addCommand(command: { id: string; name: string }): void {
@@ -481,6 +496,15 @@ export class Events {
 
 export class ItemView {
     containerEl = document.createElement("div");
+    /**
+     * 视图的内容区。
+     *
+     * 真实的 `ItemView` 有它（视图把整页内容挂在上面），替身缺了它，
+     * 任何「渲染一次看看画出了什么」的测试都跑不到 —— 一构造就 TypeError。
+     */
+    contentEl = document.createElement("div");
+    /** 真实的 `ItemView`（Component）能拿到 app；视图用它打开库里的文件。 */
+    app: unknown = {};
     constructor(public leaf: unknown) {}
     getViewType(): string {
         return "";

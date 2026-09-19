@@ -40,6 +40,8 @@ export interface SyncDeps {
     getT(): LocaleStrings;
     /** `plugin.addStatusBarItem()` —— 该 API 在 Plugin 类上，不在 workspace 上。 */
     createStatusBarItem(): HTMLElement;
+    /** 点击状态栏条目时打开源码控制视图（主类上的入口）。 */
+    openSourceControlView(): void;
 }
 
 export function createSyncModule(deps: SyncDeps): SyncModule | undefined {
@@ -59,7 +61,11 @@ export function createSyncModule(deps: SyncDeps): SyncModule | undefined {
     // 用户能看懂的话在这里按类型拼。注册后所有调用点自动生效，不会漏。
     deps.notifier.registerErrorTranslator(describeSyncError);
 
-    const statusBar = new StatusBar({ item: deps.createStatusBarItem(), getT: deps.getT });
+    const statusBar = new StatusBar({
+        item: deps.createStatusBarItem(),
+        getT: deps.getT,
+        onClick: () => deps.openSourceControlView(),
+    });
 
     const service = new SyncService(git, {
         app: deps.app,

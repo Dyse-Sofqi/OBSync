@@ -53,6 +53,8 @@ export class SyncService {
     private tail: Promise<unknown> = Promise.resolve();
     /** 排队中 + 执行中的任务数。 */
     private pending = 0;
+    /** 状态变化订阅者（源码控制视图）。见 `onStatusChange`。 */
+    private readonly statusListeners = new Set<(status: RepoStatus | undefined) => void>();
 
     constructor(
         readonly git: GitManager,
@@ -85,12 +87,38 @@ export class SyncService {
 
     /** 动作结束后统一刷新状态栏。 */
     private async refreshStatus(): Promise<void> {
-        try {
-            this.statusBar.update(await this.git.status());
-        } catch (err) {
-            // 刷不出状态（比如刚卸载 git）不影响动作本身的结论。
-            logger.debug("status refresh failed", err);
-            this.statusBar.update(undefined);
+        await this.refresh();
+    }
+
+    // ── 状态订阅（源码控制视图） ──────────────────────────────────────────
+
+    /**
+     * 状态变化订阅者。
+     *
+     * 视图是**常驻**的（打开后一直挂在侧边栏），而状态会在它背后变 ——
+     * 自动提交定时器到点、库外的编辑器改了文件、键盘上的命令面板触发了一次拉取。
+     * 只在 `onOpen` 时渲染一次的话，面板上的内容就停在打开它的那一刻，
+     * 用户看着「3 个文件有改动」而实际上已经提交完了。
+     *
+     * 参考项目 obsidian-git 靠一个固定间隔的定时器轮询状态；这里有真实的
+     * 变化点（每次动作结束、每次 `refresh`），所以改成推送式：谁刷新了状态，
+     * 谁负责通知订阅者。
+     */
+    onStatusChange(listener: (status: RepoStatus | undefined) => void): () => void {
+        this.statusListeners.add(listener);
+        return () => {
+            this.statusListeners.delete(listener);
+        };
+    }
+
+    private publish(status: RepoStatus | undefined): void {
+        for (const listener of this.statusListeners) {
+            try {
+                listener(status);
+            } catch (err) {
+                // 订阅者（界面）出错绝不能影响同步本身。
+                logger.debug("status listener failed", err);
+            }
         }
     }
 
@@ -175,6 +203,42 @@ export class SyncService {
         });
     }
 
+    // ── 源码控制视图里的逐文件操作（2026-09-19） ──────────────────────────
+
+    /**
+     * 暂存指定文件 / 取消暂存 / 切换分支。
+     *
+     * 三个都**必须走这条串行队列**，而不是让视图直接调 `git`：
+     * 队列的存在意义就是「所有动仓库的操作排成一队」—— 视图里点一下「暂存」
+     * 的同时自动提交定时器到点了，两条 git 命令并发写索引是真实会发生的
+     * （原本视图里的分支切换就是直接调 `git.checkout`，绕过了队列）。
+     *
+     * 只做一件事就返回，不额外发提示：逐文件操作的结果**看得见**
+     * （文件从「未暂存」挪到「已暂存」），再弹一条提示只是噪音。
+     */
+    async stageFiles(paths: string[]): Promise<void> {
+        if (paths.length === 0) return;
+        await this.enqueue(async () => {
+            await this.git.stage(paths);
+            await this.refreshStatus();
+        });
+    }
+
+    async unstageFiles(paths: string[]): Promise<void> {
+        if (paths.length === 0) return;
+        await this.enqueue(async () => {
+            await this.git.unstage(paths);
+            await this.refreshStatus();
+        });
+    }
+
+    async checkoutBranch(name: string): Promise<void> {
+        await this.enqueue(async () => {
+            await this.git.checkout(name);
+            await this.refreshStatus();
+        });
+    }
+
     /**
      * 初始化仓库，并在**没有** `.gitignore` 时建一个默认的。
      *
@@ -234,15 +298,17 @@ export class SyncService {
 
     /** 只刷新状态（不打扰任何 git 写操作）。 */
     async refresh(): Promise<RepoStatus | undefined> {
+        let status: RepoStatus | undefined;
         try {
-            const status = await this.git.status();
-            this.statusBar.update(status);
-            return status;
+            status = await this.git.status();
         } catch (err) {
+            // 刷不出状态（比如刚卸载 git）不影响动作本身的结论。
             logger.debug("status refresh failed", err);
-            this.statusBar.update(undefined);
-            return undefined;
+            status = undefined;
         }
+        this.statusBar.update(status);
+        this.publish(status);
+        return status;
     }
 
     /**

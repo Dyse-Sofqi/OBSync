@@ -64,6 +64,19 @@ export interface FakeApp {
     runLayoutReady(): void;
     /** 已注册的工作区事件监听器（如 file-menu），供断言与手动触发。 */
     workspaceEvents: Array<{ event: string; callback: (...args: never[]) => void }>;
+    /**
+     * 右侧边栏叶子的替身 —— 记录「有没有真的去打开那个视图」。
+     *
+     * `openSyncView()` 这条路（侧栏图标 / 状态栏 / 命令面板）只有**请求**
+     * Obsidian 打开视图这一步是可观察的，而这一步此前完全没被测过：
+     * 图标点开的是安装器、状态栏压根不可点，用户找不到同步面板。
+     */
+    workspaceLeaves: {
+        /** 收到的 setViewState 调用（打开视图）。 */
+        viewStates: Array<{ type: string }>;
+        /** revealLeaf 的入参。 */
+        revealed: unknown[];
+    };
 }
 
 const CONFIG_DIR = ".obsidian";
@@ -78,6 +91,16 @@ export function createFakeApp(initialFiles: Record<string, string> = {}): FakeAp
         `${CONFIG_DIR}/themes`,
     ]);
     const basePath = path.join(os.tmpdir(), "obsync-fake-vault");
+
+    const layoutReadyCallbacks: Array<() => void> = [];
+    const workspaceEvents: Array<{ event: string; callback: (...args: never[]) => void }> = [];
+    const workspaceLeaves: FakeApp["workspaceLeaves"] = { viewStates: [], revealed: [] };
+    /** 右侧边栏叶子的替身：只实现 `openSyncView()` 用到的那一个方法。 */
+    const rightLeaf = {
+        async setViewState(state: { type: string }): Promise<void> {
+            workspaceLeaves.viewStates.push(state);
+        },
+    };
 
     // 从初始文件反推目录结构。不做这一步的话 `exists(某目录)` 会返回 false，
     // 于是「目录是否已存在」的判断全部失真 —— 回滚逻辑会误判成"全新安装"，
@@ -114,6 +137,7 @@ export function createFakeApp(initialFiles: Record<string, string> = {}): FakeAp
         // 这两个在下面装配完 workspace 之后再赋真实实现（那时才有回调列表可触发）。
         runLayoutReady: () => undefined,
         workspaceEvents: [],
+        workspaceLeaves,
     };
 
     const adapter = {
@@ -176,9 +200,6 @@ export function createFakeApp(initialFiles: Record<string, string> = {}): FakeAp
         },
     };
 
-    const layoutReadyCallbacks: Array<() => void> = [];
-    const workspaceEvents: Array<{ event: string; callback: (...args: never[]) => void }> = [];
-
     state.app = {
         vault: { configDir: CONFIG_DIR, adapter },
         plugins: state.plugins,
@@ -211,9 +232,18 @@ export function createFakeApp(initialFiles: Record<string, string> = {}): FakeAp
                 layoutReadyCallbacks.push(callback);
             },
             getActiveFile: () => null,
-            getLeavesOfType: () => [],
-            getRightLeaf: () => null,
-            revealLeaf: () => undefined,
+            // 右侧叶子的替身做成有状态的：`setViewState` 之后再查
+            // `getLeavesOfType` 就能查到它 —— `openSyncView()` 是「先查、
+            // 没有就建、建完再 reveal」，一个恒返回空的替身会让这条路径
+            // 看起来"什么都没发生"。
+            getLeavesOfType: (type: string) =>
+                workspaceLeaves.viewStates.some((state) => state.type === type)
+                    ? [rightLeaf]
+                    : [],
+            getRightLeaf: () => rightLeaf,
+            revealLeaf: (leaf: unknown) => {
+                workspaceLeaves.revealed.push(leaf);
+            },
             on(event: string, callback: (...args: never[]) => void) {
                 workspaceEvents.push({ event, callback });
                 return { event, callback };

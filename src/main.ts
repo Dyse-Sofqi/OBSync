@@ -14,9 +14,11 @@ import { clearPendingRestart } from "./features/installer/selfUpdate";
 import type { InstallerHost } from "./features/installer/installerService";
 import type { SyncModule } from "./features/sync";
 import {
+    commitOnRemoteUrl,
     fileHistoryOnRemoteUrl,
     fileOnRemoteUrl,
     resolveRemoteContext,
+    type RemoteContext,
 } from "./features/sync/remoteLinks";
 import { EditRemoteModal } from "./features/sync/ui/EditRemoteModal";
 import { SourceControlView, SYNC_VIEW_TYPE } from "./features/sync/ui/SourceControlView";
@@ -108,6 +110,8 @@ export default class ObsyncPlugin extends Plugin {
                 getSettings: () => this.settings,
                 getT: () => this.translations,
                 createStatusBarItem: () => this.addStatusBarItem(),
+                // 状态栏条目点开的就是这个面板 —— 它是屏幕上唯一常驻的同步入口。
+                openSourceControlView: () => void this.openSyncView(),
             });
         }
 
@@ -116,7 +120,15 @@ export default class ObsyncPlugin extends Plugin {
         this.installer = createInstallerModule(this.createInstallerHost(), this.app);
         this.registerInstallerCommands();
 
-        this.addRibbonIcon("git-fork", this.t.plugin.ribbonTooltip, () => {
+        // 侧栏图标：**两个**。原来只有一个，而它打开的是安装器 —— 于是想找
+        // 同步详情的人点开看到一个装插件的弹窗，找不到「同步面板在哪」。
+        // 现在同步那个图标（与 obsidian-git 的位置一致）打开源码控制视图。
+        if (this.sync) {
+            this.addRibbonIcon("git-fork", this.t.plugin.ribbonSync, () => {
+                void this.openSyncView();
+            });
+        }
+        this.addRibbonIcon("download", this.t.plugin.ribbonInstaller, () => {
             this.installer.openAddRepoModal();
         });
 
@@ -128,13 +140,17 @@ export default class ObsyncPlugin extends Plugin {
             this.registerView(
                 SYNC_VIEW_TYPE,
                 (leaf: WorkspaceLeaf) =>
-                    new SourceControlView(
-                        leaf,
-                        sync.service,
-                        sync.git,
-                        this.t,
-                        () => this.editRemote()
-                    )
+                    new SourceControlView(leaf, {
+                        service: sync.service,
+                        git: sync.git,
+                        // `getT` 而不是 `this.t`：视图是常驻的，快照文案会让它
+                        // 切换语言后一直显示旧语言（见视图的 deps 注释）。
+                        getT: () => this.translations,
+                        onEditRemote: () => this.editRemote(),
+                        onInitRepo: () => void this.initRepo(),
+                        onOpenFileOnRemote: (path) => void this.openFileOnRemote(path),
+                        onOpenCommitOnRemote: (hash) => void this.openCommitOnRemote(hash),
+                    })
             );
         }
         this.registerSyncCommands();
@@ -369,7 +385,9 @@ export default class ObsyncPlugin extends Plugin {
 
         this.addCommand({
             id: "open-source-control-view",
-            name: t.sync.viewTitle,
+            // 命令名用 `cmdOpenView` 而不是 `viewTitle`：命令面板里要能搜到，
+            // 所以必须以 `OBSync` 开头（有测试钉着），而面板标题不该带前缀。
+            name: t.sync.cmdOpenView,
             callback: () => void this.openSyncView(),
         });
 
@@ -416,14 +434,18 @@ export default class ObsyncPlugin extends Plugin {
     }
 
     /**
-     * 打开文件在远端的网页地址。
+     * 打开某个东西（文件 / 提交）在远端的网页地址。
      *
      * 拼不出链接时给出可行动的提示，而不是打开一个必然 404 的地址 ——
      * 拿不到远端、远端不是 GitHub/Gitee、仓库还没有提交，都会走到这里。
+     *
+     * `build` 收的是「怎么把这个东西拼成 URL」的函数，所以文件与提交共用
+     * 这一条链路（早先这里写死了 `typeof fileOnRemoteUrl`，加提交时才发现
+     * 参数类型把它挡住了）。
      */
     private async openRemoteUrl(
-        vaultPath: string,
-        build: typeof fileOnRemoteUrl
+        target: string,
+        build: (context: RemoteContext, target: string) => string
     ): Promise<void> {
         const git = this.sync?.git;
         if (!git) return;
@@ -434,7 +456,7 @@ export default class ObsyncPlugin extends Plugin {
                 this.notifier.warn(this.t.sync.remoteLinkUnavailable);
                 return;
             }
-            window.open(build(context, vaultPath), "_blank");
+            window.open(build(context, target), "_blank");
         } catch (err) {
             this.notifier.reportError(err, this.t.sync.remoteLinkUnavailable);
         }
@@ -446,6 +468,11 @@ export default class ObsyncPlugin extends Plugin {
 
     private async openFileHistoryOnRemote(vaultPath: string): Promise<void> {
         await this.openRemoteUrl(vaultPath, fileHistoryOnRemoteUrl);
+    }
+
+    /** 源码控制视图里点某条提交：在远端网页上看它。 */
+    private async openCommitOnRemote(hash: string): Promise<void> {
+        await this.openRemoteUrl(hash, commitOnRemoteUrl);
     }
 
     /** 同步动作的统一错误出口。sync 层的错误类型都带用户可读文案，直接展示。 */

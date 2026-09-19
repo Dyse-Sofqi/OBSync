@@ -124,18 +124,94 @@
     word-break: break-all;
 }
 
-/* 源码控制视图的变更列表 */
-.obsync-changes {
-    margin: 0.5em 0;
-    padding-left: 1.2em;
+/* ── 源码控制视图（侧边栏面板） ──────────────────────────────────────────
+ *
+ * 面板很窄（侧边栏宽度），所以每一处都在「信息够用」和「一行放得下」之间取舍：
+ * 文件行用 `Setting` 渲染，名字区是「状态位 + 路径」，控件在右侧。
+ */
+
+/* 不是仓库时的空状态（含「初始化仓库」按钮） */
+.obsync-view-empty {
+    margin-top: 0.5em;
 }
 
-.obsync-changes li {
-    line-height: 1.6;
+/* 文件行：`Setting` 默认的上下内边距在密集列表里太空，收紧一些。
+   最后一行去掉下边框 —— 列表结束时那条线看起来像还有内容。 */
+.obsync-change-list .obsync-change-row {
+    padding: 0.15em 0;
+    border-top: none;
 }
 
-.obsync-changes .obsync-conflict {
+.obsync-change-row .setting-item-info {
+    /* 长路径要能换行，而不是把右侧按钮挤出面板 */
+    overflow-wrap: anywhere;
+}
+
+/* 状态位（A / M / D / R）：等宽 + 定宽，让同一列的文件名对齐 ——
+   扫一眼就能看出「哪些是新增、哪些是改动」。 */
+.obsync-change-mark {
+    display: inline-block;
+    min-width: 1.2em;
+    font-family: var(--font-monospace);
+    font-weight: 600;
+    opacity: 0.75;
+}
+
+/* 文件名可点开（点击打开对应笔记），所以给链接的手感 */
+.obsync-change-path {
+    cursor: pointer;
+}
+
+.obsync-change-path:hover {
+    color: var(--text-accent);
+    text-decoration: underline;
+}
+
+/* 冲突行整行标红：它与「有改动」在心理上是两件事 ——
+   一个是待办，一个是**需要人做决定**。 */
+.obsync-conflict .setting-item-name,
+.obsync-conflict .obsync-change-mark {
     color: var(--text-error, #e05252);
+}
+
+/* 「领先/落后远端」那一行：次要信息，弱一档 */
+.obsync-remote-state {
+    font-size: var(--font-ui-smaller, 0.85em);
+    opacity: 0.7;
+    margin: 0.2em 0 0.6em;
+    overflow-wrap: anywhere;
+}
+
+/* ── 最近提交 ── */
+
+.obsync-history {
+    margin-bottom: 0.5em;
+}
+
+.obsync-commit {
+    display: flex;
+    flex-direction: column;
+    padding: 0.25em 0;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.obsync-commit-hash {
+    font-family: var(--font-monospace);
+    font-size: var(--font-ui-smaller, 0.85em);
+    color: var(--text-accent);
+    cursor: pointer;
+    /* 只有 7 位，宽度固定，点起来不至于太窄 */
+    align-self: flex-start;
+}
+
+.obsync-commit-message {
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
+.obsync-commit-meta {
+    font-size: var(--font-ui-smaller, 0.85em);
+    opacity: 0.6;
 }
 
 /* ── 提示列表（社区插件浏览 / 版本选择） ──────────────────────────────────
@@ -354,6 +430,16 @@
        靠的是「auto 外边距先于 justify-content 分配空间」，所以主题把
        justify-content 改成 flex-start / space-between 也照样成立。 */
     margin-right: auto;
+}
+
+/* 条目可点（点开源码控制视图）—— 给指针与悬停反馈，
+   否则它看起来和旁边那些不可点的条目一模一样。 */
+.obsync-status-bar-clickable {
+    cursor: pointer;
+}
+
+.obsync-status-bar-clickable:hover {
+    color: var(--text-accent);
 }
 
 /* ── 疑似镜像的确认弹窗 ─────────────────────────────────────────────────── */

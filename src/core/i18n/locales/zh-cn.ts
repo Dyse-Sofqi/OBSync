@@ -17,7 +17,16 @@ const mirrorCandidatePrefix = "疑似镜像：";
 export const zhCN = {
     plugin: {
         name: "OBSync",
-        ribbonTooltip: "OBSync：同步笔记仓库 / 安装插件",
+        /**
+         * 侧边栏图标（ribbon）的悬停文案。
+         *
+         * 拆成两条是因为插件现在有**两个** ribbon：一个打开同步详情视图
+         * （与 git 插件一样），一个打开安装器。原来那句「同步笔记仓库 / 安装插件」
+         * 是给唯一一个图标的，而那个图标打开的是安装器 —— 想找同步视图的人
+         * 会点它、然后看到一个装插件的弹窗。
+         */
+        ribbonSync: "OBSync：打开同步详情（源码控制）",
+        ribbonInstaller: "OBSync：安装社区插件",
     },
 
     common: {
@@ -505,7 +514,14 @@ export const zhCN = {
     },
 
     sync: {
-        viewTitle: "OBSync",
+        /**
+         * 侧边栏视图的名字。
+         *
+         * 原来这里写的是「OBSync」——于是视图标题、页内标题、以及**打开它的那条
+         * 命令名**全都是「OBSync」：命令面板里搜「同步」搜不到它，也没人知道
+         * 它是个什么面板。改成与 README 一致的说法。
+         */
+        viewTitle: "源码控制",
         statusPulling: "正在拉取…",
         statusPushing: "正在推送…",
         statusCommitting: "正在提交…",
@@ -550,6 +566,40 @@ export const zhCN = {
         actPush: "推送",
         actEditRemote: "编辑远端…",
         branchLabel: "分支",
+
+        /**
+         * ── 侧边栏详情面板（2026-09-19）
+         *
+         * 视图从「一个标题 + 四个按钮」扩成 git 插件那样的面板时新增的一组文案。
+         * `cmdOpenView` 与 `viewTitle` **必须是两条**：命令名要以 `OBSync` 开头
+         * 才能在命令面板里被搜到（有测试钉着），而面板标题不该带这个前缀。
+         */
+        cmdOpenView: "OBSync：打开源码控制面板",
+        statusBarHint: "点击打开源码控制面板",
+        actRefresh: "刷新",
+        actInit: "初始化仓库",
+        actStage: "暂存此文件",
+        actUnstage: "取消暂存此文件",
+        actStageAll: "全部暂存",
+        actUnstageAll: "全部取消暂存",
+        actOpenFile: "打开此文件",
+        actOpenFileOnRemote: "在远端打开此文件",
+        actAbortMerge: "放弃本次合并",
+        sectionStaged: (count: number) => `已暂存的更改（${count}）`,
+        sectionChanges: (count: number) => `更改（${count}）`,
+        sectionConflicts: (count: number) => `冲突（${count}）`,
+        sectionHistory: "最近提交",
+        historyEmpty: "还没有提交。",
+        historyFailed: "无法读取提交历史。",
+        commitOnRemote: "在远端查看此提交",
+        remoteLabel: "远端",
+        detachedHeadLabel: "游离 HEAD（当前不在任何分支上）",
+        aheadOf: (count: number) => `领先远端 ${count} 个提交`,
+        behindOf: (count: number) => `落后远端 ${count} 个提交`,
+        inSyncWithRemote: "与远端一致",
+        noUpstreamHint: "该分支还没有跟踪远端分支，推送时会自动建立。",
+        conflictHint:
+            "这些文件在本地和远端都被修改过，git 无法自动决定保留哪一边。解决后提交即可；也可以放弃本次合并。",
 
         editRemoteTitle: "编辑远端地址",
         editRemoteLabel: "远端仓库地址",

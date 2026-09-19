@@ -39,20 +39,36 @@ export interface StatusBarDeps {
      * 一贯的做法，状态栏曾经是唯一的例外。
      */
     getT: () => LocaleStrings;
+    /**
+     * 点击条目时的动作 —— 打开源码控制视图。
+     *
+     * 状态栏是**唯一常驻在屏幕上**的同步入口，而它此前完全不可点：
+     * 用户看到「OBSync: main ~3」却没有任何办法知道详情在哪（侧边栏图标打开的是
+     * 安装器）。参考项目 obsidian-git 的状态栏也是点开那个视图的，所以这里接上。
+     * 不传则条目保持不可点（测试与移动端不需要它）。
+     */
+    onClick?: () => void;
 }
 
 export class StatusBar {
     private readonly item: HTMLElement;
     private readonly getT: () => LocaleStrings;
+    /** 条目可点时才写 aria-label（也才有那个类）。 */
+    private readonly clickable: boolean;
     private status: RepoStatus | undefined;
     private activity: StatusBarActivity = "idle";
 
     constructor(deps: StatusBarDeps) {
         this.item = deps.item;
         this.getT = deps.getT;
+        this.clickable = deps.onClick !== undefined;
         // 位置只在构造时定一次（条目不会被重建，重建会在状态栏上多挂一条）。
         // 只加类，不动 DOM —— 见类顶部与 styles.css 里的说明。
         this.item.addClass("obsync-status-bar-item");
+        if (deps.onClick) {
+            this.item.addClass("obsync-status-bar-clickable");
+            this.item.addEventListener("click", deps.onClick);
+        }
         this.render();
     }
 
@@ -72,6 +88,10 @@ export class StatusBar {
         const t = this.getT();
 
         try {
+            // aria-label 在 Obsidian 里就是悬停提示。每次渲染都写一遍，
+            // 这样语言切换后它也变（条目本身不会重建，见 getT 的说明）。
+            if (this.clickable) this.item.setAttribute("aria-label", t.sync.statusBarHint);
+
             if (this.activity !== "idle") {
                 this.item.setText(
                     `OBSync: ${

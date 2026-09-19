@@ -42,7 +42,8 @@ Chinese-first UI with an equal English one.
 **中文**
 
 - **笔记同步** — 提交 → 拉取 → 推送一条链 · 冲突指南（不自动解决）· 自动提交/推送/拉取定时器 ·
-  源码控制视图 · 状态栏条目 · 初始化仓库时建 `.gitignore` · 在远端打开文件/历史 · 编辑远端 · 连接测试
+  源码控制视图（侧边栏，可点状态栏打开）· 状态栏条目 · 初始化仓库时建 `.gitignore` ·
+  在远端打开文件/历史/提交 · 编辑远端 · 连接测试
 - **插件与主题** — 地址识别（GitHub / Gitee）· release 资产与仓库源码双通道 · 版本选择（含预发布回退）·
   写入前备份 + 失败回滚 · 更新检查（单个/全部/启动/进入设置页）· 常驻更新徽标 · 冻结 ·
   **版本回退** · 取消绑定（不删文件）· 绑定已装插件与主题 · Gitee 镜像发现 · 自我更新
@@ -52,8 +53,9 @@ Chinese-first UI with an equal English one.
 **English**
 
 - **Vault sync** — commit → pull → push in one chain · conflict guide (no auto-resolution) ·
-  auto commit/push/pull timers · source-control view · status-bar item · `.gitignore` created on init ·
-  open file/history on the remote · edit remote · connection test
+  auto commit/push/pull timers · source-control view (sidebar, openable from the status bar) ·
+  status-bar item · `.gitignore` created on init ·
+  open file/history/commit on the remote · edit remote · connection test
 - **Plugins & themes** — address recognition (GitHub / Gitee) · release assets **and** repository source fallback ·
   version picker (with prerelease fallback) · backup before write + rollback on failure · update checks
   (single / all / on startup / on opening settings) · persistent update badges · freeze ·
@@ -77,9 +79,15 @@ Chinese-first UI with an equal English one.
   然后**立即停止同步链**；手动解决后重新同步，或用「放弃当前合并」回到拉取之前
 - **自动同步**（默认关闭）—— 自动提交 / 自动推送 / 自动拉取三个间隔（分钟，0 = 关闭）。
   计时基于**上次执行时间**，重启 Obsidian 不重置周期；存储按库隔离，多个库互不干扰
-- **源码控制视图** —— 侧边栏里的分支、ahead/behind、变更列表与冲突列表，逐个文件暂存 / 取消暂存
+- **源码控制视图**（侧边栏）—— 打开方式：侧栏的 **git 图标**、点一下**状态栏条目**，
+  或命令 **OBSync：打开源码控制面板**。里面有：分支下拉切换、远端地址（脱敏后回显）+ 编辑入口、
+  `领先 / 落后远端`、冲突区（列出冲突文件 + 放弃合并）、**按「已暂存 / 更改」分组的文件列表**
+  （逐个文件暂存 / 取消暂存、点文件名打开笔记、在远端打开此文件）、最近 10 条提交
+  （点 hash 在远端查看这条提交）。不是 git 仓库时这里直接给「初始化仓库」按钮。
+  面板是**活的**：自动提交、库外改动、命令面板里的动作都会让它自己刷新
 - **状态栏条目** —— 分支 / `↑ahead ↓behind` / `~脏文件数` / `⚠冲突数`，以及进行中的动作；
-  贴在状态栏**最左侧**（这是刻意的：它回答「现在同步到哪了」，不该藏在右下角）
+  贴在状态栏**最左侧**（这是刻意的：它回答「现在同步到哪了」，不该藏在右下角），
+  并且**可以点开**（打开源码控制视图）
 - **在浏览器中打开** —— 当前文件、当前文件的修改历史，以及文件右键菜单里的同样两项；
   GitHub 与 Gitee 各按平台拼链接（中文文件名会自动转义）
 - **连接测试** —— 一条递进的检查链：git 可执行文件 → 是否 git 仓库 → 有没有远端 →
@@ -151,9 +159,10 @@ Chinese-first UI with an equal English one.
 
 先在设置页的「仓库同步」里填远端地址（命令 **OBSync：编辑远端地址**），然后：
 
-- 还不是 git 仓库的话，先执行 **OBSync：初始化仓库**
+- 还不是 git 仓库的话，先执行 **OBSync：初始化仓库**（源码控制视图里也有这个按钮）
 - **OBSync：立即同步** —— 提交 → 拉取 → 推送，一条链走完
-- 也可以在源码控制视图里逐个文件操作，或用侧边栏的状态栏条目看当前状态
+- 也可以在源码控制视图里逐个文件操作（暂存 / 取消暂存、点开文件、看历史），
+  或点侧边栏的状态栏条目把它打开
 - 想在浏览器里看某个文件：命令 **OBSync：在浏览器中打开当前文件**，或右键文件选「**在远端打开**」
 
 自动同步默认关闭。需要的话在设置页设「自动提交并同步 / 自动推送 / 自动拉取」的间隔（分钟）。

@@ -292,3 +292,67 @@ describe("StatusBar 的位置", () => {
         ).not.toThrow();
     });
 });
+
+/**
+ * 状态栏条目是**屏幕上唯一常驻**的同步入口。
+ *
+ * 而它此前完全不可点：用户看到「OBSync: main ~3」，却没有任何办法看到详情
+ * （侧栏那个图标打开的是安装器）。于是「同步面板在哪」这个问题在界面上
+ * 无解 —— 这条用例锁的就是「点它 → 打开源码控制视图」这条线。
+ */
+describe("StatusBar 可点开视图", () => {
+    function clickableItem() {
+        const classes: string[] = [];
+        const attrs: Record<string, string> = {};
+        const handlers: Array<() => void> = [];
+        const item = {
+            addClass: (value: string) => classes.push(value),
+            setText: () => {},
+            setAttribute: (name: string, value: string) => {
+                attrs[name] = value;
+            },
+            addEventListener: (type: string, handler: () => void) => {
+                if (type === "click") handlers.push(handler);
+            },
+        };
+        return {
+            item: item as unknown as HTMLElement,
+            classes,
+            attrs,
+            click: () => handlers.forEach((handler) => handler()),
+        };
+    }
+
+    it("传了 onClick 时挂上点击处理并标明可点", () => {
+        const { item, classes, click } = clickableItem();
+        let opened = 0;
+
+        new StatusBar({ item, getT: () => zhCN, onClick: () => (opened += 1) });
+        click();
+
+        expect(opened).toBe(1);
+        expect(classes).toContain("obsync-status-bar-clickable");
+    });
+
+    it("悬停提示跟着当前语言（不是构造时快照）", () => {
+        const { item, attrs } = clickableItem();
+        let locale = zhCN;
+
+        const bar = new StatusBar({ item, getT: () => locale, onClick: () => {} });
+        expect(attrs["aria-label"]).toBe(zhCN.sync.statusBarHint);
+
+        locale = en;
+        bar.setActivity("pushing");
+
+        expect(attrs["aria-label"]).toBe(en.sync.statusBarHint);
+    });
+
+    it("没传 onClick 时不写 aria-label（条目保持不可点）", () => {
+        const { item, attrs } = clickableItem();
+
+        new StatusBar({ item, getT: () => zhCN });
+
+        expect(attrs["aria-label"]).toBeUndefined();
+    });
+});
+

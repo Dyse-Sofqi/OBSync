@@ -32,6 +32,9 @@ class FakeGit implements GitManager {
     /** pull 的脚本：默认 up-to-date；设为 "conflict" 时抛 ConflictError；设为 "pulled" 时正常拉取。 */
     pullScript: "up-to-date" | "conflict" | "pulled" = "up-to-date";
 
+    /** 设成 promise 就把 `status()` 卡住 —— 用来验「后面的动作排在队列里」。 */
+    waitBeforeStatus: Promise<void> | undefined;
+
     async isRepo(): Promise<boolean> {
         return this.repo;
     }
@@ -41,6 +44,8 @@ class FakeGit implements GitManager {
     }
     async status(): Promise<RepoStatus> {
         this.calls.push("status");
+        // 「队列真的串行吗」只能这样验：让一次状态查询卡住，后面的动作就得等。
+        if (this.waitBeforeStatus) await this.waitBeforeStatus;
         if (!this.repo) throw new ConflictError("not repo", []);
         return {
             branch: "main",
@@ -616,5 +621,159 @@ describe("提交信息的文件数按路径去重", () => {
         expect(commitCall).toBeDefined();
         // 模板是 "backup {{numFiles}}"，一个文件就该是 1
         expect(commitCall).toBe("commit:backup 1");
+    });
+});
+
+/**
+ * 源码控制视图里的逐文件操作。
+ *
+ * 这些动作**必须走串行队列**：视图里点一下「暂存」的同时，自动提交定时器
+ * 到点了 —— 两条 git 命令并发写索引是真实会发生的。视图原来切分支就是直接
+ * 调 `git.checkout`，绕过了队列。
+ *
+ * 队列是「排成一条链」，所以「有没有走队列」不能只看结果 —— 得让队列
+ * **忙着**（一个慢动作还没结束），再看第二个动作有没有等它。
+ */
+describe("视图的逐文件操作", () => {
+    it("暂存指定文件 → 只 stage 这些路径，并刷新状态", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service } = makeService(git, fake);
+        git.unstaged = ["a.md", "b.md"];
+
+        await service.stageFiles(["a.md"]);
+
+        expect(git.calls).toContain("stage:a.md");
+        expect(git.staged).toEqual(["a.md"]);
+        // 刷了状态：视图重绘、状态栏更新都靠它
+        expect(git.calls.filter((call) => call === "status").length).toBeGreaterThan(0);
+    });
+
+    it("路径为空时是空操作（不碰 git，也不报错）", async () => {
+        // 判空在入队**之前**：整组都已暂存时不该白跑一次 git。
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service } = makeService(git, fake);
+
+        await service.stageFiles([]);
+        await service.unstageFiles([]);
+
+        expect(git.calls).toEqual([]);
+    });
+
+    it("取消暂存只动指定的文件", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service } = makeService(git, fake);
+        git.staged = ["a.md", "b.md"];
+
+        await service.unstageFiles(["b.md"]);
+
+        expect(git.calls).toContain("unstage:b.md");
+        expect(git.staged).toEqual(["a.md"]);
+    });
+
+    it("切分支走队列（不再绕过同步动作直接调 git）", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service } = makeService(git, fake);
+
+        await service.checkoutBranch("dev");
+
+        expect(git.calls).toContain("checkout:dev");
+    });
+
+    it("**与正在跑的动作排成一条链**：慢提交没结束时暂存不会插队", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service } = makeService(git, fake);
+        git.unstaged = ["a.md"];
+
+        // 让一次提交卡在半路（模拟网络慢的拉取 / 大仓库的提交）
+        let release: (() => void) | undefined;
+        git.waitBeforeStatus = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+
+        const slow = service.commitAll();
+        const staged = service.stageFiles(["a.md"]);
+        await Promise.resolve();
+
+        // 提交还卡着 → 暂存必须还没发生
+        expect(git.calls).not.toContain("stage:a.md");
+
+        git.waitBeforeStatus = undefined;
+        release?.();
+        await slow;
+        await staged;
+
+        expect(git.calls).toContain("stage:a.md");
+    });
+});
+
+describe("状态订阅（源码控制视图）", () => {
+    it("refresh 会把状态推给订阅者", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service } = makeService(git, fake);
+        const seen: Array<RepoStatus | undefined> = [];
+        service.onStatusChange((status) => seen.push(status));
+
+        await service.refresh();
+
+        expect(seen).toHaveLength(1);
+        expect(seen[0]?.branch).toBe("main");
+    });
+
+    it("动作结束后也会推一次（视图不必自己轮询）", async () => {
+        // 自动提交定时器到点时视图是关不掉的 —— 它得知道自己该重绘了。
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service } = makeService(git, fake);
+        git.unstaged = ["a.md"];
+        let count = 0;
+        service.onStatusChange(() => (count += 1));
+
+        await service.commitAll();
+
+        expect(count).toBeGreaterThan(0);
+    });
+
+    it("状态取不到时推 undefined（视图据此显示「不是仓库」）", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service } = makeService(git, fake);
+        git.repo = false;
+        const seen: Array<RepoStatus | undefined> = [];
+        service.onStatusChange((status) => seen.push(status));
+
+        await service.refresh();
+
+        expect(seen).toEqual([undefined]);
+    });
+
+    it("退订之后不再收到（视图关闭时必须退订）", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service } = makeService(git, fake);
+        let count = 0;
+        const unsubscribe = service.onStatusChange(() => (count += 1));
+
+        await service.refresh();
+        unsubscribe();
+        await service.refresh();
+
+        expect(count).toBe(1);
+    });
+
+    it("订阅者抛错不影响同步本身", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service } = makeService(git, fake);
+        service.onStatusChange(() => {
+            throw new Error("界面炸了");
+        });
+
+        await expect(service.refresh()).resolves.toBeDefined();
     });
 });

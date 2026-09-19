@@ -11,7 +11,8 @@ const mirrorCandidatePrefix = "Possible mirror: ";
 export const en = {
     plugin: {
         name: "OBSync",
-        ribbonTooltip: "OBSync: sync vaults and install plugins",
+        ribbonSync: "OBSync: open the sync details (source control)",
+        ribbonInstaller: "OBSync: install community plugins",
     },
 
     common: {
@@ -424,7 +425,7 @@ export const en = {
     },
 
     sync: {
-        viewTitle: "OBSync",
+        viewTitle: "Source control",
         statusPulling: "Pulling…",
         statusPushing: "Pushing…",
         statusCommitting: "Committing…",
@@ -471,6 +472,37 @@ export const en = {
         actPush: "Push",
         actEditRemote: "Edit remote…",
         branchLabel: "Branch",
+
+        // Sidebar detail view (see the zh-CN locale for why these exist).
+        // `cmdOpenView` and `viewTitle` must stay separate: command names need the
+        // OBSync prefix to be findable in the command palette, panel titles do not.
+        cmdOpenView: "OBSync: Open source control panel",
+        statusBarHint: "Click to open the source control panel",
+        actRefresh: "Refresh",
+        actInit: "Initialise repository",
+        actStage: "Stage this file",
+        actUnstage: "Unstage this file",
+        actStageAll: "Stage all",
+        actUnstageAll: "Unstage all",
+        actOpenFile: "Open this file",
+        actOpenFileOnRemote: "Open this file on the remote",
+        actAbortMerge: "Abort this merge",
+        sectionStaged: (count: number) => `Staged changes (${count})`,
+        sectionChanges: (count: number) => `Changes (${count})`,
+        sectionConflicts: (count: number) => `Conflicts (${count})`,
+        sectionHistory: "Recent commits",
+        historyEmpty: "No commits yet.",
+        historyFailed: "Could not read the commit history.",
+        commitOnRemote: "View this commit on the remote",
+        remoteLabel: "Remote",
+        detachedHeadLabel: "Detached HEAD (not on any branch)",
+        aheadOf: (count: number) => `${count} commit(s) ahead of the remote`,
+        behindOf: (count: number) => `${count} commit(s) behind the remote`,
+        inSyncWithRemote: "In sync with the remote",
+        noUpstreamHint:
+            "This branch does not track a remote branch yet; pushing will set it up.",
+        conflictHint:
+            "These files changed both locally and on the remote, so git cannot decide which side to keep. Resolve them and commit, or abort this merge.",
 
         editRemoteTitle: "Edit remote URL",
         editRemoteLabel: "Remote repository URL",
