@@ -82,6 +82,13 @@ Chinese-first UI with an equal English one.
 - **提交信息不用你填** —— 由设置里的**提交信息模板**自动生成（默认 `vault backup: {{date}}`，
   支持 `{{date}}` / `{{hostname}}` / `{{numFiles}}` / `{{files}}`）。全程没有输入框，
   点「提交全部」/「提交并推送」/「立即同步」都不会弹窗问你要备注
+- **为什么「立即同步」里要有拉取** —— 因为 git 的 `push` 只能**快进**：远端存在你没有的提交时，
+  推送会被**直接拒绝**（接受它就等于丢掉那些提交）。而这个插件的用途就是多设备同步，
+  所以「提交 → 推送」在两台设备上会**稳定失败**，不是偶发失败。拉取排在提交**之后**，
+  是因为提交先把你的改动收进一个可恢复的提交里，之后整合远端出问题还能「放弃本次合并」
+  回到拉取之前；先拉取的话，工作区的未提交改动会和冲突标记混在一起，谁也分不清。
+  拉取也是你唯一能**收到**别的设备改动的方式 —— 只推不拉是单向的。
+  整合方式见设置页的「拉取整合策略」（默认合并；**「重置」会丢弃本地提交，慎用**）
 - **初始化仓库** —— 顺便建一份 `.gitignore`（默认排除 `.obsidian/workspace.json` 这类
   **每台设备各自维护**的文件，同步它们只会制造冲突）。**已存在的 `.gitignore` 绝不覆盖**，
   另有「编辑 .gitignore」命令可以随时改它
@@ -318,6 +325,15 @@ Needs the system `git` binary, so it is **desktop-only** (Windows / macOS / Linu
 - **You never have to type a commit message** — it is generated from the **commit message template**
   in the settings (default `vault backup: {{date}}`, supporting `{{date}}`, `{{hostname}}`,
   `{{numFiles}}` and `{{files}}`). No dialog ever asks you for a message
+- **Why "Sync now" pulls** — because `git push` only fast-forwards: when the remote has commits you
+  do not have, the push is **rejected outright** (accepting it would drop them). This plugin exists
+  to sync a vault across devices, so "commit → push" **fails reliably** with two machines, not
+  occasionally. The pull comes **after** the commit because committing first puts your changes into
+  a recoverable commit, so if integrating the remote goes wrong you can still "Abort current merge"
+  and be back where you started — pulling first would leave your uncommitted edits mixed with
+  conflict markers. Pulling is also the only way you ever **receive** another device's changes.
+  Integration is configurable ("Pull integration strategy"; the default is merge, and **"reset"
+  discards local commits — use with care**)
 - **Initialize repository** — also creates a `.gitignore` (excluding per-device files such as
   `.obsidian/workspace.json`, which only ever produce conflicts). An existing `.gitignore` is
   **never overwritten**, and there is an "Edit .gitignore" command
