@@ -106,7 +106,6 @@ function fakeService(options: {
             return result;
         },
         updateTheme: async () => ({ ...result, wasActive: false }),
-        reinstall: async () => result,
         recordUpdateChecks: async () => undefined,
         // 版本管理弹窗要的列表。真实实现在 installerService.listVersions 里，
         // 这里只要求形状对得上（第一项固定是「最新版本」）。
@@ -235,15 +234,14 @@ describe("renderTrackedItems", () => {
     it("插件比主题多一个「版本管理」按钮 —— 这条不对称是刻意的", () => {
         const { rows } = render([plugin(), theme()]);
         // 取消绑定用 unlink 而不是垃圾桶 —— 它不删文件
-        const shared = ["search", "download", "refresh-cw", "unlock", "external-link", "unlink"];
+        const shared = ["refresh-cw", "download", "unlock", "external-link", "unlink"];
 
         // 插件有「用户要求的版本」这个字段（可以回退到指定版本），主题没有 ——
         // 主题的更新永远按最新走（见 installer/types.ts）。
         expect(rows[0]!.buttons.map((button) => button.icon)).toEqual([
-            "search",
+            "refresh-cw",
             "download",
             "history",
-            "refresh-cw",
             "unlock",
             "external-link",
             "unlink",
@@ -256,6 +254,8 @@ describe("renderTrackedItems", () => {
         expect(rows[0]!.buttons.map((button) => button.tooltip)).toContain(
             zhCN.installer.versionManage
         );
+        // 圆箭头（refresh-cw）归「检查更新」—— 重装按钮删掉之后它空了出来
+        expect(rows[0]!.buttons[0]!.tooltip).toBe(zhCN.installer.checkOne);
     });
 });
 
@@ -334,7 +334,7 @@ describe("镜像行", () => {
 
         expect(extraLines(rows[0]!)).toHaveLength(1);
         expect(badges(rows[0]!)).toContain(zhCN.installer.frozen);
-        expect(rows[0]!.buttons).toHaveLength(7);
+        expect(rows[0]!.buttons).toHaveLength(6);
     });
 });
 
@@ -349,7 +349,7 @@ async function clickIcon(row: Setting, icon: string): Promise<void> {
 }
 
 /**
- * 更新 / 重装之后的提示**必须报出来源**。
+ * 更新之后的提示**必须报出来源**。
  *
  * 用户看不出走没走镜像：列表里那行镜像文案只在命中时才出现，「没出现」既可能是
  * 没探测到、也可能是根本没探测（实测：绑进来的条目从不做镜像探测）。所以完成
@@ -373,15 +373,6 @@ describe("完成提示里的来源", () => {
         await clickIcon(rows[0]!, "download");
 
         expect(notices).toEqual([zhCN.installer.updated("Demo Plugin", "2.0.0", "GitHub")]);
-    });
-
-    it("重装那条提示同样报来源", async () => {
-        const { service, notices } = fakeService({ repoRef: GITHUB });
-        const { rows } = renderWith(service, [plugin()]);
-
-        await clickIcon(rows[0]!, "refresh-cw");
-
-        expect(notices).toEqual([zhCN.installer.reinstalled("Demo Plugin", "GitHub")]);
     });
 
     it("主题也一样（主题不做镜像发现，报的就是它自己的平台）", async () => {
@@ -434,10 +425,9 @@ describe("疑似镜像的提议", () => {
         const rows = renderWithSuggestion(SUGGESTION);
 
         expect(rows[0]!.buttons.map((button) => button.icon)).toEqual([
-            "search",
+            "refresh-cw",
             "download",
             "history",
-            "refresh-cw",
             "unlock",
             "external-link",
             "git-compare",
@@ -445,10 +435,10 @@ describe("疑似镜像的提议", () => {
         ]);
     });
 
-    it("没有提议时不多这个按钮（正常行仍是七个：插件的六项 + 版本管理）", () => {
+    it("没有提议时不多这个按钮（正常行仍是六个：插件的五项 + 版本管理）", () => {
         const rows = renderWithSuggestion(undefined);
 
-        expect(rows[0]!.buttons).toHaveLength(7);
+        expect(rows[0]!.buttons).toHaveLength(6);
         expect(extraLines(rows[0]!)).toEqual([]);
     });
 });
@@ -579,11 +569,12 @@ describe("行内长耗时动作的反馈", () => {
             },
         } as unknown as UpdateChecker;
         const { rows } = renderWith(service, [plugin()], checker);
-        const button = rows[0]!.buttons.find((candidate) => candidate.icon === "search")!;
+        // 圆箭头 = 检查更新（图标从放大镜换过来的：重装按钮删掉后它空了出来）
+        const button = rows[0]!.buttons.find((candidate) => candidate.icon === "refresh-cw")!;
 
         void button.click();
 
         expect(button.icon).toBe("loader");
-        await vi.waitFor(() => expect(button.icon).toBe("search"));
+        await vi.waitFor(() => expect(button.icon).toBe("refresh-cw"));
     });
 });

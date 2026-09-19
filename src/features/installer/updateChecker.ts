@@ -316,9 +316,9 @@ export class UpdateChecker {
                     result.tracked.kind === "theme"
                         ? // 主题走 updateTheme：不碰当前主题选择，也不做 enable/reload。
                           await this.service.updateTheme(result.tracked)
-                        : // 插件走 install，且**明确取 latest** —— 不能用 reinstall：
-                          // 后者会重装用户钉住的那个 tag（`requestedVersion`），
-                          // 而「更新全部」的语义是装到最新。
+                        : // 插件走 install，且**明确取 latest** —— 「更新全部」的语义是
+                          // 装到最新，而不是装回记录里那个 `requestedVersion`
+                          // （用户可能钉在某个旧版本上，那时批量更新也该往最新走）。
                           await this.service.install({
                               repo: formatRepoId(result.tracked),
                               version: "latest",

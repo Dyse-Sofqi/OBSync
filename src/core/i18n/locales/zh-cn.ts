@@ -201,8 +201,8 @@ export const zhCN = {
          * 「版本管理」—— 已跟踪插件行上的按钮（**只有插件有**，主题没有版本钉选）。
          *
          * 这几条要交代清楚三件事，缺一件用户就会踩坑：选旧版本是**回退**、
-         * 选「最新版本」是**解开钉住的选择**、以及这个选择会被「重装」沿用
-         * （所以列表上挂一个「已固定」徽标）。
+         * 选「最新版本」是**解开钉住的选择**、以及这个选择会被记住
+         * （在版本管理里再打开它，默认选中的就是这一版）。
          */
         versionManage: "版本管理（可回退到指定版本）",
         versionManageTitle: "选择版本",
@@ -224,8 +224,8 @@ export const zhCN = {
          * 列表上的「已固定」徽标。
          *
          * 这个状态只在 `data.json` 里（`requestedVersion`），而它的后果是
-         * 「重装会装回旧版」—— 不显示出来，用户看到旧版本号会分不清是自己选的
-         * 还是更新失败留下的。
+         * 「在版本管理里点一下就会装回这一版」—— 不显示出来，用户看到旧版本号
+         * 会分不清是自己选的还是更新失败留下的。
          */
         versionPinned: (version: string) => `已固定 ${version}`,
 
@@ -273,7 +273,6 @@ export const zhCN = {
         updated: (name: string, version: string, source: string) =>
             `已更新 ${name} 至 ${version}（来源：${source}）`,
         upToDate: (name: string) => `${name} 已是最新版本`,
-        reinstalled: (name: string, source: string) => `已重装 ${name}（来源：${source}）`,
         removed: (name: string) => `已取消绑定 ${name}，它的文件未被改动`,
         removeFailed: "取消绑定失败",
         sourceRaw: "来源：仓库源码文件",
@@ -445,7 +444,6 @@ export const zhCN = {
                 : `检查完成：${outdated} 个可更新。`,
         updateToLatest: "更新到最新版本",
         updateBadge: (version: string) => `可更新 → ${version}`,
-        reinstall: "重装",
         freeze: "冻结（不参与更新检查）",
         unfreeze: "取消冻结",
         frozen: "已冻结",

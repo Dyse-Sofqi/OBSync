@@ -11,10 +11,24 @@ import { ConfirmMirrorModal } from "./ConfirmMirrorModal";
 import { VersionManagerModal } from "./VersionManagerModal";
 
 /**
+ * 行内动作的图标。
+ *
+ * 提成常量是因为**每个图标要写两处**：`setIcon()` 一次，`runWithProgress()` 一次
+ * （它做完要把图标换回去）。两处各写一个字面量就等着漂移 —— 2026-09-19 把
+ * 「检查更新」从放大镜换成圆箭头时，就真的漏了 `runWithProgress` 那一处
+ * （表现为转完圈图标又变回放大镜），是测试抓住的。
+ */
+const ICON = {
+    check: "refresh-cw",
+    update: "download",
+    version: "history",
+} as const;
+
+/**
  * 设置页里的「已跟踪的插件与主题」列表。
  *
  * 每一行是一个对象（插件或主题），右侧是它可执行的操作。刻意不做批量操作按钮
- * 之外的复杂交互 —— 用户在这里最常做的三件事是「看有没有更新」「重装」
+ * 之外的复杂交互 —— 用户在这里最常做的三件事是「看有没有更新」「换一个版本」
  * 「取消绑定」，把它们放在一眼能看到的位置就够了。
  *
  * 「取消绑定」只把条目移出跟踪列表，**不删任何文件**（见 `InstallerService.unbind`）——
@@ -25,7 +39,7 @@ import { VersionManagerModal } from "./VersionManagerModal";
  *
  * ## 插件与主题共用一个列表
  *
- * 两者的六项操作**全部成立**（检查 / 更新 / 重装 / 冻结 / 打开仓库 / 移除），
+ * 两者的五项操作**全部成立**（检查 / 更新 / 冻结 / 打开仓库 / 移除），
  * 行为差异都收在 `InstallerService` 与 `UpdateChecker` 里按 kind 分派，
  * 这里只负责两件展示上的事：名称后的**类型徽标**，以及要删除的东西是
  * 什么（移除确认的文案不同）。
@@ -161,7 +175,7 @@ function renderRow(
     // 钉在某个版本上（用户从「版本管理」里选了具体版本）。
     //
     // 必须显示出来：它只存在于 `data.json` 的 `requestedVersion` 里，而它的后果
-    // 是「重装会装回旧版」。不写的话，用户看到版本号是旧的，分不清那是自己选的、
+    // 是「按记录里那一版重新装回去」。不写的话，用户看到版本号是旧的，分不清那是自己选的、
     // 还是更新失败留下的 —— 正是这个项目最忌讳的那类「改了有作用但界面不承认」的状态。
     if (item.kind === "plugin" && item.requestedVersion !== "latest") {
         setting.nameEl.createSpan({
@@ -179,16 +193,19 @@ function renderRow(
     // 检查更新
     setting.addExtraButton((button) =>
         button
-            // 放大镜 = 「去问远端有没有新版」，与下面两个动作的图形完全不同 ——
-            // 之前用 refresh-cw，和「重装」的圆箭头几乎分不出来。
-            .setIcon("search")
+            // 圆箭头 = 「去问远端有没有新版」。
+            //
+            // 这个图标原来是「重装」的，撞车之后检查更新换成了放大镜；2026-09-19
+            // 重装按钮被删掉（它与「版本管理」重合，见文件头的说明），图标空出来，
+            // 就还给检查更新 —— refresh-cw 本来就是「检查更新」最通用的表达。
+            .setIcon(ICON.check)
             .setTooltip(t.installer.checkOne)
             .onClick(() =>
                 void runWithProgress({
                     ctx,
                     name: item.name,
                     button,
-                    icon: "search",
+                    icon: ICON.check,
                     startMessage: t.installer.progressChecking(item.name),
                     fallbackError: t.installer.checkFailed,
                     work: async () => {
@@ -212,14 +229,14 @@ function renderRow(
     // 更新到最新
     setting.addExtraButton((button) => {
         button
-            .setIcon("download")
+            .setIcon(ICON.update)
             .setTooltip(t.installer.updateToLatest)
             .onClick(() =>
                 void runWithProgress({
                     ctx,
                     name: item.name,
                     button,
-                    icon: "download",
+                    icon: ICON.update,
                     startMessage: t.installer.progressUpdating(item.name),
                     fallbackError: t.installer.installFailed,
                     work: async (onProgress) => {
@@ -253,32 +270,12 @@ function renderRow(
     });
 
     // 版本管理（**只有插件有** —— 主题在设计上就没有版本钉选，见文件头的说明）
+    //
+    // 它同时顶掉了原来的「重装」按钮：重装 = 用**记录里那一版**重新装一遍，
+    // 而这个弹窗的默认选中项**就是**记录里那一版 —— 「打开 → 直接点切换」与
+    // 重装逐字相同（同一组参数调同一个 `install()`）。主题那边更直接：重装调的就是
+    // `updateTheme`，与它自己的「更新到最新」一字不差。所以两个按钮留一个就够。
     if (item.kind === "plugin") appendVersionButton(setting, ctx, item);
-
-    // 重装
-    setting.addExtraButton((button) =>
-        button
-            // 圆箭头留给「重装」独占（检查更新已换成放大镜），指代「再来一遍」。
-            .setIcon("refresh-cw")
-            .setTooltip(t.installer.reinstall)
-            .onClick(() =>
-                void runWithProgress({
-                    ctx,
-                    name: item.name,
-                    button,
-                    icon: "refresh-cw",
-                    startMessage: t.installer.progressUpdating(item.name),
-                    fallbackError: t.installer.installFailed,
-                    work: async (onProgress) => {
-                        const result = await ctx.service.reinstall(item, onProgress);
-                        ctx.service.deps.notifier.success(
-                            t.installer.reinstalled(item.name, downloadSourceLabel(t, result))
-                        );
-                        ctx.refresh();
-                    },
-                })
-            )
-    );
 
     // 冻结（不参与自动更新）
     setting.addExtraButton((button) =>
@@ -362,7 +359,7 @@ function appendVersionButton(
         button
             // 时钟 + 回退箭头：它管的是「换成哪一版」，与旁边「更新到最新」的
             // 下载箭头是两件事 —— 后者只往最新走，前者能往回走。
-            .setIcon("history")
+            .setIcon(ICON.version)
             .setTooltip(t.installer.versionManage)
             .onClick(() => {
                 new VersionManagerModal(ctx.app, ctx.service, t, plugin, {
@@ -378,10 +375,9 @@ function appendVersionButton(
 /**
  * 用户选定了版本之后要做的事。
  *
- * 走 `install` 而**不是** `reinstall`：后者读的是记录里的 `requestedVersion`，
- * 而这里要装的正是用户刚选的那一个。`install` 会把它写回记录 ——
- * 也就是「钉在这一版」：此后「重装」装回它，而「更新到最新版本」会把记录改回
- * `latest`（恢复跟随最新）。这条语义是现成的，这里不另造一套。
+ * 走的同样是 `install`：弹窗里选定的版本交给它，`install` 再把这一版写回记录 ——
+ * 也就是「钉在这一版」：此后在版本管理里直接点切换（默认选中的就是它）会装回
+ * 这一版，而「更新到最新版本」会把记录改回 `latest`（恢复跟随最新）。这条语义是现成的，这里不另造一套。
  *
  * 「从哪个仓库下载」不出现在这里：它写在记录里（`host/owner/repo`），弹窗里换过
  * 来源之后，下面的 `formatRepoId`/`defaultHost` 读到的就已经是新来源了。
@@ -397,14 +393,14 @@ async function switchVersion(
         ctx,
         name: plugin.name,
         button,
-        icon: "history",
+        icon: ICON.version,
         startMessage: t.installer.progressUpdating(plugin.name),
         fallbackError: t.installer.installFailed,
         work: async (onProgress) => {
             const result = await ctx.service.install({
                 repo: formatRepoId(plugin),
                 version: option.value,
-                // 与这一行上的「更新到最新」「重装」同一口径：装完保持可用。
+                // 与这一行上的「更新到最新」同一口径：装完保持可用。
                 enableAfterInstall: true,
                 defaultHost: plugin.host,
                 onProgress,

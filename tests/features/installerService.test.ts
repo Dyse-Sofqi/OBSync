@@ -220,7 +220,7 @@ describe("install —— release 通道", () => {
         // 17~20 秒，见 HANDOVER 第七节第 19 条），所以这条链路必须真的通到服务层：
         // `install({ onProgress })` → `fetchItem` → `fetchFiles`。
         const fake = createFakeApp();
-        const { service, settings } = createService(fake);
+        const { service } = createService(fake);
 
         route(/releases\/latest$/, () => ({ status: 200, text: releaseJson([]) }));
         route(/releases\/tags\/v2\.0\.0$/, () => ({
@@ -240,11 +240,6 @@ describe("install —— release 通道", () => {
 
         // 顺序就是取文件的顺序（`FILE_SETS` 里的 all）
         expect(seen).toEqual(["manifest.json", "main.js", "styles.css"]);
-
-        // 重装走的是同一条链路，也要回报（它的签名里也有 onProgress）
-        const seenAgain: string[] = [];
-        await service.reinstall(settings.installer.tracked[0]!, (file) => seenAgain.push(file));
-        expect(seenAgain).toEqual(["manifest.json", "main.js", "styles.css"]);
     });
 
     it("资产通道失败后，后续文件不再试它", async () => {

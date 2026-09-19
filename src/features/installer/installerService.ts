@@ -589,25 +589,6 @@ export class InstallerService {
         }
     }
 
-    /** 重装：忽略本地状态，按原设置重新走一遍。 */
-    async reinstall(
-        tracked: TrackedItem,
-        onProgress?: (file: string) => void
-    ): Promise<InstallResult | ThemeUpdateResult> {
-        if (tracked.kind === "theme") {
-            // 主题没有版本钉选（语义是「跟随仓库」），所以重装就是更新到最新。
-            return this.updateTheme(tracked, onProgress);
-        }
-
-        return this.install({
-            repo: formatRepoId(tracked),
-            version: tracked.requestedVersion,
-            enableAfterInstall: true,
-            defaultHost: tracked.host,
-            onProgress,
-        });
-    }
-
     // ── 绑定 ──────────────────────────────────────────────────────────────
 
     /**

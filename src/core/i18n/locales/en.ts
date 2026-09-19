@@ -228,7 +228,6 @@ export const en = {
         updated: (name: string, version: string, source: string) =>
             `Updated ${name} to ${version} (from ${source})`,
         upToDate: (name: string) => `${name} is already up to date`,
-        reinstalled: (name: string, source: string) => `Reinstalled ${name} (from ${source})`,
         removed: (name: string) => `Unbound ${name}; its files are untouched`,
         removeFailed: "Failed to unbind",
         sourceRaw: "Source: repository source file",
@@ -366,7 +365,6 @@ export const en = {
                 : `Check finished: ${outdated} update(s) available.`,
         updateToLatest: "Update to the latest version",
         updateBadge: (version: string) => `Update available → ${version}`,
-        reinstall: "Reinstall",
         freeze: "Freeze (exclude from update checks)",
         unfreeze: "Unfreeze",
         frozen: "Frozen",

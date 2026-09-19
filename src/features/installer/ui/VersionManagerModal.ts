@@ -15,7 +15,7 @@ import { VersionSuggestModal } from "./VersionSuggestModal";
  *
  * ## 为什么要有这个入口
  *
- * `requestedVersion` 这个字段一直存在（`install` 每次都会写它，「重装」也读它），
+ * `requestedVersion` 这个字段一直存在（`install` 每次都会写它），
  * 但界面上**没有任何地方能改它** —— 只有「添加插件仓库」弹窗里那一次选择算数。
  * 于是装完之后：用户既改不了这个选择，也看不见它。一个装坏了的版本除了等作者
  * 发新版，没有别的出路，而「回退到上一版」恰恰是遇到坏版本时最该能做的事。
