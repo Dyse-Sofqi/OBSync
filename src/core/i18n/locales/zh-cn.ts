@@ -5,6 +5,15 @@
  * 漏翻译或键名写错会在编译期直接报错，而不是运行时静默回退英文。
  */
 
+/**
+ * 疑似镜像那一行/那一项的前缀。
+ *
+ * 提成模块级常量是因为**两处共用同一句话**：确认弹窗里要把它与「可点开的地址」
+ * 分开渲染（见 `ui/repoLink.ts`），而「添加插件仓库」弹窗里用的是拼好的整句。
+ * 写两份的话，改一处就会与另一处不一致。
+ */
+const mirrorCandidatePrefix = "疑似镜像：";
+
 export const zhCN = {
     plugin: {
         name: "OBSync",
@@ -230,7 +239,8 @@ export const zhCN = {
         versionSourceCurrent: (host: string, repo: string) => `当前下载走：${host} · ${repo}`,
         /** 走了镜像时才有：记录里留着的那个「家」。 */
         versionSourceOrigin: (host: string, repo: string) => `源仓库：${host} · ${repo}`,
-        versionMirrorFound: (host: string, repo: string) => `发现疑似镜像：${host} · ${repo}`,
+        /** 同理：地址与前缀分开，地址要能点开去核对。 */
+        versionMirrorFoundPrefix: "发现疑似镜像：",
         /**
          * 探不到镜像时的解释。**必须有**：自动探测只猜两个候选，镜像挂在第三个
          * 地方（作者自己的 Gitee 账号）时永远猜不到 —— 不解释的话，用户会把这句
@@ -309,8 +319,15 @@ export const zhCN = {
         mirrorConfirmTitle: "确认镜像来源",
         mirrorConfirmDesc:
             "这一项现在跟的是下面的源仓库；另外发现了一个仓库，看起来是它的镜像。请确认是否改用镜像下载。",
-        mirrorConfirmSource: (host: string, repo: string) => `源仓库（现在使用）：${host} · ${repo}`,
-        mirrorConfirmCandidate: (host: string, repo: string) => `疑似镜像：${host} · ${repo}`,
+        /**
+         * 确认页里的两个地址：**前缀与地址分开**，因为地址要渲染成可点开的链接
+         * （那一页存在的意义就是让用户去核对它们 —— 判据只有 `id` 相同）。
+         */
+        mirrorSourcePrefix: "源仓库（现在使用）：",
+        mirrorCandidatePrefix,
+        /** 拼好的整句：给「添加插件仓库」弹窗当设置行名用，确认页用上面那两个前缀。 */
+        mirrorConfirmCandidate: (host: string, repo: string) =>
+            `${mirrorCandidatePrefix}${host} · ${repo}`,
         mirrorWarnHeading: "确认前请自己核对这两个地址",
         mirrorWarnChecks:
             "判断镜像的依据只有一条：两边 manifest 的 id 相同。它只能说明「是同一个插件」，" +

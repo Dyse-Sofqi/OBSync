@@ -170,16 +170,38 @@ function hasSpinner(modal: VersionManagerModal): boolean {
  *
  * 替身里的 `setDesc` 只记字符串、不往 `descEl` 里写（真实 Obsidian 是写进去的），
  * 所以这里读到的 children 正好就是额外创建的那几行（与 `trackedItemsList.test.ts`
- * 里 `extraLines()` 同一手法）。
+ * 里 `extraLines()` 同一手法）。每一行会把行内所有文本拼起来 —— 「前缀 + 可点开的
+ * 链接」那种一行里有多段文本的也能断言。
  */
 function sourceLines(): string[] {
     const row = [...createdSettings]
         .reverse()
         .find((setting) => setting.name === zhCN.installer.versionSourceLabel);
     if (!row) throw new Error("还没有渲染出「下载来源」那一行");
-    return (row.descEl.children as unknown as Array<{ text?: string }>).map(
-        (child) => child.text ?? ""
-    );
+    const walk = (node: unknown): string[] => {
+        const el = node as { text?: string; children?: unknown[] };
+        return [...(el.text ? [el.text] : []), ...(el.children ?? []).flatMap(walk)];
+    };
+    return ((row.descEl.children as unknown) as unknown[]).map((child) => walk(child).join(""));
+}
+
+/** 「下载来源」那一行里的 `<a>`（可点开的地址）。 */
+function sourceAnchors(): Array<{ text?: string; attrs: Record<string, string> }> {
+    const row = [...createdSettings]
+        .reverse()
+        .find((setting) => setting.name === zhCN.installer.versionSourceLabel);
+    if (!row) throw new Error("还没有渲染出「下载来源」那一行");
+    const walk = (node: unknown): Array<{ text?: string; attrs: Record<string, string> }> => {
+        const el = node as {
+            tagName?: string;
+            text?: string;
+            attrs?: Record<string, string>;
+            children?: unknown[];
+        };
+        const self = el.tagName === "A" ? [{ text: el.text, attrs: el.attrs ?? {} }] : [];
+        return [...self, ...(el.children ?? []).flatMap(walk)];
+    };
+    return ((row.descEl.children as unknown) as unknown[]).flatMap(walk);
 }
 
 /** 「安装版本」那一行 —— 列表本身没有下拉框，按「有下拉框的那一行」找。 */
@@ -418,8 +440,20 @@ describe("VersionManagerModal 的下载来源", () => {
 
         await vi.waitFor(() => expect(versionRow()).toBeDefined());
         expect(sourceLines()).toContain(
-            zhCN.installer.versionMirrorFound("Gitee", "sofqi/Trefoil")
+            `${zhCN.installer.versionMirrorFoundPrefix}Gitee · sofqi/Trefoil`
         );
+        // 地址要能点开去核对（用户决定「要不要换信任对象」的全部依据就在这里）
+        expect(sourceAnchors()).toEqual([
+            {
+                text: "Gitee · sofqi/Trefoil",
+                attrs: {
+                    href: "https://gitee.com/sofqi/Trefoil",
+                    target: "_blank",
+                    rel: "noopener",
+                    title: zhCN.installer.openRepo,
+                },
+            },
+        ]);
         const listedBefore = calls.listed;
 
         buttonWithText(zhCN.installer.versionUseMirror("Gitee")).click();

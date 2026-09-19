@@ -4,6 +4,10 @@ import type { LocaleStrings } from "./zh-cn";
  * English. Must mirror the structure of `zh-cn.ts` exactly —
  * `satisfies` turns any missing or misspelled key into a compile error.
  */
+
+/** Shared by the confirm dialog (prefix + clickable address) and the add-repo modal (whole line). */
+const mirrorCandidatePrefix = "Possible mirror: ";
+
 export const en = {
     plugin: {
         name: "OBSync",
@@ -201,7 +205,7 @@ export const en = {
         versionSourceLabel: "Download source",
         versionSourceCurrent: (host: string, repo: string) => `Downloading from: ${host} · ${repo}`,
         versionSourceOrigin: (host: string, repo: string) => `Source repository: ${host} · ${repo}`,
-        versionMirrorFound: (host: string, repo: string) => `Possible mirror found: ${host} · ${repo}`,
+        versionMirrorFoundPrefix: "Possible mirror found: ",
         versionMirrorNone:
             "No mirror found. Discovery only guesses two candidates: a same-named repository, and a " +
             "same-named repository under your own Gitee account (the latter needs a Gitee token first). " +
@@ -244,10 +248,12 @@ export const en = {
         mirrorConfirmTitle: "Confirm mirror source",
         mirrorConfirmDesc:
             "This item currently follows the source repository below. Another repository was found that looks like its mirror — please confirm whether downloads should switch to it.",
-        mirrorConfirmSource: (host: string, repo: string) =>
-            `Source repository (in use): ${host} · ${repo}`,
+        /** Prefix and address are separate so the address can render as a clickable link. */
+        mirrorSourcePrefix: "Source repository (in use): ",
+        mirrorCandidatePrefix,
+        /** The composed sentence, used as a settings-row name in the add-repo modal. */
         mirrorConfirmCandidate: (host: string, repo: string) =>
-            `Possible mirror: ${host} · ${repo}`,
+            `${mirrorCandidatePrefix}${host} · ${repo}`,
         mirrorWarnHeading: "Check these two addresses yourself before confirming",
         mirrorWarnChecks:
             "The only evidence for calling this a mirror is that both manifests declare the same id. " +

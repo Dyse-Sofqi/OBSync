@@ -5,6 +5,7 @@ import { hostLabel } from "../downloadSource";
 import type { TrackedItem } from "../types";
 import { itemRepoRef } from "../types";
 import type { RepoRef } from "../../../host/types";
+import { appendRepoLink } from "./repoLink";
 
 /**
  * 「疑似镜像」的确认弹窗 —— **镜像被采用的唯一入口**。
@@ -43,16 +44,16 @@ export class ConfirmMirrorModal extends Modal {
 
         const source = itemRepoRef(this.tracked);
         const list = contentEl.createEl("ul", { cls: "obsync-mirror-choices" });
-        list.createEl("li", {
-            text: t.installer.mirrorConfirmSource(hostLabel(t, source.host), formatRepoId(source)),
-        });
-        list.createEl("li", {
-            text: t.installer.mirrorConfirmCandidate(
-                hostLabel(t, this.suggestion.host),
-                formatRepoId(this.suggestion)
-            ),
-            cls: "obsync-mirror-candidate",
-        });
+        // 两个地址都做成**可点开的链接**：这一页存在的意义就是让用户去核对它们
+        // （判据只有 `id` 相同），而「打开镜像仓库看作者/主页/README」是页面自己
+        // 写出来的指示 —— 不能让用户手抄地址去浏览器里粘贴。
+        this.appendAddress(list, t.installer.mirrorSourcePrefix, source);
+        this.appendAddress(
+            list,
+            t.installer.mirrorCandidatePrefix,
+            this.suggestion,
+            "obsync-mirror-candidate"
+        );
 
         // 警示：三条分开写（判据有多弱 / 绑错的代价 / 怎么自己核对），
         // 挤成一段会被跳过 —— 而这段文字是用户做判断的全部依据。
@@ -84,5 +85,22 @@ export class ConfirmMirrorModal extends Modal {
 
     onClose(): void {
         this.contentEl.empty();
+    }
+
+    /**
+     * 清单里的一条：**前缀文字 + 可点开的地址**。
+     *
+     * 地址本身是链接文本（而不是另挂一个「打开」按钮）—— 用户要点的就是那串地址。
+     * 悬停有提示（见 `appendRepoLink`），因为一串地址不像"链接"。
+     */
+    private appendAddress(
+        list: HTMLElement,
+        prefix: string,
+        ref: RepoRef,
+        cls?: string
+    ): void {
+        const item = list.createEl("li", { cls });
+        item.appendText(prefix);
+        appendRepoLink(item, ref, `${hostLabel(this.t, ref.host)} · ${formatRepoId(ref)}`, this.t);
     }
 }

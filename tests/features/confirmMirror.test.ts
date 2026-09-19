@@ -58,6 +58,26 @@ function modalTexts(modal: ConfirmMirrorModal): string[] {
     return (content.children as unknown[]).flatMap(walk);
 }
 
+/** 弹窗内容区里所有 `<a>`（可点开的地址）。 */
+function anchors(
+    modal: ConfirmMirrorModal
+): Array<{ text?: string; attrs: Record<string, string> }> {
+    const content = (modal as unknown as { contentEl: { children: unknown[] } }).contentEl;
+    const walk = (
+        node: unknown
+    ): Array<{ text?: string; attrs: Record<string, string> }> => {
+        const el = node as {
+            tagName?: string;
+            text?: string;
+            attrs?: Record<string, string>;
+            children?: unknown[];
+        };
+        const self = el.tagName === "A" ? [{ text: el.text, attrs: el.attrs ?? {} }] : [];
+        return [...self, ...(el.children ?? []).flatMap(walk)];
+    };
+    return (content.children as unknown[]).flatMap(walk);
+}
+
 beforeEach(() => {
     resetCreatedSettings();
 });
@@ -71,6 +91,32 @@ describe("ConfirmMirrorModal", () => {
         expect(texts).toContain("dyse-sofqi/MDRazor");
         expect(texts).toContain("Gitee");
         expect(texts).toContain("sofqi/MDRazor");
+    });
+
+    it("**两个地址都是可点开的链接** —— 页面让人去核对，就得让人点得开", () => {
+        // 这一页的全部意义就是让用户去核对那个地址（判据只有 id 相同），
+        // 而页面自己写的指示是「打开镜像仓库看作者/主页/README」。
+        // 地址若是纯文本，用户得手抄或复制粘贴到浏览器 —— 最该「看一眼」的
+        // 地方反而有摩擦。用真正的 `<a href>`：Obsidian 会交给系统浏览器，
+        // 还顺带能右键复制链接。
+        const modal = openModal();
+
+        const links = anchors(modal);
+        expect(links.map((link) => link.text)).toEqual([
+            "GitHub · dyse-sofqi/MDRazor",
+            "Gitee · sofqi/MDRazor",
+        ]);
+        expect(links.map((link) => link.attrs.href)).toEqual([
+            "https://github.com/dyse-sofqi/MDRazor",
+            "https://gitee.com/sofqi/MDRazor",
+        ]);
+
+        for (const link of links) {
+            expect(link.attrs.target).toBe("_blank");
+            expect(link.attrs.rel).toBe("noopener");
+            // 悬停提示：显示的是一串地址，光靠颜色不够明确
+            expect(link.attrs.title).toBe(zhCN.installer.openRepo);
+        }
     });
 
     it("**警示说明在场**：判据有多弱、代价是什么、怎么自己核对", () => {

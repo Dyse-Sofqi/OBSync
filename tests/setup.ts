@@ -46,6 +46,16 @@ if (typeof globalThis.document === "undefined") {
                 (element.children as unknown[]).push(child);
                 return child;
             },
+            // 真实的 Obsidian 里 `el.appendText()` 追加一个文本节点。
+            // 替身把它记成子对象（与 `createEl({ text })` 同一形状），
+            // 这样「这一行上写了什么」的断言仍然读得到 —— 缺了它，
+            // 「前缀文字 + 可点开的链接」这种写法一跑就 TypeError。
+            appendText(value: string) {
+                (element.children as unknown[]).push({
+                    text: value,
+                    children: [] as unknown[],
+                });
+            },
             addEventListener() {},
             removeEventListener() {},
             setAttribute(name: string, value: string) {

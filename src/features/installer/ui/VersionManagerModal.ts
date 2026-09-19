@@ -7,6 +7,7 @@ import { hostLabel } from "../downloadSource";
 import type { InstallerService, VersionOption } from "../installerService";
 import { itemRepoRef, type TrackedPlugin } from "../types";
 import { compareVersions } from "../versions";
+import { appendRepoLink } from "./repoLink";
 import { VersionSuggestModal } from "./VersionSuggestModal";
 
 /**
@@ -338,13 +339,18 @@ export class VersionManagerModal extends Modal {
 
         if (this.mirror) {
             const mirror = this.mirror;
-            setting.descEl.createDiv({
+            // 地址做成链接：用户点开就能核对「这是不是同一个插件的镜像」
+            // （与确认弹窗同一个理由 —— 见 `repoLink.ts`）。
+            const line = setting.descEl.createDiv({
                 cls: "obsync-mirror-line obsync-mirror-pending",
-                text: t.installer.versionMirrorFound(
-                    hostLabel(t, mirror.host),
-                    formatRepoId(mirror)
-                ),
             });
+            line.appendText(t.installer.versionMirrorFoundPrefix);
+            appendRepoLink(
+                line,
+                mirror,
+                `${hostLabel(t, mirror.host)} · ${formatRepoId(mirror)}`,
+                t
+            );
             setting.addButton((button) =>
                 button
                     .setButtonText(t.installer.versionUseMirror(hostLabel(t, mirror.host)))
