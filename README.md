@@ -71,7 +71,11 @@ Chinese-first UI with an equal English one.
 
 依赖系统 git，因此**仅桌面端可用**（Windows / macOS / Linux）。
 
-- **立即同步** —— 提交 → 拉取 → 推送，一条链走完；也可以单独执行「提交全部更改」「从远端拉取」「推送到远端」
+- **立即同步** —— 提交 → 拉取 → 推送，一条链走完；也可以单独执行「提交全部更改」「从远端拉取」「推送到远端」。
+  **「推送」是单纯的推送**（`git push`）：它只把**已经提交**的内容送上去，**不会顺手提交** ——
+  带着未提交的改动点它，改动一个字节都不会上去（这时它会明确告诉你还有几个更改没提交）。
+  想把改动一起送上去，用「立即同步」（提交 → 拉取 → 推送）或先「提交全部更改」。
+  「自动提交并同步」定时器走的也是「立即同步」那条完整链路
 - **初始化仓库** —— 顺便建一份 `.gitignore`（默认排除 `.obsidian/workspace.json` 这类
   **每台设备各自维护**的文件，同步它们只会制造冲突）。**已存在的 `.gitignore` 绝不覆盖**，
   另有「编辑 .gitignore」命令可以随时改它
@@ -161,6 +165,8 @@ Chinese-first UI with an equal English one.
 
 - 还不是 git 仓库的话，先执行 **OBSync：初始化仓库**（源码控制视图里也有这个按钮）
 - **OBSync：立即同步** —— 提交 → 拉取 → 推送，一条链走完
+- 「提交全部」「推送」是**两个动作**，不是一个：提交只写本地仓库，推送只发送**已提交**的
+  内容。想一步到位就用「立即同步」
 - 也可以在源码控制视图里逐个文件操作（暂存 / 取消暂存、点开文件、看历史），
   或点侧边栏的状态栏条目把它打开
 - 想在浏览器里看某个文件：命令 **OBSync：在浏览器中打开当前文件**，或右键文件选「**在远端打开**」
@@ -291,7 +297,12 @@ Chinese-first UI with an equal English one.
 
 Needs the system `git` binary, so it is **desktop-only** (Windows / macOS / Linux).
 
-- **Sync now** — commit → pull → push in one chain; commit, pull and push are also available separately
+- **Sync now** — commit → pull → push in one chain; commit, pull and push are also available separately.
+  **"Push" is a plain push** (`git push`): it sends **already committed** content only and
+  **never commits for you** — with uncommitted changes, nothing of yours goes up (and it says so,
+  including how many changes are still uncommitted). To send your changes too, use "Sync now"
+  (commit → pull → push) or "Commit all" first. The "auto commit and sync" timer runs that same
+  full chain
 - **Initialize repository** — also creates a `.gitignore` (excluding per-device files such as
   `.obsidian/workspace.json`, which only ever produce conflicts). An existing `.gitignore` is
   **never overwritten**, and there is an "Edit .gitignore" command
@@ -301,9 +312,16 @@ Needs the system `git` binary, so it is **desktop-only** (Windows / macOS / Linu
 - **Auto sync** (off by default) — separate intervals for auto commit / push / pull in minutes (0 = off).
   Timing is based on the **last run** and persists per vault, so restarting Obsidian does not reset
   the cycle and multiple vaults do not interfere
-- **Source-control view** — branch, ahead/behind, changed and conflicted files, with per-file stage/unstage
+- **Source-control view** (sidebar) — open it from the **git ribbon icon**, by **clicking the
+  status-bar item**, or via the command **OBSync: Open source control panel**. It shows a branch
+  switcher, the remote URL (redacted) with an edit entry, `ahead / behind`, a conflict section
+  (conflicted files + abort merge), the changed files **grouped into staged / changes**
+  (per-file stage / unstage, click a file name to open the note, open the file on the remote) and
+  the last 10 commits (click a hash to view that commit on the remote). When the vault is not a git
+  repository it offers an "Initialise repository" button. The panel is **live**: auto commits,
+  outside edits and command-palette actions refresh it
 - **Status-bar item** — branch / `↑ahead ↓behind` / `~dirty` / `⚠conflicts` plus the action in progress;
-  pinned to the **far left** of the status bar on purpose
+  pinned to the **far left** of the status bar on purpose, and **clickable** (opens the source-control view)
 - **Open on the remote** — current file and its history, also in the file context menu,
   with per-platform URLs (Gitee included)
 - **Connection test** — a step-by-step chain: git binary → git repo → remote configured →

@@ -768,11 +768,13 @@ describe("状态栏活动态：动作结束后必须恢复", () => {
 });
 
 /**
- * 「用户按下的动作必须有回音」。
+ * 「推送」到底是单纯的推送，还是提交 + 推送？
  *
- * 他点的「推送」在本地没有新提交时是**静默的空操作**（`ahead === 0` 直接返回），
- * 加上状态栏还卡在活动态 —— 界面上完全没有变化，他没法区分
- * 「没东西可推」和「卡住了」。所以用户主动点的那两个入口要明确说一句。
+ * 用户的提问原话：「推送按钮是单纯的推送还是提交全部加推送，如果是后者应该写清楚」。
+ * 答案是**单纯的推送**（`git.push` 只把已有的提交送上去），所以这里钉住两件事：
+ *
+ * 1. 它的行为就是推送 —— 不留提交；
+ * 2. 用户带着未提交的改动点它时，必须**说清楚**（否则他会以为改动已经上去了）。
  */
 describe("推送：本地与远端一致时的反馈", () => {
     it("用户主动推送时会说明「没有需要推送的内容」", async () => {
@@ -787,15 +789,87 @@ describe("推送：本地与远端一致时的反馈", () => {
         expect(notices).toContain(zhCN.sync.pushUpToDate);
     });
 
-    it("自动定时器**不**说这句（每 N 分钟弹一次是噪音）", async () => {
+    it("**有未提交的改动时，说清「推送只发送已提交的内容」并给出数量**", async () => {
+        // 这才是最容易误会的那个状态：用户带着一堆改动点推送，
+        // 等的是「我的改动上去了」，而推送一个字节都不会带上它们。
         const git = new FakeGit();
         const fake = createFakeApp();
         const { service, notices } = makeService(git, fake);
         git.ahead = 0;
+        git.staged = ["a.md"];
+        git.unstaged = ["b.md", "c.md"];
+
+        await service.push({ announceIfUpToDate: true });
+
+        expect(notices).toContain(zhCN.sync.pushNeedsCommit(3));
+        // 而不是那句听起来像「一切正常」的
+        expect(notices).not.toContain(zhCN.sync.pushUpToDate);
+    });
+
+    it("数量与源码控制视图里的列表同一套规则（去重、排除冲突）", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service, notices } = makeService(git, fake);
+        git.ahead = 0;
+        git.staged = ["a.md"];
+        git.unstaged = ["a.md"]; // 「改了又暂存」，只算一个
+        git.conflicted = ["打架.md"]; // 冲突文件在面板里是单独一栏
+
+        await service.push({ announceIfUpToDate: true });
+
+        expect(notices).toContain(zhCN.sync.pushNeedsCommit(1));
+    });
+
+    it("推送成功后若仍有未提交的改动，也要说明（不能让人以为工作区一起上去了）", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service, notices } = makeService(git, fake);
+        git.ahead = 2;
+        git.unstaged = ["b.md"];
+
+        const outcome = await service.push({ announceIfUpToDate: true });
+
+        expect(outcome.kind).toBe("pushed");
+        expect(notices).toContain(zhCN.sync.pushDonePending(1));
+        expect(notices).not.toContain(zhCN.sync.pushDone);
+    });
+
+    it("推送成功且工作区干净时，只说「已推送」", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service, notices } = makeService(git, fake);
+        git.ahead = 2;
+
+        await service.push({ announceIfUpToDate: true });
+
+        expect(notices).toContain(zhCN.sync.pushDone);
+    });
+
+    it("**推送不会顺手提交** —— 有未提交改动时也只调 push", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service } = makeService(git, fake);
+        git.ahead = 2;
+        git.unstaged = ["b.md"];
+
+        await service.push({ announceIfUpToDate: true });
+
+        expect(git.calls).toContain("push");
+        expect(git.calls).not.toContain("stage-all");
+        expect(git.calls.some((call) => call.startsWith("commit:"))).toBe(false);
+    });
+
+    it("自动定时器**不**说这些话（每 N 分钟弹一次是噪音）", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service, notices } = makeService(git, fake);
+        git.ahead = 0;
+        git.unstaged = ["b.md"];
 
         await service.push();
 
         expect(notices).not.toContain(zhCN.sync.pushUpToDate);
+        expect(notices).not.toContain(zhCN.sync.pushNeedsCommit(1));
     });
 
     it("没有远端时只说「还没配置远端」，不叠加一句「无需推送」", async () => {
@@ -809,6 +883,7 @@ describe("推送：本地与远端一致时的反馈", () => {
 
         expect(notices).toContain(zhCN.sync.noRemote);
         expect(notices).not.toContain(zhCN.sync.pushUpToDate);
+        expect(notices).not.toContain(zhCN.sync.pushNeedsCommit(1));
     });
 
     it("真有提交要推时走真实推送，不说不该说的话", async () => {

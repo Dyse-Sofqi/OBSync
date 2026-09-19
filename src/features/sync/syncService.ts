@@ -3,6 +3,7 @@ import { logger } from "../../core/logger";
 import type { LocaleStrings } from "../../core/i18n";
 import type { Notifier } from "../../core/notice";
 import { renderCommitMessage } from "./commitMessage";
+import { changeRows } from "./changeRows";
 import type { GitManager } from "./gitManager";
 import { ConflictError, describeSyncError } from "./errors";
 import type { SecretStore } from "../../core/secretStore";
@@ -168,13 +169,13 @@ export class SyncService {
     /**
      * 推送。
      *
+     * **只推送已提交的内容** —— 它不会顺手提交（那是「立即同步」和「提交全部」的事）。
+     * 这个区别必须让用户看得见：按钮上只有「推送」两个字，而用户带着一堆未提交的
+     * 改动点它，预期多半是「我的改动该上去了」。
+     *
      * `announceIfUpToDate` 只由**用户主动**的入口传 true（命令面板、视图里的按钮）。
      * 自动推送定时器不传：本地没有新提交是常态，每 N 分钟弹一次
      * 「没有需要推送的内容」纯属噪音。
-     *
-     * 为什么需要这句话：没有它时，用户点「推送」而本地与远端一致 ——
-     * 界面**一点变化都没有**（状态栏还停在「正在推送…」，见 `withActivity`），
-     * 他没法区分「没东西可推」和「卡住了」。
      */
     async push(options: { announceIfUpToDate?: boolean } = {}): Promise<SyncOutcome> {
         return this.enqueue(() =>
@@ -489,23 +490,51 @@ export class SyncService {
         }
     }
 
+    /**
+     * 推送的**唯一**实现：`git push -u origin <当前分支>`。
+     *
+     * 里面**没有提交** —— 这个函数只把已经存在的提交送上去。用户带着未提交的改动
+     * 点「推送」时会得到一句说明（见下），而不是让他以为改动已经在远端了。
+     *
+     * `announceIfUpToDate` 只在用户主动点的时候为 true（自动定时器不传）。
+     */
     private async doPush(announceIfUpToDate = false): Promise<SyncOutcome> {
+        const t = this.deps.getT();
         const status = await this.git.status();
         // 没有远端时 push 必然失败 —— 提前给出更有指导性的错误。
         if (!(await this.git.getRemoteUrl())) {
-            const t = this.deps.getT();
             this.deps.notifier.warn(t.sync.noRemote);
             return { kind: "up-to-date" };
         }
+
+        // 未提交的改动数：与源码控制视图里的列表**同一套规则**（去重、排除冲突），
+        // 否则提示里的数字会和用户在面板里看到的不一样。
+        const pending = changeRows(status).length;
+
         if (status.ahead === 0) {
             // 注意「没有远端」那条**不**走这里：它已经给过警告了，
             // 再说一句「没有需要推送的内容」会让人以为远端一切正常。
             if (announceIfUpToDate) {
-                this.deps.notifier.info(this.deps.getT().sync.pushUpToDate);
+                // 这句话是这次用户提问的直接产物：「推送按钮是单纯的推送还是
+                // 提交全部加推送？」—— 他带着 12 个未提交的改动点了推送，
+                // 只被告知「没有需要推送的内容」，那听起来像「一切正常」，
+                // 而真实情况是「你的改动一个都没上去」。
+                this.deps.notifier.info(
+                    pending > 0 ? t.sync.pushNeedsCommit(pending) : t.sync.pushUpToDate
+                );
             }
             return { kind: "up-to-date" };
         }
-        return this.git.push();
+
+        const outcome = await this.git.push();
+        if (announceIfUpToDate && pending > 0) {
+            // 推开成功了，但本地还有没提交的东西 —— 不说的话用户会以为
+            // 「推送」把工作区一起带上去了。
+            this.deps.notifier.info(t.sync.pushDonePending(pending));
+        } else if (announceIfUpToDate) {
+            this.deps.notifier.success(t.sync.pushDone);
+        }
+        return outcome;
     }
 
     // ── 冲突指南 ──────────────────────────────────────────────────────────

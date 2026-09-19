@@ -453,6 +453,12 @@ export const en = {
             "HEAD is detached (not pointing at any branch), so pushing is not possible. Switch to a branch first.",
         nothingToCommit: "Nothing to commit.",
         pushUpToDate: "Nothing to push — the local branch matches the remote.",
+        pushNeedsCommit: (count: number) =>
+            `Push only sends **committed** content, and you have ${count} uncommitted change(s). ` +
+            `Use "Commit all" (or "Sync now") first.`,
+        pushDonePending: (count: number) =>
+            `Pushed to the remote. Note: ${count} change(s) are still uncommitted — pushing does not commit them.`,
+        pushDone: "Pushed to the remote.",
         noRemote: "No remote repository configured. Set the remote URL in settings.",
         conflictDetected: (count: number) =>
             `${count} conflicted file(s) detected. A conflict list has been written; resolve them and commit manually.`,
@@ -474,6 +480,11 @@ export const en = {
             "Could not build a remote link. Make sure a GitHub or Gitee remote is configured and the repository has at least one commit.",
 
         actSync: "Sync now",
+        // Tooltips for the three actions: "commit" and "push" are different
+        // things (local vs remote) and the buttons are only one word each.
+        actSyncHint: "Commit → pull → push, in one chain",
+        actCommitHint: "Commit all changes to the local repository (no push)",
+        actPushHint: "Pushes **committed** content only; it never commits for you",
         actCommit: "Commit all",
         actPull: "Pull",
         actPush: "Push",

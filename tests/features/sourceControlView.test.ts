@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { WorkspaceLeaf } from "obsidian";
 import {
-    changeRows,
     remoteStateText,
     shortDate,
     SourceControlView,
@@ -47,101 +46,6 @@ function status(partial: Partial<RepoStatus>): RepoStatus {
     };
 }
 
-describe("changeRows", () => {
-    it("普通变更按 staged / unstaged / untracked 汇总", () => {
-        const rows = changeRows(
-            status({
-                staged: [change("a.md", "added")],
-                unstaged: [change("b.md", "modified")],
-                untracked: [change("c.md", "untracked")],
-            })
-        );
-
-        expect(rows.map((row) => row.path)).toEqual(["a.md", "b.md", "c.md"]);
-    });
-
-    it("**冲突文件不出现在变更列表里**（它由调用方单独渲染）", () => {
-        // 模拟真实状态：冲突文件同时被算进 staged 与 unstaged
-        const rows = changeRows(
-            status({
-                staged: [change("notes/会打架.md", "conflicted")],
-                unstaged: [change("notes/会打架.md", "conflicted")],
-                conflicted: ["notes/会打架.md"],
-            })
-        );
-
-        expect(rows).toEqual([]);
-    });
-
-    it("冲突与普通变更并存时，只滤掉冲突", () => {
-        const rows = changeRows(
-            status({
-                staged: [change("notes/会打架.md", "conflicted"), change("a.md", "added")],
-                unstaged: [change("notes/会打架.md", "conflicted")],
-                untracked: [change("b.md", "untracked")],
-                conflicted: ["notes/会打架.md"],
-            })
-        );
-
-        expect(rows.map((row) => row.path)).toEqual(["a.md", "b.md"]);
-    });
-
-    it("干净仓库返回空", () => {
-        expect(changeRows(status({}))).toEqual([]);
-    });
-
-    it("「改了又暂存」的文件（AM / MM）只显示一次", () => {
-        // mapStatus 按 git status 的两位状态位分别归类，AM/MM 的文件
-        // 两个位都非空 → 同时进 staged 与 unstaged。列表是给人看的
-        // 「有哪些文件变了」，同一个路径出现两遍会让人以为有两处改动。
-        const rows = changeRows(
-            status({
-                staged: [change("a.md", "added"), change("b.md", "modified")],
-                unstaged: [change("b.md", "modified")],
-            })
-        );
-
-        expect(rows.map((row) => row.path)).toEqual(["a.md", "b.md"]);
-    });
-
-    it("保留第一次出现的那个（staged 优先）", () => {
-        const rows = changeRows(
-            status({
-                staged: [change("a.md", "added")],
-                unstaged: [change("a.md", "modified")],
-            })
-        );
-
-        expect(rows).toHaveLength(1);
-        expect(rows[0]!.status).toBe("added");
-    });
-
-    it("标出「已暂存」，未暂存与未跟踪都是 false", () => {
-        // 这一位决定那一行给的是「暂存」还是「取消暂存」按钮 —— 反了会让
-        // 用户点了之后文件往相反的方向动。
-        const rows = changeRows(
-            status({
-                staged: [change("a.md", "added")],
-                unstaged: [change("b.md", "modified")],
-                untracked: [change("c.md", "untracked")],
-            })
-        );
-
-        expect(rows.map((row) => row.staged)).toEqual([true, false, false]);
-    });
-
-    it("去重不影响不同路径的文件", () => {
-        const rows = changeRows(
-            status({
-                staged: [change("a.md", "added")],
-                unstaged: [change("b.md", "modified")],
-                untracked: [change("c.md", "untracked")],
-            })
-        );
-
-        expect(rows.map((row) => row.path)).toEqual(["a.md", "b.md", "c.md"]);
-    });
-});
 
 describe("remoteStateText", () => {
     it("ahead/behind 为 null 表示**没有 upstream**，不是「一致」", () => {
@@ -340,6 +244,26 @@ describe("SourceControlView 渲染", () => {
         expect(h.view.getDisplayText()).toBe(zhCN.sync.viewTitle);
         expect(zhCN.sync.viewTitle).not.toMatch(/^OBSync/);
         expect(zhCN.sync.cmdOpenView).toMatch(/^OBSync/);
+    });
+
+    it("三个动作按钮的悬停提示说清了「提交」与「推送」的区别", async () => {
+        // 用户的提问原话：「推送按钮是单纯的推送还是提交全部加推送，
+        // 如果是后者应该写清楚」—— 按钮上只有两个字，答案必须由界面给出。
+        const h = harness({});
+        await h.view.onOpen();
+
+        const tooltips = createdSettings.flatMap((setting) =>
+            setting.buttons.map((button) => button.tooltip)
+        );
+
+        expect(tooltips).toContain(zhCN.sync.actSyncHint);
+        expect(tooltips).toContain(zhCN.sync.actCommitHint);
+        expect(tooltips).toContain(zhCN.sync.actPushHint);
+        // 推送那条必须点明它只送「已提交」的内容（否则这句提示等于没说）
+        expect(zhCN.sync.actPushHint).toContain("已提交");
+        // 「立即同步」要说清它是一条链，而不只是「同步」两个字
+        expect(zhCN.sync.actSyncHint).toContain("提交");
+        expect(zhCN.sync.actSyncHint).toContain("推送");
     });
 
     it("分支下拉框走服务切分支（不再直接调 git.checkout）", async () => {

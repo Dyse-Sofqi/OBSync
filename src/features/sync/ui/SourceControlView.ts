@@ -1,6 +1,7 @@
 import { ItemView, Setting, WorkspaceLeaf } from "obsidian";
 import type { LocaleStrings } from "../../../core/i18n";
 import { redactUrl } from "../../../host/redact";
+import { changeRows, type ChangeRow } from "../changeRows";
 import type { SyncService } from "../syncService";
 import type { SimpleGitManager } from "../simpleGitManager";
 import type { CommitInfo, FileChangeStatus, RepoStatus } from "../types";
@@ -158,14 +159,19 @@ export class SourceControlView extends ItemView {
             .addButton((button) =>
                 button
                     .setButtonText(t.sync.actSync)
+                    .setTooltip(t.sync.actSyncHint)
                     .setCta()
                     .onClick(() => void this.run(() => this.deps.service.sync()))
             );
 
+        // 三个动作的悬停提示不是装饰：**「提交全部」与「推送」是两件事**，
+        // 而按钮只有两个字。用户的原话就是「推送按钮是单纯的推送还是提交全部加推送，
+        // 如果是后者应该写清楚」—— 他是问了才知道的，那就得让界面自己说清楚。
         new Setting(contentEl)
             .addButton((button) =>
                 button
                     .setButtonText(t.sync.actCommit)
+                    .setTooltip(t.sync.actCommitHint)
                     .onClick(() => void this.run(() => this.deps.service.commitAll()))
             )
             .addButton((button) =>
@@ -176,6 +182,7 @@ export class SourceControlView extends ItemView {
             .addButton((button) =>
                 button
                     .setButtonText(t.sync.actPush)
+                    .setTooltip(t.sync.actPushHint)
                     .onClick(() =>
                         void this.run(() =>
                             this.deps.service.push({ announceIfUpToDate: true })
@@ -460,57 +467,12 @@ export class SourceControlView extends ItemView {
 
 // ── 纯函数（可直接单测） ────────────────────────────────────────────────────
 
-/** 更改列表里的一行。 */
-export interface ChangeRow {
-    path: string;
-    status: FileChangeStatus;
-    /** 已经在索引里 —— 点一下是「取消暂存」而不是「暂存」。 */
-    staged: boolean;
-}
-
 /** 渲染一行文件所需的全部信息。`staged` 为 undefined 表示不给暂存开关。 */
 interface FileRowSpec {
     path: string;
     mark: string;
     staged?: boolean;
     conflicted?: boolean;
-}
-
-/**
- * 更改列表里该显示的文件（含「已暂存吗」这一位）。
- *
- * 两处过滤，都是为了**同一个文件不要出现多次**：
- *
- * 1. **冲突文件滤掉。** 它们在 `git status` 里是 `UU`，于是 `mapStatus`
- *    会把它同时归进 `staged` 与 `unstaged`。不滤的话同一个冲突文件会出现三次：
- *    staged 一次、unstaged 一次、外加冲突区单独渲染的那一行。
- * 2. **按路径去重。** 「改了又暂存」的文件（`AM` / `MM`）两个状态位都非空，
- *    同样会进两个数组。列表是给人看的「有哪些文件变了」，
- *    同一个路径出现两遍只会让人以为有两处改动。
- *
- * 去重时**保留第一次出现的那个**（staged → unstaged → untracked 的顺序），
- * 于是「已暂存」优先 —— 与 `git status` 的阅读顺序一致。
- *
- * 抽成独立函数是为了能直接测 —— 这类"列表里多了一项"的问题靠读代码很难发现，
- * 而视图本身要做 DOM 级测试代价太高。
- */
-export function changeRows(status: RepoStatus): ChangeRow[] {
-    const stagedPaths = new Set(status.staged.map((change) => change.path));
-    const seen = new Set<string>();
-    const rows: ChangeRow[] = [];
-
-    for (const change of [...status.staged, ...status.unstaged, ...status.untracked]) {
-        if (change.status === "conflicted") continue;
-        if (seen.has(change.path)) continue;
-        seen.add(change.path);
-        rows.push({
-            path: change.path,
-            status: change.status,
-            staged: stagedPaths.has(change.path),
-        });
-    }
-
-    return rows;
 }
 
 /**
