@@ -453,8 +453,12 @@
 
    作用域用 `:has()` 收在我们自己那个条目上 —— 这是文件里唯一一条碰到
    Obsidian 核心元素的规则（其余一律挂在 `.obsync-*` 下），收窄之后
-   「条目不在时状态栏保持原生形态」这件事由 CSS 自己保证，不靠调用方。 */
-.status-bar:has(.obsync-status-bar-item) {
+   「条目不在时状态栏保持原生形态」这件事由 CSS 自己保证，不靠调用方。
+
+   再外面套一层 `body.obsync-status-bar-full-width`：这一条会改变状态栏的整体观感，
+   所以设置页「通用」里给了开关（关掉后条目仍在那一簇的最前面，只是不再贴屏幕最左）。
+   类由 `main.ts` 的 `applyStatusBarWidth()` 按设置加上/摘掉，插件卸载时也会摘掉。 */
+body.obsync-status-bar-full-width .status-bar:has(.obsync-status-bar-item) {
     left: 0;
     right: 0;
     width: auto;

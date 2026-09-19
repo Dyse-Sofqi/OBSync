@@ -122,6 +122,23 @@ export interface ObsyncSettings {
     language: LanguageSetting;
     showNotices: boolean;
     debugLogging: boolean;
+    /**
+     * 状态栏是否拉成整屏宽（默认开）。
+     *
+     * ## 为什么需要这个开关
+     *
+     * 同步条目要贴在状态栏**最左侧**，而状态栏原本是「收缩到内容宽 + 靠右下」的 ——
+     * 左边根本没有空位。唯一的办法是把它拉成全屏宽（见 styles.css 里那条
+     * `.status-bar:has(...)` 规则）。
+     *
+     * 代价是**状态栏整体的观感变了**：从「右下角一小簇」变成「底部一条」。
+     * 那是用户自己的界面，有人就是不喜欢 —— 而且这条规则是全文件唯一一条碰到
+     * Obsidian 核心元素的规则，本来就该让用户能关掉。
+     *
+     * 关掉之后条目仍然排在那一簇的**最前面**（`order: -1` 还在），只是不再贴屏幕
+     * 最左 —— 功能不丢，只是不再「占满一整条」。
+     */
+    statusBarFullWidth: boolean;
     installer: InstallerSettings;
     sync: SyncSettings;
 }
@@ -131,6 +148,8 @@ export const DEFAULT_SETTINGS: ObsyncSettings = {
     language: "auto",
     showNotices: true,
     debugLogging: false,
+    // 默认与既有行为一致（一直是全宽）—— 加开关不该悄悄改变任何人的界面。
+    statusBarFullWidth: true,
     installer: {
         enabled: true,
         // v2 起默认关闭：把「检查」放在用户真正在看列表的时刻（进入设置页），

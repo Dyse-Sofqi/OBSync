@@ -101,6 +101,9 @@ export const en = {
             showNoticesDesc: "When off, only errors are shown; success and progress notices are silenced.",
             debugLogging: "Verbose logging",
             debugLoggingDesc: "Log detailed request and sync information to the developer console.",
+            statusBarFullWidth: "Status bar spans the full width",
+            statusBarFullWidthDesc:
+                "Stretch the status bar across the screen so the sync item can sit at the **far left** (otherwise there is no free space there). Turning this off restores Obsidian's own layout (a cluster in the bottom-right); the sync item stays **first** in that cluster — nothing is lost, it just no longer fills the whole strip.",
         },
 
         installer: {

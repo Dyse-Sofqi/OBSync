@@ -33,6 +33,17 @@ function createTab(fake: FakeApp): ObsyncSettingsTab {
         settings,
         notifier,
         secretStore: new SecretStore(fake.app),
+        // `commit()` 会调这两个。**必须真的记一笔**：不记的话
+        // 「拨了开关有没有生效」这件事就验不了 —— 而设置页最容易犯的错正是
+        // 「改了值但没落盘 / 没重算派生状态」（那表现为「拨了没用」）。
+        saved: 0,
+        applied: 0,
+        async saveSettings(): Promise<void> {
+            plugin.saved += 1;
+        },
+        applyDerivedSettings(): void {
+            plugin.applied += 1;
+        },
         // 渲染阶段只用到这两个协作者的**存在**（点击回调查用），这里不构造它们。
         installer: {
             service: {} as InstallerService,
@@ -117,5 +128,73 @@ describe("设置页 · 安装器页", () => {
 
         // 真正的意图是断言上面那些构造不需要真实 vault —— 这里只确认 app 到了位
         expect((tab as unknown as { app: App }).app).toBe(fake.app);
+    });
+});
+
+/**
+ * 设置页「通用」标签。
+ *
+ * 这一页此前**一个用例都没有**（上面那组是安装器页）。这里补上状态栏全宽那个开关：
+ * 它在不在、默认值对不对、拨动之后设置**真的被写进去**。
+ *
+ * 「写进去了没有」必须验：设置页里 toggle 的 `onChange` 忘了赋值 / 忘了 `commit()`
+ * 都是很容易犯的错，而那种错在界面上只表现为「拨了开关没用」——
+ * 与当年那个「启用笔记同步」的死开关是同一类问题（见第三节的检查 6）。
+ */
+describe("设置页 · 通用页", () => {
+    function renderGeneralPage(tab: ObsyncSettingsTab): void {
+        (tab as unknown as { renderGeneral(): void }).renderGeneral();
+    }
+
+    it("渲染不抛错，且三行都在（提示 / 调试日志 / 状态栏全宽）", () => {
+        const fake = createFakeApp();
+        const tab = createTab(fake);
+
+        expect(() => renderGeneralPage(tab)).not.toThrow();
+
+        const names = createdSettings.map((setting) => setting.name);
+        expect(names).toContain(zhCN.settings.general.showNotices);
+        expect(names).toContain(zhCN.settings.general.debugLogging);
+        expect(names).toContain(zhCN.settings.general.statusBarFullWidth);
+    });
+
+    it("状态栏全宽默认是**开着**的（加开关不该悄悄改掉所有人的界面）", () => {
+        const fake = createFakeApp();
+        const tab = createTab(fake);
+
+        renderGeneralPage(tab);
+
+        const row = createdSettings.find(
+            (setting) => setting.name === zhCN.settings.general.statusBarFullWidth
+        );
+        expect(row?.toggles[0]?.value).toBe(true);
+        expect(row?.desc).toBe(zhCN.settings.general.statusBarFullWidthDesc);
+    });
+
+    it("拨动开关会把设置**真的写进去**，并立刻重算派生状态（不用重载插件）", async () => {
+        const fake = createFakeApp();
+        const tab = createTab(fake);
+        const plugin = (
+            tab as unknown as {
+                obsync: {
+                    settings: ReturnType<typeof normalizeSettings>;
+                    saved: number;
+                    applied: number;
+                };
+            }
+        ).obsync;
+
+        renderGeneralPage(tab);
+        const row = createdSettings.find(
+            (setting) => setting.name === zhCN.settings.general.statusBarFullWidth
+        );
+
+        row!.toggles[0]!.toggle(false);
+        await Promise.resolve();
+
+        expect(plugin.settings.statusBarFullWidth).toBe(false);
+        // 落盘 + 重算派生状态（后者才会给 body 加/摘那个类 —— 见 pluginBoot 的用例）
+        expect(plugin.saved).toBe(1);
+        expect(plugin.applied).toBe(1);
     });
 });

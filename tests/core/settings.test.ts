@@ -72,6 +72,21 @@ describe("normalizeSettings", () => {
         expect(settings.installer.enabled).toBe(DEFAULT_SETTINGS.installer.enabled);
     });
 
+    it("旧的 data.json 里没有「状态栏占满整屏宽」时补成默认值（**保持既有观感**）", () => {
+        // 这个开关是后加的：老用户的库里没有这个字段，而他们看到的一直是全宽状态栏。
+        // 补成 false 会**悄悄改掉所有人的界面** —— 那不是加开关该有的行为。
+        const settings = normalizeSettings({ language: "zh-cn" });
+
+        expect(settings.statusBarFullWidth).toBe(true);
+        expect(DEFAULT_SETTINGS.statusBarFullWidth).toBe(true);
+    });
+
+    it("用户关掉它之后会被保留（不会被当成非法值丢掉）", () => {
+        expect(normalizeSettings({ statusBarFullWidth: false }).statusBarFullWidth).toBe(
+            false
+        );
+    });
+
     it("钳制越界或非法的数值", () => {
         const settings = normalizeSettings({
             installer: { autoCheckDelaySeconds: -10 },

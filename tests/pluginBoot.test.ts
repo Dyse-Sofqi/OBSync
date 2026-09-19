@@ -207,6 +207,35 @@ describe("桌面端启动", () => {
         expect(() => plugin.onunload()).not.toThrow();
     });
 
+    /**
+     * 状态栏全宽开关（设置页「通用」）。
+     *
+     * 这条规则用到了 `:has()`，只能写在 CSS 里，所以开关的做法是**给 body 加类**
+     * （见 `main.ts` 的 `applyStatusBarWidth`）。三件事都要钉住：
+     * 开着时加上、关掉时摘掉、**卸载时也摘掉**。
+     *
+     * 最后那条最容易漏：不摘的话插件禁用后全宽规则还挂在 body 上，状态栏莫名
+     * 保持全宽，而谁也看不出是谁干的。
+     */
+    it("按设置给 body 加/摘「状态栏全宽」的类，卸载时也会摘掉", async () => {
+        const plugin = createPlugin(fake);
+        await plugin.onload();
+
+        // 默认开着（与既有行为一致）
+        expect(document.body.hasClass("obsync-status-bar-full-width")).toBe(true);
+
+        plugin.settings.statusBarFullWidth = false;
+        plugin.applyDerivedSettings();
+        expect(document.body.hasClass("obsync-status-bar-full-width")).toBe(false);
+
+        plugin.settings.statusBarFullWidth = true;
+        plugin.applyDerivedSettings();
+        expect(document.body.hasClass("obsync-status-bar-full-width")).toBe(true);
+
+        plugin.onunload();
+        expect(document.body.hasClass("obsync-status-bar-full-width")).toBe(false);
+    });
+
     it("启动完成回调不抛同步异常（会起定时器与后台检查）", async () => {
         const plugin = createPlugin(fake);
         await plugin.onload();

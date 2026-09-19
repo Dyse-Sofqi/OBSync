@@ -110,7 +110,9 @@ Chinese-first UI with an equal English one.
   面板是**活的**：自动提交、库外改动、命令面板里的动作都会让它自己刷新
 - **状态栏条目** —— 分支 / `↑ahead ↓behind` / `~脏文件数` / `⚠冲突数`，以及进行中的动作；
   贴在状态栏**最左侧**（这是刻意的：它回答「现在同步到哪了」，不该藏在右下角），
-  并且**可以点开**（打开源码控制视图）
+  并且**可以点开**（打开源码控制视图）。贴最左需要把状态栏拉成全屏宽，而**那会改变
+  状态栏的整体观感**，所以设置页「通用」里给了开关（**状态栏占满整屏宽**，默认开）：
+  关掉后状态栏恢复 Obsidian 原样（右下角一簇），同步条目仍在那一簇的最前面
 - **在浏览器中打开** —— 当前文件、当前文件的修改历史，以及文件右键菜单里的同样两项；
   GitHub 与 Gitee 各按平台拼链接（中文文件名会自动转义）
 - **连接测试** —— 一条递进的检查链：git 可执行文件 → 是否 git 仓库 → 有没有远端 →
@@ -202,7 +204,7 @@ Chinese-first UI with an equal English one.
 | 已跟踪插件与主题 | 已安装/添加的插件与主题列表，含更新徽标、检查、更新、版本管理（回退）、冻结、打开仓库、取消绑定（不删文件） |
 | 插件安装器 | 启用开关、更新检查时机、Gitee 镜像发现、**访问令牌**（GitHub / Gitee）、OBSync 自身更新 |
 | 仓库同步 | 同步开关、自动提交/推送/拉取间隔、提交信息模板、整合策略、git 路径、**连接测试** |
-| 通用 | 界面语言、提示开关、调试日志 |
+| 通用 | 界面语言、提示开关、调试日志、**状态栏占满整屏宽** |
 
 **令牌只保存在本机**（Obsidian 的密钥存储，老版本回退到 localStorage），
 不会写进 `data.json`，也不会随库同步到其他设备。
@@ -364,7 +366,11 @@ Needs the system `git` binary, so it is **desktop-only** (Windows / macOS / Linu
   repository it offers an "Initialise repository" button. The panel is **live**: auto commits,
   outside edits and command-palette actions refresh it
 - **Status-bar item** — branch / `↑ahead ↓behind` / `~dirty` / `⚠conflicts` plus the action in progress;
-  pinned to the **far left** of the status bar on purpose, and **clickable** (opens the source-control view)
+  pinned to the **far left** of the status bar on purpose, and **clickable** (opens the source-control view).
+  Pinning it there requires stretching the status bar to the full window width, and **that changes how
+  the status bar looks**, so the General tab has a switch for it (**"Status bar spans the full width"**,
+  on by default): turning it off restores Obsidian's own layout (a bottom-right cluster) with the sync
+  item still first in that cluster
 - **Open on the remote** — current file and its history, also in the file context menu,
   with per-platform URLs (Gitee included)
 - **Connection test** — a step-by-step chain: git binary → git repo → remote configured →
@@ -425,7 +431,7 @@ Needs the system `git` binary, so it is **desktop-only** (Windows / macOS / Linu
 | Tracked plugins & themes | The list, with update badges, check, update, version manager (rollback), freeze, open repo, unbind |
 | Plugin installer | Enable switch, update-check timing, Gitee mirror discovery, **access tokens**, self-update |
 | Vault sync | Enable switch, auto commit/push/pull intervals, commit message template, strategy, git path, connection test |
-| General | UI language, notices, debug logging |
+| General | UI language, notices, debug logging, **status bar spans the full width** |
 
 Tokens are stored **locally only** (Obsidian's secret storage, falling back to localStorage for older
 versions), never in `data.json`, and never synced to other devices.

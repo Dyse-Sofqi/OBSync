@@ -27,6 +27,24 @@ import { redactUrl } from "./host/redact";
 import { ObsyncSettingsTab } from "./settingsTab";
 
 /**
+ * 状态栏全宽开关作用的类名（`styles.css` 里那条 `.status-bar:has(...)` 规则
+ * 挂在它下面）。
+ *
+ * 为什么用「给 `body` 加类」而不是「运行时改内联样式」：
+ * - 那条规则用到了 `:has()`，只能写在 CSS 里；
+ * - 内联样式得自己去改 Obsidian 核心元素的 `style`，那会与主题/其他插件互相覆盖，
+ *   而且插件卸载后留下的内联样式更难清干净。
+ *
+ * 开关关掉时**移除**这个类，CSS 自然不生效 —— 没有第二条规则要同步维护。
+ */
+const STATUS_BAR_FULL_WIDTH_CLASS = "obsync-status-bar-full-width";
+
+/** 按设置给 `body` 加上/摘掉状态栏全宽那个类。 */
+function applyStatusBarWidth(fullWidth: boolean): void {
+    document.body.toggleClass(STATUS_BAR_FULL_WIDTH_CLASS, fullWidth);
+}
+
+/**
  * OBSync 主类。
  *
  * 设计上刻意保持「只做装配」：主类不实现任何业务逻辑，只负责
@@ -172,6 +190,10 @@ export default class ObsyncPlugin extends Plugin {
 
     onunload(): void {
         this.sync?.stop();
+        // 把状态栏的类摘掉：不摘的话，插件被禁用/卸载后那条全宽规则还挂在
+        // body 上（CSS 由 Obsidian 继续加载到下次重载），状态栏会莫名其妙
+        // 保持全宽，而且谁也看不出是谁干的。
+        applyStatusBarWidth(false);
         logger.info("plugin unloaded");
     }
 
@@ -206,6 +228,7 @@ export default class ObsyncPlugin extends Plugin {
         setHttpDebugLogger(
             this.settings.debugLogging ? (message) => logger.debug(message) : undefined
         );
+        applyStatusBarWidth(this.settings.statusBarFullWidth);
         this.sync?.reload();
     }
 
