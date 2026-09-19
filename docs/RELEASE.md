@@ -215,22 +215,36 @@ git remote -v | grep gitee      # → https://gitee.com/sofqi/OBSync.git
 （返回 201、release 建出来了，附件一个都没有）。附件是**独立接口，且一次只能传一个**。
 
 ```bash
-export GITEE_TOKEN="<私人令牌>"      # ⚠ 账号密码走不通：API 基本认证一律 401，必须是 PAT
-Q="access_token=$GITEE_TOKEN"
-API=https://gitee.com/api/v5/repos/sofqi/OBSync
-
-curl -s -X POST "$API/releases" \
-  -F "$Q" -F "tag_name=X.Y.Z" -F "name=X.Y.Z" -F "target_commitish=main" \
-  -F "prerelease=false" -F "body=<发布说明.md"
-
-REL=$(curl -s "$API/releases/tags/X.Y.Z?$Q" | jq .id)
-for f in main.js manifest.json styles.css; do
-  curl -s -X POST "$API/releases/$REL/attach_files" -F "$Q" -F "file=@$f"
-done
-
-# 核对（Gitee 的下载地址**能直连**，不像 github.com 那样被时段性阻断）
-curl -s "$API/releases/$REL/attach_files?$Q" | jq -r '.[] | .browser_download_url'
+# 一条命令：建 release + 逐个传附件 + 核对附件数
+GITEE_TOKEN="<私人令牌>" pnpm gitee:release X.Y.Z
 ```
+
+⚠ **账号密码走不通**：Gitee 的 API 基本认证一律 401，必须是 PAT
+（设置 → 私人令牌，至少勾 `projects`）。
+
+`scripts/gitee-release.mjs` 把三个坑固化进去了：
+
+- **`files` 参数会被静默忽略** —— 建 release 的接口根本没有这个参数，传了会返回 201、
+  release 建出来了、**附件一个都没有**。附件是**独立接口，且一次只能传一个**；
+- 本机**没有 `jq`**（早先手敲 curl 的写法用了它，取 release id 那一步会直接失败）；
+- **release body 从 `CHANGELOG.md` 抽该版本的段落** —— 单一事实来源，
+  不用维护第二份文案（GitHub 那边是手写的精简版，两边不必逐字相同）。
+
+脚本最后会**核对附件数**：不等于 3 就以非零退出 —— 避免「看起来发完了、其实没附件」。
+
+令牌只从环境变量读，**不写进任何文件、不写进 remote URL**。
+
+核对下载（Gitee 的下载地址**能直连**，不像 `github.com` 那样被时段性阻断）：
+
+```bash
+for f in main.js manifest.json styles.css; do
+  curl -sL -o "$TEMP/dl-$f" -w "%{http_code} %{size_download}\n" \
+    "https://gitee.com/sofqi/OBSync/releases/download/X.Y.Z/$f"
+done
+```
+
+⚠ 别用 `-o /dev/null`：Git Bash 下 curl 会以 **exit 23（write error）** 失败并报 0 字节，
+看着像「下载不了」。用 `$TEMP` 下的临时文件，比完大小再删。
 
 ⚠ **令牌不落盘**：别写进 remote URL（会进 `.git/config`，而 `git remote -v` 一眼就能看到 ——
 这个项目自己论证过这条），也别设成全局 `credential.helper`。推代码用一次性的：

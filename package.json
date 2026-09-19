@@ -12,6 +12,7 @@
     "verify:mobile": "pnpm build && node scripts/verify-mobile-load.mjs",
     "verify:head": "node scripts/verify-head.mjs",
     "hooks:install": "git config core.hooksPath .githooks",
+    "gitee:release": "node scripts/gitee-release.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:live": "cross-env OBSYNC_LIVE=1 vitest run tests/live"
