@@ -226,16 +226,26 @@ OBSync 针对这两点做了扩展：
 
 ```bash
 pnpm install
-pnpm dev        # esbuild watch，构建后自动部署到测试库
-pnpm build      # 自查 + 类型检查 + 生产构建 + 部署
-pnpm check      # 项目自查（只读，约 0.2 秒）
+pnpm dev         # esbuild watch，构建后自动部署到测试库
+pnpm build       # 自查 + 类型检查 + 生产构建 + 部署
+pnpm build:both  # 同上，但**部署到两个库**（测试库 + 真实库）
+pnpm check       # 项目自查（只读，约 0.2 秒）
 pnpm typecheck
-pnpm test       # 单元测试（不碰网络）
-pnpm test:live  # 真实 API 测试，需要网络
+pnpm test        # 单元测试（不碰网络）
+pnpm test:live   # 真实 API 测试，需要网络
 ```
 
-- 部署目标默认是 `F:/_Workspace/Plugin-Test/.obsidian/plugins/obsync`，
-  用环境变量 `OBSYNC_DEPLOY_DIR` 覆盖，设为空串则跳过部署。
+- 部署目标默认是 `F:/_Workspace/Plugin-Test/.obsidian/plugins/obsync`。
+  环境变量 `OBSYNC_DEPLOY_DIR` 可以覆盖，而且**接受多个目录**（用 `;` 分隔）——
+  一次构建同时更新几个库；设为空串则跳过部署。
+
+  ```bash
+  # 一次部署到两个库（pnpm build:both 就是这条）
+  OBSYNC_DEPLOY_DIR="F:/_Workspace/Plugin-Test/.obsidian/plugins/obsync;D:/_Workspace/learning-records/.obsidian/plugins/obsync" pnpm build
+  ```
+
+  只复制 `main.js` / `manifest.json` / `styles.css` 三个文件，**不碰 `data.json`**
+  （那是你的设置与跟踪列表）；某个目标写不进去只警告，不中断构建、也不影响另一个目标。
 - **`pnpm check` 查六件编译器管不着的事**：manifest 的 `minAppVersion` 是否覆盖了
   代码用到的 Obsidian API、有没有硬编码的中文（会漏给英文用户）、有没有定义了却没
   接上的 i18n 键、CSS 类有没有漏定义、移动端静态导入图是否碰到 Node 依赖、
@@ -369,13 +379,21 @@ Vault sync needs the system `git` binary and is **desktop-only**; plugin install
 
 ```bash
 pnpm install
-pnpm dev        # esbuild watch, deploys to the test vault after each build
-pnpm build      # self-check + typecheck + production build + deploy
-pnpm check      # read-only project self-check (~0.2 s)
+pnpm dev         # esbuild watch, deploys to the test vault after each build
+pnpm build       # self-check + typecheck + production build + deploy
+pnpm build:both  # same, but deploys to both vaults (test + real)
+pnpm check       # read-only project self-check (~0.2 s)
 pnpm typecheck
-pnpm test       # unit tests (no network)
-pnpm test:live  # live API tests (needs network)
+pnpm test        # unit tests (no network)
+pnpm test:live   # live API tests (needs network)
 ```
+
+The default deploy target is `F:/_Workspace/Plugin-Test/.obsidian/plugins/obsync`. The
+`OBSYNC_DEPLOY_DIR` environment variable overrides it and accepts **several** directories
+separated by `;`, so one build can update multiple vaults; set it to an empty string to
+skip deploying. Only `main.js`, `manifest.json` and `styles.css` are copied — never
+`data.json` (your settings and tracked list). A target that cannot be written is warned
+about without failing the build or the other targets.
 
 Architecture notes and a long list of field-tested pitfalls live in
 [`docs/HANDOVER.md`](docs/HANDOVER.md); the release checklist is in [`docs/RELEASE.md`](docs/RELEASE.md).

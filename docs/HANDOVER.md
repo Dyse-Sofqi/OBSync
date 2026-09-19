@@ -191,8 +191,10 @@ pnpm test:live  # 真实 API 测试（OBSYNC_LIVE=1，需网络）
 > ⚠ 别改回 `require("./features/sync")`：Obsidian 桌面端能用，但测试环境是 ESM，
 > `require` 不存在，启动测试会全部失败。（试过，踩了。）
 
-- 部署目标 `F:/_Workspace/Plugin-Test/.obsidian/plugins/obsync`，
-  环境变量 `OBSYNC_DEPLOY_DIR` 可覆盖，设空串跳过；部署失败只警告不中断构建。
+- 部署目标默认 `F:/_Workspace/Plugin-Test/.obsidian/plugins/obsync`；环境变量
+  `OBSYNC_DEPLOY_DIR` 可覆盖，而且**接受多个目录**（`;` 分隔）—— `pnpm build:both`
+  就是「同时部署到测试库与真实库」那条命令。设空串跳过；某个目标写失败只警告，
+  既不中断构建、也不影响另一个目标。**只复制三个产物，永远不碰 `data.json`。**
 - 测试库路径下可直接手测插件（Obsidian 打开该库）。
 - 本机 shell 是 Git Bash（Windows），git 二进制可用（阶段三会用到）。
 

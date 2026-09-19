@@ -22,11 +22,20 @@ const NODE_BUILTINS = [
 ].flatMap((m) => [m, `node:${m}`]);
 
 /**
- * Copies the built plugin into an Obsidian vault so the running app picks it up.
- * Override the target with OBSYNC_DEPLOY_DIR, or set it to "" to skip deploying.
+ * Copies the built plugin into Obsidian vault(s) so the running app picks it up.
+ *
+ * `OBSYNC_DEPLOY_DIR` 接受**多个**目录，用 `;` 分隔 —— 一次构建就能同时更新测试库与
+ * 真实库（`pnpm build:both` 就是这么做的）。设成空串则整个跳过部署。
+ *
+ * 分隔符固定用 `;` 而**不是** `path.delimiter`：后者在 POSIX 上是 `:`，
+ * 而 Windows 盘符 `F:/…` 里本来就带冒号 —— 用它会把一份配置切碎。
  */
-const deployDir =
-    process.env.OBSYNC_DEPLOY_DIR ?? "F:/_Workspace/Plugin-Test/.obsidian/plugins/obsync";
+const DEFAULT_DEPLOY_DIRS = ["F:/_Workspace/Plugin-Test/.obsidian/plugins/obsync"];
+
+const deployDirs = (process.env.OBSYNC_DEPLOY_DIR ?? DEFAULT_DEPLOY_DIRS.join(";"))
+    .split(";")
+    .map((dir) => dir.trim())
+    .filter((dir) => dir.length > 0);
 
 const ARTIFACTS = ["main.js", "manifest.json", "styles.css"];
 
@@ -35,21 +44,24 @@ const deployPlugin = {
     setup(build) {
         build.onEnd((result) => {
             if (result.errors.length > 0) return;
-            if (!deployDir) {
+            if (deployDirs.length === 0) {
                 console.log("[deploy] skipped (OBSYNC_DEPLOY_DIR is empty)");
                 return;
             }
-            try {
-                fs.mkdirSync(deployDir, { recursive: true });
-                for (const file of ARTIFACTS) {
-                    if (fs.existsSync(file)) {
-                        fs.copyFileSync(file, path.join(deployDir, file));
+            // 每个目标各自 try：一个库写不进去（不存在、被占用）不该连累另一个。
+            for (const dir of deployDirs) {
+                try {
+                    fs.mkdirSync(dir, { recursive: true });
+                    for (const file of ARTIFACTS) {
+                        if (fs.existsSync(file)) {
+                            fs.copyFileSync(file, path.join(dir, file));
+                        }
                     }
+                    console.log(`[deploy] ${ARTIFACTS.join(", ")} -> ${dir}`);
+                } catch (err) {
+                    // A missing vault must never break the build.
+                    console.warn(`[deploy] skipped ${dir}: ${err.message}`);
                 }
-                console.log(`[deploy] ${ARTIFACTS.join(", ")} -> ${deployDir}`);
-            } catch (err) {
-                // A missing vault must never break the build.
-                console.warn(`[deploy] skipped: ${err.message}`);
             }
         });
     },

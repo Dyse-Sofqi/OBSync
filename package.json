@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "pnpm check && pnpm typecheck && node esbuild.config.mjs production",
+    "build:both": "cross-env OBSYNC_DEPLOY_DIR=\"F:/_Workspace/Plugin-Test/.obsidian/plugins/obsync;D:/_Workspace/learning-records/.obsidian/plugins/obsync\" pnpm build",
     "typecheck": "tsc --noEmit --skipLibCheck",
     "check": "node scripts/checks.mjs",
     "verify:mobile": "pnpm build && node scripts/verify-mobile-load.mjs",
