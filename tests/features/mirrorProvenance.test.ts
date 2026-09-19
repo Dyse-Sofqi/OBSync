@@ -9,6 +9,7 @@ import {
     type InstallerHost,
 } from "../../src/features/installer/installerService";
 import type { RepoRef } from "../../src/host/types";
+import type { TrackedTheme } from "../../src/features/installer/types";
 import { createFakeApp, type FakeApp } from "../helpers/fakeApp";
 
 /**
@@ -519,5 +520,134 @@ describe("二次确认镜像", () => {
         expect({ host: record.host, owner: record.owner, repo: record.repo }).toEqual(second);
         // 仍然是 GitHub —— 不是中间那个镜像
         expect(record.origin).toEqual(GITHUB);
+    });
+});
+
+/**
+ * 主题的镜像：**同样只提议、不采用**（判据是 name + 不比源旧，比插件弱一档，
+ * 所以更需要确认弹窗兜着）。
+ *
+ * 实测背景：主题原先完全没有镜像这条路（判据靠插件 manifest 的 id），于是
+ * 明明有 Gitee 镜像也照样去撞 github.com —— 在 github.com 被阻断的网络里
+ * 每次更新都降级报错。
+ */
+describe("主题的镜像提议", () => {
+    const THEME_MANIFEST = JSON.stringify({
+        name: "Ethereal",
+        version: "1.4.2",
+        minAppVersion: "1.0.0",
+    });
+    const themeRef: RepoRef = { host: "github", owner: "dyse-sofqi", repo: "Ethereal" };
+    const giteeMirror: RepoRef = { host: "gitee", owner: "sofqi", repo: "Ethereal" };
+
+    function trackedTheme(): TrackedTheme {
+        return {
+            kind: "theme",
+            host: "github",
+            owner: "dyse-sofqi",
+            repo: "Ethereal",
+            id: "Ethereal",
+            name: "Ethereal",
+            installedVersion: "1.4.2",
+            frozen: false,
+            channel: "release",
+            installedAt: 0,
+        };
+    }
+
+    /** 源仓库（GitHub）与镜像（Gitee）各铺一条只含 manifest + theme.css 的通道。 */
+    function routeThemeSources(): void {
+        const manifestRoute = (host: "github" | "gitee", owner: string) =>
+            route(
+                host === "github"
+                    ? /^https:\/\/raw\.githubusercontent\.com\/dyse-sofqi\/Ethereal\/HEAD\/manifest\.json$/
+                    : new RegExp(`^https://gitee\.com/${owner}/Ethereal/raw/HEAD/manifest\.json$`),
+                () => ({ status: 200, text: THEME_MANIFEST })
+            );
+        const cssRoute = (host: "github" | "gitee", owner: string) =>
+            route(
+                host === "github"
+                    ? /^https:\/\/raw\.githubusercontent\.com\/dyse-sofqi\/Ethereal\/HEAD\/theme\.css$/
+                    : new RegExp(`^https://gitee\.com/${owner}/Ethereal/raw/HEAD/theme\.css$`),
+                () => ({ status: 200, text: "/* theme */" })
+            );
+
+        manifestRoute("github", "dyse-sofqi");
+        cssRoute("github", "dyse-sofqi");
+        // 候选 ①「同名 owner」在 Gitee 上不存在（真实情况就是这样）
+        route(/^https:\/\/gitee\.com\/dyse-sofqi\/Ethereal\/raw\//, () => ({
+            status: 404,
+            text: "not found",
+        }));
+        // 候选 ②「Gitee 账号名下的同名仓库」——镜像在这里
+        manifestRoute("gitee", "sofqi");
+        cssRoute("gitee", "sofqi");
+        // 账号名要靠令牌解析（候选 ② 的来路）
+        route(/^https:\/\/gitee\.com\/api\/v5\/user\?/, () => ({
+            status: 200,
+            text: JSON.stringify({ login: "sofqi" }),
+        }));
+        // 没有 release → 走源码通道（主题生态的常态）
+        route(/api\.github\.com\/repos\/dyse-sofqi\/Ethereal\/releases\/latest/, () => ({
+            status: 404,
+            text: '{"message":"Not Found"}',
+        }));
+        route(/api\.github\.com\/repos\/dyse-sofqi\/Ethereal\/releases\?/, () => ({
+            status: 200,
+            text: "[]",
+        }));
+    }
+
+    it("更新主题：仍从源仓库取文件，镜像只记成「待确认」", async () => {
+        const fake = createFakeApp();
+        const { service, settings, secretStore } = createService(fake, true);
+        secretStore.setToken("gitee", "a-gitee-token");
+        routeThemeSources();
+        const tracked = trackedTheme();
+        settings.installer.tracked = [tracked];
+
+        const result = await service.updateTheme(tracked);
+
+        // 记录与下载都还在源仓库上
+        const record = settings.installer.tracked[0]!;
+        expect({ host: record.host, owner: record.owner, repo: record.repo }).toEqual(themeRef);
+        expect(result.repoRef).toEqual(themeRef);
+        // 提议记下了（键与插件侧同一套：`<kind>:<id>`）
+        expect(result.mirror).toEqual(giteeMirror);
+        expect(settings.installer.mirrorSuggestions["theme:ethereal"]).toEqual(giteeMirror);
+        // 而且没有从镜像下载
+        expect(calls.some((url) => url.includes("gitee.com/sofqi/Ethereal/raw/HEAD/theme.css"))).toBe(
+            false
+        );
+    });
+
+    it("确认之后：主题的来源换成镜像，原来的 GitHub 地址进 origin", async () => {
+        const fake = createFakeApp();
+        const { service, settings, secretStore } = createService(fake, true);
+        secretStore.setToken("gitee", "a-gitee-token");
+        routeThemeSources();
+        const tracked = trackedTheme();
+        settings.installer.tracked = [tracked];
+        await service.updateTheme(tracked);
+
+        await service.confirmMirror(settings.installer.tracked[0]!, giteeMirror);
+
+        const record = settings.installer.tracked[0]!;
+        expect({ host: record.host, owner: record.owner, repo: record.repo }).toEqual(giteeMirror);
+        expect(record.origin).toEqual(themeRef);
+        expect(settings.installer.mirrorSuggestions["theme:ethereal"]).toBeUndefined();
+    });
+
+    it("关掉镜像发现时一个候选都不探（连 Gitee 请求都不发）", async () => {
+        const fake = createFakeApp();
+        const { service, settings } = createService(fake, false);
+        routeThemeSources();
+        const tracked = trackedTheme();
+        settings.installer.tracked = [tracked];
+
+        const result = await service.updateTheme(tracked);
+
+        expect(result.mirror).toBeUndefined();
+        expect(calls.some((url) => url.includes("gitee.com"))).toBe(false);
     });
 });

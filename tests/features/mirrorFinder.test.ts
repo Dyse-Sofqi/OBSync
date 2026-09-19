@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { __setRequestUrlHandler } from "../stubs/obsidian";
-import { findGiteeMirror } from "../../src/features/installer/mirrorFinder";
+import {
+    findGiteeMirror,
+    findGiteeMirrorForTheme,
+} from "../../src/features/installer/mirrorFinder";
 
 /**
  * 镜像发现的核心安全约束：**宁可找不到，不可装错**。
@@ -172,6 +175,77 @@ describe("findGiteeMirror · 候选 owner", () => {
             undefined,
             ["dyse-sofqi"]
         );
+
+        expect(mirror).toBeUndefined();
+    });
+});
+
+/**
+ * 主题的镜像探测：判据与插件**不同**（主题 manifest 没有 `id`）。
+ *
+ * 两条条件缺一不可：`name` 一致（同一个主题）+ 版本不比源旧（换到更旧的镜像
+ * 等于让用户静默失去更新）。而且它同样只是**提议** —— 采用要经确认弹窗。
+ */
+describe("findGiteeMirrorForTheme", () => {
+    const THEME = (name: string, version: string) =>
+        JSON.stringify({ name, version, minAppVersion: "1.0.0" });
+    const GITHUB_REF = { host: "github" as const, owner: "dyse-sofqi", repo: "Ethereal" };
+
+    /** 源仓库（GitHub）与一个候选（Gitee）的 manifest。 */
+    function route(source: string, candidate: string | undefined, owner = "sofqi"): void {
+        __setRequestUrlHandler(async (request) => {
+            if (request.url.includes("raw.githubusercontent.com")) {
+                return { status: 200, text: source };
+            }
+            if (request.url.includes(`gitee.com/${owner}/`)) {
+                return candidate === undefined
+                    ? { status: 404, text: "not found" }
+                    : { status: 200, text: candidate };
+            }
+            throw new Error(`no route for ${request.url}`);
+        });
+    }
+
+    it("同名主题 + 版本不落后 → 命中", async () => {
+        route(THEME("Ethereal", "1.4.2"), THEME("Ethereal", "1.4.2"));
+
+        const mirror = await findGiteeMirrorForTheme(GITHUB_REF, undefined, ["sofqi"], {
+            name: "Ethereal",
+            version: "1.4.2",
+        });
+
+        expect(mirror).toEqual({ host: "gitee", owner: "sofqi", repo: "Ethereal" });
+    });
+
+    it("**名字不同的主题**（同名仓库但是另一个主题）→ 不认", async () => {
+        route(THEME("Ethereal", "1.4.2"), THEME("Silence", "9.9.9"));
+
+        const mirror = await findGiteeMirrorForTheme(GITHUB_REF, undefined, ["sofqi"], {
+            name: "Ethereal",
+            version: "1.4.2",
+        });
+
+        expect(mirror).toBeUndefined();
+    });
+
+    it("**版本比源旧**的镜像 → 不认（换过去等于失去更新）", async () => {
+        route(THEME("Ethereal", "1.4.2"), THEME("Ethereal", "1.3.0"));
+
+        const mirror = await findGiteeMirrorForTheme(GITHUB_REF, undefined, ["sofqi"], {
+            name: "Ethereal",
+            version: "1.4.2",
+        });
+
+        expect(mirror).toBeUndefined();
+    });
+
+    it("候选仓库不存在 → 不认", async () => {
+        route(THEME("Ethereal", "1.4.2"), undefined);
+
+        const mirror = await findGiteeMirrorForTheme(GITHUB_REF, undefined, ["sofqi"], {
+            name: "Ethereal",
+            version: "1.4.2",
+        });
 
         expect(mirror).toBeUndefined();
     });

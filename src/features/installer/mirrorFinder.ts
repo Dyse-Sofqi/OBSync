@@ -2,7 +2,8 @@ import { logger } from "../../core/logger";
 import { getHost } from "../../host/hostRegistry";
 import { formatRepoId } from "../../host/repoRef";
 import type { RepoRef } from "../../host/types";
-import { parsePluginManifest } from "./manifest";
+import { parsePluginManifest, parseThemeManifest } from "./manifest";
+import { isNewerVersion } from "./versions";
 
 /**
  * GitHub → Gitee 镜像发现。
@@ -80,6 +81,80 @@ export async function findGiteeMirror(
             logger.debug(
                 `Gitee repo ${formatRepoId(candidate)} exists but is a different plugin ` +
                     `(id "${giteeId}" vs "${githubId}") — ignoring`
+            );
+            continue;
+        }
+
+        return candidate;
+    }
+
+    return undefined;
+}
+
+/**
+ * 主题的镜像探测。
+ *
+ * 判据与插件**不同**，因为主题的 manifest 里没有 `id`（身份是目录名 / `name`，
+ * 见 `core/themeName.ts`）。这里的条件是两个：
+ *
+ * 1. 候选仓库的 manifest 里 `name` 与源主题一致 —— 同一个主题；
+ * 2. 候选的版本**不比你现在装的旧** —— 换到一个更旧的镜像，用户会静默地
+ *    失去更新（甚至看起来像"退回旧版本"），这比找不到镜像糟得多。
+ *
+ * 这条判据比插件的 `id` 弱一档（名字不是唯一标识），所以它同样**只作为提议**：
+ * 采用必须经用户在确认弹窗里拍板（`ConfirmMirrorModal` 里那段警示说的就是这个）。
+ */
+export async function findGiteeMirrorForTheme(
+    githubRef: RepoRef,
+    githubToken: string | undefined,
+    candidateOwners: readonly string[],
+    installed: { name: string; version: string }
+): Promise<RepoRef | undefined> {
+    // 源仓库的 manifest 先取一次：①顺带确认这个源仓库还读得到（读不到就别切）
+    // ②拿到它当前的版本，用来判断候选是不是落后了。
+    const sourceRaw = await getHost("github").readFile(githubRef, "manifest.json", {
+        token: githubToken,
+    });
+    let sourceVersion = installed.version;
+    let sourceName = installed.name;
+    if (sourceRaw) {
+        try {
+            const parsed = parseThemeManifest(sourceRaw, formatRepoId(githubRef));
+            sourceName = parsed.name;
+            sourceVersion = parsed.version;
+        } catch (err) {
+            logger.debug(`manifest of ${formatRepoId(githubRef)} is not a theme manifest`, err);
+            return undefined;
+        }
+    }
+
+    for (const owner of candidateOwners) {
+        const candidate: RepoRef = { host: "gitee", owner, repo: githubRef.repo };
+
+        const raw = await getHost("gitee").readFile(candidate, "manifest.json");
+        if (!raw) continue;
+
+        let manifest;
+        try {
+            manifest = parseThemeManifest(raw, formatRepoId(candidate));
+        } catch (err) {
+            logger.debug(`manifest of ${formatRepoId(candidate)} is not a theme manifest`, err);
+            continue;
+        }
+
+        if (manifest.name.trim().toLowerCase() !== sourceName.trim().toLowerCase()) {
+            logger.debug(
+                `Gitee repo ${formatRepoId(candidate)} is a different theme ` +
+                    `("${manifest.name}" vs "${sourceName}") — ignoring`
+            );
+            continue;
+        }
+
+        // 不比源仓库（或本地装的）更旧才收 —— 换到更旧的镜像等于让用户失去更新。
+        if (isNewerVersion(sourceVersion, manifest.version)) {
+            logger.debug(
+                `Gitee repo ${formatRepoId(candidate)} is older (${manifest.version} < ` +
+                    `${sourceVersion}) — ignoring`
             );
             continue;
         }

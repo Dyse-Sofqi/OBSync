@@ -79,6 +79,7 @@
 | **「启用笔记同步」是个死开关** | 真 bug（UX）：`sync.enabled` 有开关、`data.json` 里存着值、README 也列着它，而 `src` 里**没有一处读它**。于是用户关掉同步之后，自动提交照样每 N 分钟把笔记**推上远端** —— 他做了 UI 提供给他的那个动作，却没有任何效果。类型和测试都抓不到：类型上 `true` 也是 `boolean`；测试里 `Automatics` 直接注入设置对象、看不见装配层那一行（实测把 `enabled: deps.getSettings().sync.enabled` 改成 `enabled: true`，全量测试**全绿**） | `sync.enabled` 注入 `Automatics`，关掉时一个定时器都不起（边界照 `installer.enabled`：只管后台自动动作，不拦命令面板里的显式命令）；新增 `scripts/checks.mjs` 第 6 项「设置项无人读取」补上这个盲区 |
 | **「自动提交间隔」少写了「并同步」** | 文案与实现不符：那一项到点执行的是**完整链路**「提交 → 拉取 → 推送」（与「立即同步」同一条），而界面只写「自动提交间隔」+「设为 0 表示关闭」。用户读到的意思于是变成「只提交」，会以为把「自动推送 / 自动拉取」设为 0 就能拦住网络动作 —— 拦不住。参考项目的原名是 `Auto commit-and-sync interval`，正是这三个字 + 解释 | 改成「自动提交**并同步**间隔」，说明文案写明整条链路与「即使推送/拉取间隔为 0 也会随它发生」；`Automatics` 里那条 `commit` 分支补注释，并用测试钉住「调的是 `sync()` 而不是 `commitAll()`」 |
 | 设置页术语混用 | 「已追**踪**插件」（标签）vs「已跟**踪**的插件」（同页标题） | 统一为「跟踪」 |
+| **「更新完还报可更新」，点了还是同一个版本** | 真 bug（同一个根因的第二张脸）：记录里的 `installedVersion` 被抹成空串，而 `isNewerVersion("1.4.2", "")` 两边有一边解析不了，退化成「字符串不同即视为有更新」→ **永远报可更新**；点更新装回 1.4.2、设置页一开又被抹掉，成了循环。抹掉的来路是上一行那个「记录与磁盘对账」功能自己：它用**插件**的 manifest 解析器去读**主题**的 manifest（主题没有 `id`）→ 抛错 → 当成「没装」→ 写空 | 主题改用 `readThemeManifestVersion`（主题解析器）；并且**读不到就不动记录** —— 只有「目录真的不存在」才记成未安装（那样更新检查会给出可更新，是有用的）。另：`checkTheme`/`checkPlugin` 曾试过「本地版本未知就不报可更新」，但那会关掉「绑定来的无版本主题也能更新到有版本那份」这条既有能力，已撤回 —— 该修的是记录，不是判据。见 `tests/features/installedVersionReconcile.test.ts` |
 | **插件「更新后重启又退回旧版本」，而 OBSync 说已是最新** | 真 bug（记录与事实脱节）：`plugins/` 里除正牌目录外多了一份**同 id** 的残留备份（`md-razor-backup-2.5.16-…`）。Obsidian 按 manifest id 建索引，两个目录抢一个 id 时**加载哪个是不定的** —— 重启后它加载了备份那份 2.5.16（实测证据：MDRazor 写在自己插件目录里的镜像文件时间戳是当天 07:56，而正牌目录停在 00:49）；而 OBSync 按正牌目录的 manifest 记着 2.6.4，于是更新检查拿 2.6.4 比远端 2.6.4，**永远报「无可用更新」**，用户被卡在旧版本且看不出原因。附带暴露两个缺口：`installedVersion` 写进 `data.json` 后再没人核对过；`resolvePluginFolder` 只按「目录名==id / 任意同 id 目录」猜，不认 Obsidian 实际加载的那份 | `resolvePluginFolderInfo()`：**优先用 `manifests[id].dir`（Obsidian 实际加载的目录）**，并报出其他同 id 的目录；新增 `reconcileInstalledVersions()` 用磁盘 manifest 校正记录（读不到记空版本 → 会给出「可更新」而不是卡死），`checkOne` 在比较前先校正；设置页打开时校正一次并提示，重复 id 在列表**上方**用警示色常驻提示。见 `tests/features/installedVersionReconcile.test.ts` |
 | `autoCheckDelay` 的置灰状态不更新 | 小 bug：切换上面的开关后，下面的输入框还是灰的（`commit()` 不重绘） | 持有 `TextComponent` 引用，在开关回调里即时 `setDisabled` |
 | **缺 README** | 发布件缺失（阶段四） | 新增中文优先的 `README.md` |
@@ -336,7 +337,7 @@ src/
   > **实际使用**的来源（镜像），源地址另存一份，列表才会「源仓库一行 + 镜像一行」。
   > 拿到「实际来源」一律走 `types.ts` 的 `itemRepoRef()`，**不要**读 `origin` ——
   > 检查、下载、重装必须同源，读 `origin` 会让它们分叉（见缺陷表里那条）。
-  > 主题**不做**镜像发现：那套校验靠插件 manifest 的 `id`，主题没有 id。
+  > **主题也有镜像提议**（`findGiteeMirrorForTheme`），但判据与插件不同：主题 manifest 没有 `id`，所以用「`name` 一致 **且** 版本不比源旧」——名字不是唯一标识，这条判据比插件的 `id` 弱一档，因此同样**只提议、不采用**（确认弹窗里的警示正是为这种弱判据写的）。候选 owner 与插件侧同一套（同名 / 你 Gitee 账号名）。
   >
   > **镜像必须由用户确认才会被采用**（`mirrorSuggestions` → `ConfirmMirrorModal` →
   > `confirmMirror`）。发现只把候选记进 `installer.mirrorSuggestions`（键 `<kind>:<id>`），

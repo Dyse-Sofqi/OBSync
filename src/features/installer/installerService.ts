@@ -12,7 +12,7 @@ import type { HostKind, RepoRef } from "../../host/types";
 import { InstallerError } from "./errors";
 import type { BindCandidate } from "./existingPlugins";
 import type { ThemeBindCandidate } from "./existingThemes";
-import { findGiteeMirror } from "./mirrorFinder";
+import { findGiteeMirror, findGiteeMirrorForTheme } from "./mirrorFinder";
 import { fetchFiles, PLUGIN_SPEC, THEME_SPEC, type FetchSpec } from "./installFiles";
 import { createBackup, writeItemFiles } from "./itemFolder";
 import { parseThemeManifest } from "./manifest";
@@ -28,6 +28,7 @@ import {
 import { setPendingRestart, SELF_PLUGIN_ID, SELF_REPO } from "./selfUpdate";
 import {
     getActiveTheme,
+    readThemeManifestVersion,
     requestThemeReload,
     resolveThemeFolder,
 } from "./themeFolder";
@@ -499,12 +500,16 @@ export class InstallerService {
      *    「更新成功」而页面观感毫无变化（Obsidian 不会自己去读被换掉的文件）。
      */
     async updateTheme(tracked: TrackedTheme): Promise<ThemeUpdateResult> {
+        // 主题的镜像**只提议、不采用**（判据与插件不同，见 findGiteeMirrorForTheme）——
+        // 采用同样要经确认弹窗。探测在这里单独做，因为 `resolveRepo` 那套判据是
+        // 为插件 manifest 的 `id` 写的，主题没有 id。
+        const mirror = await this.proposeThemeMirror(tracked);
+
         const { files, manifest, channel, repoRef, origin } = await this.fetchItem(
             THEME_SPEC,
             formatRepoId(tracked),
             "latest",
-            // 主题不做镜像发现：那是给插件仓库准备的（用 manifest.id 二次校验），
-            // 主题没有 id，拿它去校验会认错东西。
+            // 上面已经探过了，这里不要重复打网络请求。
             { allowMirror: false, defaultHost: tracked.host }
         );
 
@@ -528,6 +533,9 @@ export class InstallerService {
             channel,
         });
 
+        // 与插件侧一致：提议写在 recordItem 之前，共用它那次落盘。
+        this.rememberMirrorSuggestion("theme", tracked.id, mirror);
+
         return {
             manifest,
             channel,
@@ -536,7 +544,34 @@ export class InstallerService {
             wasActive,
             repoRef,
             origin,
+            mirror,
         };
+    }
+
+    /**
+     * 为主题找一个**疑似镜像**（不采用）。
+     *
+     * 只在「当前跟的是 GitHub + 打开了镜像发现 + 还没在用镜像」时才探：
+     * 已经在走镜像的条目没什么可提议的（`ref.host !== "github"`）。
+     */
+    private async proposeThemeMirror(tracked: TrackedTheme): Promise<RepoRef | undefined> {
+        const ref = itemRepoRef(tracked);
+        if (ref.host !== "github") return undefined;
+        if (tracked.origin) return undefined;
+        if (!this.settings.installer.discoverGiteeMirrors) return undefined;
+
+        try {
+            return await findGiteeMirrorForTheme(
+                ref,
+                this.tokenFor("github"),
+                await this.mirrorOwnerCandidates(ref),
+                { name: tracked.name, version: tracked.installedVersion }
+            );
+        } catch (err) {
+            // 锦上添花，任何失败都不该阻断更新。
+            logger.debug(`theme mirror discovery failed for ${formatRepoId(ref)}`, err);
+            return undefined;
+        }
     }
 
     /** 重装：忽略本地状态，按原设置重新走一遍。 */
@@ -814,42 +849,21 @@ export class InstallerService {
             );
             if (!record) continue;
 
-            if (record.kind === "plugin") {
-                const lookup = await resolvePluginFolderInfo(this.app, record.id);
-                if (lookup.duplicates.length > 0) {
-                    // count 含正在使用的那一份 —— 提示语说的是「有几个目录抢这个 id」
-                    duplicated.push({ name: record.name, count: lookup.duplicates.length + 1 });
-                    logger.warn(
-                        `${record.id} is declared by several plugin folders ` +
-                            `(using ${lookup.folder}): ${lookup.duplicates.join(", ")}`
-                    );
-                }
+            const actual = await this.installedVersionOnDisk(record, duplicated);
+            // `undefined` = **读不到**（目录在，但 manifest 读不出来/不合法）：
+            // 这时保持记录不动。曾经在这里一律写成空字符串，后果是「本地版本未知」
+            // 与「远端有版本」被拿去比较 —— `isNewerVersion` 退化成「字符串不同」，
+            // 于是**永远报可更新**，而点更新又装不出新版本号（死循环，实测踩过）。
+            if (actual === undefined) continue;
 
-                const manifest = await readManifestInFolder(this.app, lookup.folder);
-                // 读不到 = 目录被删了/坏了 —— 记成「未安装」，这样更新检查会给出
-                // 「可更新」，用户点一下就能装回来（比停在旧版本上强）。
-                const actual = manifest?.version ?? "";
-                if (record.installedVersion !== actual) {
-                    logger.info(
-                        `${record.id}: recorded version ${record.installedVersion || "(none)"} ` +
-                            `does not match the installed files (${actual || "missing"}) — correcting`
-                    );
-                    record.installedVersion = actual;
-                    corrected.push(record.name);
-                    dirty = true;
-                }
-            } else {
-                // 主题的版本存在目录里的 manifest.json 里（没有时为空串，列表本来就不显示）。
-                const manifest = await readManifestInFolder(
-                    this.app,
-                    await resolveThemeFolder(this.app, record.id)
+            if (record.installedVersion !== actual) {
+                logger.info(
+                    `${record.id}: recorded version ${record.installedVersion || "(none)"} ` +
+                        `does not match the installed files (${actual || "missing"}) — correcting`
                 );
-                const actual = manifest?.version ?? "";
-                if (record.installedVersion !== actual) {
-                    record.installedVersion = actual;
-                    corrected.push(record.name);
-                    dirty = true;
-                }
+                record.installedVersion = actual;
+                corrected.push(record.name);
+                dirty = true;
             }
         }
 
@@ -918,6 +932,46 @@ export class InstallerService {
         delete settings.installer.mirrorSuggestions[availableUpdateKey(record)];
 
         await this.deps.saveSettings();
+    }
+
+    /**
+     * 读「这一项现在实际装的是什么版本」。
+     *
+     * - 返回 `""`：**确实没装**（解析出来的目录不存在）—— 记成空版本，更新检查会
+     *   给出「可更新」，用户点一下就能装回来。
+     * - 返回 `undefined`：**读不到**（目录在，manifest 缺了/不合法/缺 version）——
+     *   调用方必须保持记录不动，否则会造出「永远可更新」的死循环。
+     */
+    private async installedVersionOnDisk(
+        record: TrackedItem,
+        duplicated: Array<{ name: string; count: number }>
+    ): Promise<string | undefined> {
+        const exists = async (folder: string): Promise<boolean> => {
+            try {
+                return await this.app.vault.adapter.exists(folder);
+            } catch {
+                return false;
+            }
+        };
+
+        if (record.kind === "theme") {
+            const folder = await resolveThemeFolder(this.app, record.id);
+            if (!(await exists(folder))) return "";
+            // 主题要用**主题的**解析器（它没有 `id`）—— 用错正是那个 bug 的来路。
+            return readThemeManifestVersion(this.app, record.id);
+        }
+
+        const lookup = await resolvePluginFolderInfo(this.app, record.id);
+        if (lookup.duplicates.length > 0) {
+            // count 含正在使用的那一份 —— 提示语说的是「有几个目录抢这个 id」
+            duplicated.push({ name: record.name, count: lookup.duplicates.length + 1 });
+            logger.warn(
+                `${record.id} is declared by several plugin folders ` +
+                    `(using ${lookup.folder}): ${lookup.duplicates.join(", ")}`
+            );
+        }
+        if (!(await exists(lookup.folder))) return "";
+        return (await readManifestInFolder(this.app, lookup.folder))?.version;
     }
 
     /** **用户忽略**：丢掉这条提议，别再提（记录本身不动）。 */

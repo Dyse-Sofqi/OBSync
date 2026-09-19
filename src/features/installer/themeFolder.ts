@@ -50,6 +50,31 @@ function customCss(app: App): InternalCustomCss | undefined {
  *
  * 精确命中永远优先；两趟都找不到才回落到默认位置（全新写入的落点）。
  */
+/**
+ * 读主题目录里的 manifest，返回它的版本号（没有 `version` 字段时返回 `""`）。
+ *
+ * **必须用主题的解析器**：主题 manifest 里没有 `id`（身份是目录名/`name`），
+ * 拿插件的 `parsePluginManifest` 去读必然抛错 —— 这正是「记录里的版本被抹成空、
+ * 于是更新检查永远报可更新」那个 bug 的来路。
+ *
+ * 读不到（目录里没有 manifest、或内容不合法）时返回 `undefined`：调用方必须
+ * 把「读不到」与「读到了空版本」区别对待 —— 前者**不要**去改记录。
+ */
+export async function readThemeManifestVersion(
+    app: App,
+    themeName: string
+): Promise<string | undefined> {
+    const folder = await resolveThemeFolder(app, themeName);
+    const path = filePathIn(folder, MANIFEST_FILE);
+    try {
+        if (!(await app.vault.adapter.exists(path))) return undefined;
+        return parseThemeManifest(await app.vault.adapter.read(path), path).version;
+    } catch (err) {
+        logger.debug(`could not read the manifest of theme ${themeName}`, err);
+        return undefined;
+    }
+}
+
 export async function resolveThemeFolder(app: App, themeName: string): Promise<string> {
     try {
         const listing = await app.vault.adapter.list(itemRoot(app, "theme"));

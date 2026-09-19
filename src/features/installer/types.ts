@@ -254,8 +254,10 @@ export interface ThemeUpdateResult {
     wasActive: boolean;
     /** 这次实际下载用的地址。主题不走镜像发现，所以它等于跟踪记录里那个地址。 */
     repoRef: RepoRef;
-    /** 走了镜像时的源地址；主题目前恒为 `undefined`（同上）。 */
+    /** 走了镜像时的源地址（用户在确认弹窗里选了镜像之后才会有）。 */
     origin?: RepoRef;
+    /** **疑似镜像**（通过了主题的判据但没被采用）—— 由用户确认，见 `ResolvedRepo.mirror`。 */
+    mirror?: RepoRef;
 }
 
 /** 更新检查的结果。 */
