@@ -214,6 +214,39 @@ describe("install —— release 通道", () => {
         expect(readPluginFile(fake, "demo", "manifest.json")).toBe(MANIFEST);
     });
 
+    it("取文件时逐个回报文件名（界面靠它显示「正在获取 main.js…」）", async () => {
+        // 用户的原话：「获取插件时，请显示加载动画，不然我根本不知道你是不是在更新」。
+        // 卡在**哪一个文件**上正是他要看的东西（GitHub 资产域名的第一次请求要
+        // 17~20 秒，见 HANDOVER 第七节第 19 条），所以这条链路必须真的通到服务层：
+        // `install({ onProgress })` → `fetchItem` → `fetchFiles`。
+        const fake = createFakeApp();
+        const { service, settings } = createService(fake);
+
+        route(/releases\/latest$/, () => ({ status: 200, text: releaseJson([]) }));
+        route(/releases\/tags\/v2\.0\.0$/, () => ({
+            status: 200,
+            text: releaseJson([
+                { name: "manifest.json", url: "https://dl.test/manifest.json" },
+                { name: "main.js", url: "https://dl.test/main.js" },
+                { name: "styles.css", url: "https://dl.test/styles.css" },
+            ]),
+        }));
+        route(/^https:\/\/dl\.test\/manifest\.json$/, () => ({ status: 200, text: MANIFEST }));
+        route(/^https:\/\/dl\.test\/main\.js$/, () => ({ status: 200, text: "// main" }));
+        route(/^https:\/\/dl\.test\/styles\.css$/, () => ({ status: 200, text: "/* css */" }));
+
+        const seen: string[] = [];
+        await service.install({ repo: "owner/demo", onProgress: (file) => seen.push(file) });
+
+        // 顺序就是取文件的顺序（`FILE_SETS` 里的 all）
+        expect(seen).toEqual(["manifest.json", "main.js", "styles.css"]);
+
+        // 重装走的是同一条链路，也要回报（它的签名里也有 onProgress）
+        const seenAgain: string[] = [];
+        await service.reinstall(settings.installer.tracked[0]!, (file) => seenAgain.push(file));
+        expect(seenAgain).toEqual(["manifest.json", "main.js", "styles.css"]);
+    });
+
     it("资产通道失败后，后续文件不再试它", async () => {
         // 这条锁的是一个**用户能感知的性能问题**：安装器是逐文件回退的，
         // 三个文件各试一次资产、各等一次超时的话，在资产 CDN 不可达的网络下

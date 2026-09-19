@@ -96,6 +96,14 @@ export class Platform {
 
 export class Notice {
     static instances: Notice[] = [];
+    /**
+     * 提示条的内容元素。
+     *
+     * 真实 Notice 暴露 `noticeEl`，进度提示就是往它里面塞「圆环 + 文案」的
+     * （见 `core/notice.ts` 的 `SpinnerNotice`）—— 替身少了它，那条路径
+     * 一跑就 TypeError，而测试里根本到不了「有没有转圈」这个问题。
+     */
+    readonly noticeEl = document.createElement("div");
     constructor(
         public message: string | DocumentFragment,
         public timeout?: number

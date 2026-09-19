@@ -7,6 +7,44 @@
  *    是 Obsidian 的全局类，不限定作用域会污染其他插件的设置页。
  */
 
+/* ── 「正在干活」的旋转指示 ──────────────────────────────────────────────
+   装一个插件要打若干次网络请求，而国内网络下对 GitHub 资产域名的**第一次**请求
+   常常要等 17~20 秒（见 HANDOVER 第七节第 19 条）。这段时间里必须有个东西在转，
+   否则用户无从判断是在下载、卡住了、还是根本没开始。
+
+   两个落点：提示条里的圆环（`.obsync-spinner`），以及被点的那一行图标按钮
+   （`.obsync-spinning`，把图标换成 loader 再让它转）。 */
+
+.obsync-spinner {
+    display: inline-block;
+    width: 0.9em;
+    height: 0.9em;
+    margin-right: 0.5em;
+    vertical-align: -0.1em;
+    border: 2px solid var(--background-modifier-border);
+    /* 只用主题变量：深浅色主题下都读得清 */
+    border-top-color: var(--text-accent, #7f6df2);
+    border-radius: 50%;
+    animation: obsync-spin 0.8s linear infinite;
+}
+
+/* 行上的图标按钮：图标换成 loader 之后让它转起来。
+   作用域照旧收在 `.obsync-settings` 下（`.clickable-icon` 是 Obsidian 的全局类）。 */
+.obsync-settings .clickable-icon.obsync-spinning svg {
+    animation: obsync-spin 0.9s linear infinite;
+}
+
+@keyframes obsync-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* 进度提示条的内容排布（圆环 + 文案在同一行） */
+.obsync-progress-text {
+    vertical-align: middle;
+}
+
 /* ── 徽标药丸 ──────────────────────────────────────────────────────────────
    状态类信息（可更新 / 已冻结 / 令牌已配置）做成名称后的小药丸，
    而不是塞进描述文字里 —— 扫列表时眼睛只需看一列。 */

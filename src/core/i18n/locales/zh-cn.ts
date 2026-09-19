@@ -219,6 +219,34 @@ export const zhCN = {
          * 还是更新失败留下的。
          */
         versionPinned: (version: string) => `已固定 ${version}`,
+
+        /**
+         * 「下载来源」一节（版本管理弹窗里）。
+         *
+         * 为什么把来源与版本放在同一个弹窗：用户心里这是同一件事 ——
+         * 「我选了 1.0.2，但它不走 Gitee，我也找不到选 Gitee 的地方」。
+         */
+        versionSourceLabel: "下载来源",
+        versionSourceCurrent: (host: string, repo: string) => `当前下载走：${host} · ${repo}`,
+        /** 走了镜像时才有：记录里留着的那个「家」。 */
+        versionSourceOrigin: (host: string, repo: string) => `源仓库：${host} · ${repo}`,
+        versionMirrorFound: (host: string, repo: string) => `发现疑似镜像：${host} · ${repo}`,
+        /**
+         * 探不到镜像时的解释。**必须有**：自动探测只猜两个候选，镜像挂在第三个
+         * 地方（作者自己的 Gitee 账号）时永远猜不到 —— 不解释的话，用户会把这句
+         * 读成「这个插件没有镜像」。
+         */
+        versionMirrorNone:
+            "没发现镜像。自动探测只会猜两个候选：同名仓库，以及你 Gitee 账号下的同名仓库" +
+            "（后者需要先填 Gitee 令牌）。镜像挂在别的账号下时，在下面手填地址即可。",
+        versionUseMirror: (host: string) => `改用 ${host} 镜像`,
+        versionManualLabel: "手填镜像地址",
+        versionManualDesc:
+            "例如 sofqi/Trefoil，或粘贴完整链接。地址里的插件 id 必须与这一项一致，否则拒绝采用。",
+        versionManualPlaceholder: "例如 sofqi/Trefoil",
+        versionManualApply: "改用这个地址",
+        versionManualChecking: "正在核对地址…",
+        versionMirrorFailed: "改用这个镜像失败",
         enableAfterInstall: "安装后立即启用",
         install: "安装",
         installing: "正在安装…",
@@ -332,6 +360,13 @@ export const zhCN = {
                 `从 ${repo} 下载 ${files} 失败：${of}的 release 里确实挂着这个文件，` +
                 `是这次没取回来（通常是网络问题，不是作者没上传 —— 它的资产 CDN ` +
                 `在国内经常连不上）。检查网络后重试，或改用 Gitee 镜像。`,
+            /**
+             * 手填镜像地址时 id 不一致 —— 硬拦，不是提醒。
+             * 说明里要写清「为什么不能装」：用户手填的地址看起来往往很像。
+             */
+            mirrorIdMismatch: (repo: string, expected: string, found: string) =>
+                `${repo} 里的插件 id 是「${found}」，而这一项跟踪的是「${expected}」—— ` +
+                `已拒绝改用，以免装错东西。请核对地址是否指到了同一个插件的镜像。`,
             missingBuildArtifacts:
                 "如果这是源码仓库，作者可能没有把构建产物提交进仓库。",
             incompatibleApp: (name: string, minVersion: string) =>
@@ -373,6 +408,15 @@ export const zhCN = {
         updateFailedMany: (count: number) => `${count} 项更新失败`,
         checkFailed: "更新检查失败",
         checking: "正在检查更新…",
+        /**
+         * 长耗时操作的进度提示（带旋转图标）。
+         *
+         * 文案必须点出**在做什么**：用户的原话是「不然我根本不知道你是不是在更新」，
+         * 一句笼统的「加载中…」回答不了这个问题。
+         */
+        progressChecking: (name: string) => `${name}：正在检查更新…`,
+        progressUpdating: (name: string) => `${name}：正在更新…`,
+        progressFetching: (name: string, file: string) => `${name}：正在获取 ${file}…`,
         updateAvailable: (name: string, version: string) =>
             `${name} 有新版本 ${version}。`,
         updatesAvailable: (count: number, names: string) =>

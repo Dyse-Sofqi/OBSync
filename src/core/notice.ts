@@ -41,6 +41,52 @@ export interface NotifierHost {
     getT(): LocaleStrings;
 }
 
+/**
+ * 一个「正在干活」的进度提示（带旋转图标）。
+ *
+ * ## 为什么需要它
+ *
+ * 装一个插件要打若干次网络请求，而国内网络下对 GitHub 资产域名的**第一次**请求
+ * 常常要等 17~20 秒（实测数字见 HANDOVER 第七节第 19 条）。这段时间里界面上只有
+ * 一个被禁用的图标按钮 —— 用户无从判断是在下载、卡住了、还是根本没开始。
+ * 于是这一条不是「显得忙」，而是**唯一能说明在等什么**的地方：它按文件更新文案
+ * （「正在获取 main.js…」），因为卡在哪一个文件上正是排查时要看的东西。
+ *
+ * `done()` 之后由调用方接着发正常的结果提示 —— 进度提示只负责「还没完」这段。
+ */
+export interface ProgressNotice {
+    /** 换一句文案（复用同一个提示，不再新建一个）。 */
+    update(message: string): void;
+    /** 收起提示。 */
+    done(): void;
+}
+
+/** 什么都不做的进度提示 —— 设置里关掉了提示时用它，调用方不必到处判空。 */
+const SILENT_PROGRESS: ProgressNotice = { update: () => {}, done: () => {} };
+
+class SpinnerNotice implements ProgressNotice {
+    private readonly notice: Notice;
+    private readonly labelEl: HTMLElement;
+
+    constructor(message: string) {
+        // 超时 0 = 不自动消失：它由 `done()` 收起，不该在下载中途自己跑掉。
+        this.notice = new Notice("", 0);
+        const el = this.notice.noticeEl;
+        el.empty();
+        // 圆环在 locale 里没有文案可言（它是图形），所以直接用 CSS 类画。
+        el.createSpan({ cls: "obsync-spinner" });
+        this.labelEl = el.createSpan({ cls: "obsync-progress-text", text: message });
+    }
+
+    update(message: string): void {
+        this.labelEl.setText(message);
+    }
+
+    done(): void {
+        this.notice.hide();
+    }
+}
+
 export class Notifier {
     /**
      * 已注册的翻译器，按注册顺序尝试。
@@ -86,6 +132,18 @@ export class Notifier {
     warn(message: string): void {
         if (!this.showNotices) return;
         new Notice(message, ERROR_NOTICE_TIMEOUT_MS);
+    }
+
+    /**
+     * 长耗时操作的进度提示（带旋转图标，**不自动消失** —— 做完必须 `done()`）。
+     *
+     * 受「显示操作结果提示」这一项控制，与 `success` / `info` 一致（设置页的说明
+     * 里也明确写了进度提示会被静音）。所以行上那个图标按钮自己也会转
+     * （见 `TrackedItemsList` 的 `startSpinner`）—— 关掉提示的人仍然看得出在跑。
+     */
+    progress(message: string): ProgressNotice {
+        if (!this.showNotices) return SILENT_PROGRESS;
+        return new SpinnerNotice(message);
     }
 
     /** 错误。**不受设置影响** —— 静音错误会让人以为操作成功了。 */

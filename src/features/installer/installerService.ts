@@ -15,7 +15,7 @@ import type { ThemeBindCandidate } from "./existingThemes";
 import { findGiteeMirror, findGiteeMirrorForTheme } from "./mirrorFinder";
 import { fetchFiles, PLUGIN_SPEC, THEME_SPEC, type FetchSpec } from "./installFiles";
 import { createBackup, writeItemFiles } from "./itemFolder";
-import { parseThemeManifest } from "./manifest";
+import { parsePluginManifest, parseThemeManifest } from "./manifest";
 import {
     enablePlugin,
     isPluginEnabled,
@@ -42,6 +42,7 @@ import {
     type ThemeUpdateResult,
     type TrackedItem,
     type TrackedKind,
+    type TrackedPlugin,
     type TrackedTheme,
     type UpdateCheckResult,
 } from "./types";
@@ -103,6 +104,14 @@ export interface InstallRequest {
      * 只在它与 `repo` 不同时才有意义（相同的话本来就没丢信息）。
      */
     origin?: RepoRef;
+    /**
+     * 取文件时的逐文件回调（`manifest.json` → `main.js` → `styles.css`）。
+     *
+     * 存在的理由：这一步最慢 —— 国内网络下对 GitHub 资产域名的**第一次**请求
+     * 常常要等 17~20 秒（见 HANDOVER 第七节第 19 条）。调用方拿它把「正在获取
+     * 哪一个文件」显示出来，否则用户只看到一个不动的界面，分不清是在下载还是卡住。
+     */
+    onProgress?: (file: string) => void;
 }
 
 export interface VersionOption {
@@ -373,6 +382,7 @@ export class InstallerService {
             defaultHost?: HostKind;
             origin?: RepoRef;
             acceptMirror?: boolean;
+            onProgress?: (file: string) => void;
         }
     ): Promise<FetchedItem<M, N>> {
         const { ref: repoRef, origin, mirror } = await this.resolveRepo(repoInput, options);
@@ -389,7 +399,8 @@ export class InstallerService {
             repoRef,
             source,
             token,
-            spec
+            spec,
+            options.onProgress
         );
 
         if (manifest.minAppVersion && !requireApiVersion(manifest.minAppVersion)) {
@@ -416,6 +427,7 @@ export class InstallerService {
                 allowMirror: request.allowMirror,
                 defaultHost: request.defaultHost,
                 origin: request.origin,
+                onProgress: request.onProgress,
             }
         );
 
@@ -499,7 +511,10 @@ export class InstallerService {
      * 3. 但如果更新的**正是**当前主题，写完请求一次重载 —— 否则用户看到
      *    「更新成功」而页面观感毫无变化（Obsidian 不会自己去读被换掉的文件）。
      */
-    async updateTheme(tracked: TrackedTheme): Promise<ThemeUpdateResult> {
+    async updateTheme(
+        tracked: TrackedTheme,
+        onProgress?: (file: string) => void
+    ): Promise<ThemeUpdateResult> {
         // 主题的镜像**只提议、不采用**（判据与插件不同，见 findGiteeMirrorForTheme）——
         // 采用同样要经确认弹窗。探测在这里单独做，因为 `resolveRepo` 那套判据是
         // 为插件 manifest 的 `id` 写的，主题没有 id。
@@ -510,7 +525,7 @@ export class InstallerService {
             formatRepoId(tracked),
             "latest",
             // 上面已经探过了，这里不要重复打网络请求。
-            { allowMirror: false, defaultHost: tracked.host }
+            { allowMirror: false, defaultHost: tracked.host, onProgress }
         );
 
         const folder = await resolveThemeFolder(this.app, tracked.id);
@@ -575,10 +590,13 @@ export class InstallerService {
     }
 
     /** 重装：忽略本地状态，按原设置重新走一遍。 */
-    async reinstall(tracked: TrackedItem): Promise<InstallResult | ThemeUpdateResult> {
+    async reinstall(
+        tracked: TrackedItem,
+        onProgress?: (file: string) => void
+    ): Promise<InstallResult | ThemeUpdateResult> {
         if (tracked.kind === "theme") {
             // 主题没有版本钉选（语义是「跟随仓库」），所以重装就是更新到最新。
-            return this.updateTheme(tracked);
+            return this.updateTheme(tracked, onProgress);
         }
 
         return this.install({
@@ -586,6 +604,7 @@ export class InstallerService {
             version: tracked.requestedVersion,
             enableAfterInstall: true,
             defaultHost: tracked.host,
+            onProgress,
         });
     }
 
@@ -974,10 +993,87 @@ export class InstallerService {
         return (await readManifestInFolder(this.app, lookup.folder))?.version;
     }
 
-    /** **用户忽略**：丢掉这条提议，别再提（记录本身不动）。 */
+    /**
+     * **用户忽略**：丢掉这条提议，别再提（记录本身不动）。 */
     async dismissMirrorSuggestion(tracked: TrackedItem): Promise<void> {
         delete this.settings.installer.mirrorSuggestions[availableUpdateKey(tracked)];
         await this.deps.saveSettings();
+    }
+
+    /**
+     * 手动把一个已跟踪插件的下载来源改成指定仓库（镜像）。
+     *
+     * ## 为什么需要「手填」这条路
+     *
+     * 自动探测只能猜两个候选：**同名仓库**，以及**你 Gitee 账号名下的同名仓库** ——
+     * 而第二个候选要先调 `GET /v5/user` 解析账号名，**那需要 Gitee 令牌**。
+     * 镜像挂在第三个地方（作者自己的 Gitee 账号，名字与 GitHub 不同名、
+     * 与你的账号也不同名）时，自动探测**永远找不到** —— 实测：Trefoil 的镜像是
+     * `gitee.com/sofqi/Trefoil`，而它的 GitHub owner 是 `Dyse-Sofqi`（Gitee 上没这个
+     * owner），用户没填 Gitee 令牌时两个候选都不成立，于是他既看不到镜像、
+     * 也没有任何别的入口能把它指出来。
+     *
+     * ## 校验用 manifest 的 `id`（与自动探测同一条判据）
+     *
+     * 只比仓库名会装错东西：同名不同项目在 Gitee 上很常见，而插件是能读写整个库的
+     * 代码。id 不一致直接拒绝 —— 这里不做「差不多就行」的妥协。
+     *
+     * 确认之后走 `confirmMirror`：记录的主来源换成它、原来源挪进 `origin` 保留，
+     * 此后下载、更新检查、重装都按新来源走（列表上两行地址都还看得见）。
+     *
+     * @returns 实际采用的地址（供调用方提示）。
+     */
+    async setMirror(tracked: TrackedPlugin, repoInput: string): Promise<RepoRef> {
+        // 简写默认按 Gitee 解析 —— 这个功能的语义就是「换到 Gitee 镜像」；
+        // 想指向别的平台就直接粘贴完整链接（`parseRepoRef` 认 URL）。
+        const ref = parseRepoRef(repoInput, "gitee");
+        const repoLabel = formatRepoId(ref);
+
+        const raw = await getHost(ref.host).readFile(ref, MANIFEST_FILE, {
+            token: this.tokenFor(ref.host),
+            ref: "HEAD",
+        });
+        if (raw === undefined) {
+            throw new InstallerError({ kind: "missingManifest", repo: repoLabel, of: "plugin" });
+        }
+
+        const manifest = parsePluginManifest(raw, repoLabel);
+        if (manifest.id !== tracked.id) {
+            throw new InstallerError({
+                kind: "mirrorIdMismatch",
+                repo: repoLabel,
+                expected: tracked.id,
+                found: manifest.id,
+            });
+        }
+
+        await this.confirmMirror(tracked, ref);
+        return ref;
+    }
+
+    /**
+     * 探测一个已跟踪插件**可能**的 Gitee 镜像（只提议，不采用）。
+     *
+     * 抽出来给界面用（版本管理弹窗）：那里要先把候选摆出来，用户点了才采用 ——
+     * 与列表里那条「疑似镜像 · 尚未使用，待确认」是同一套判据、同一个出口。
+     * 已经在走镜像的条目（host 不是 GitHub）没什么可提议的，返回 undefined。
+     */
+    async probeMirror(tracked: TrackedPlugin): Promise<RepoRef | undefined> {
+        const ref = itemRepoRef(tracked);
+        if (ref.host !== "github") return undefined;
+        if (!this.settings.installer.discoverGiteeMirrors) return undefined;
+
+        try {
+            const resolved = await this.resolveRepo(formatRepoId(ref), {
+                defaultHost: ref.host,
+                allowMirror: true,
+            });
+            return resolved.mirror;
+        } catch (err) {
+            // 锦上添花：探不到不影响别的功能。
+            logger.debug(`mirror probe failed for ${formatRepoId(ref)}`, err);
+            return undefined;
+        }
     }
 
     // ── 记录 ──────────────────────────────────────────────────────────────

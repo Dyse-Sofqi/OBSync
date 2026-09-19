@@ -183,27 +183,30 @@ function renderRow(
             // 之前用 refresh-cw，和「重装」的圆箭头几乎分不出来。
             .setIcon("search")
             .setTooltip(t.installer.checkOne)
-            .onClick(async () => {
-                button.setDisabled(true);
-                try {
-                    const result = await ctx.checker.checkOne(item);
-                    await ctx.service.recordUpdateChecks([result]);
-                    if (result.error !== undefined) {
-                        ctx.service.deps.notifier.error(`${item.name}: ${result.error}`);
-                    } else if (result.hasUpdate) {
-                        ctx.service.deps.notifier.info(
-                            t.installer.updateAvailable(item.name, result.latestVersion)
-                        );
-                    } else {
-                        ctx.service.deps.notifier.info(t.installer.upToDate(item.name));
-                    }
-                    ctx.refresh();
-                } catch (err) {
-                    ctx.service.deps.notifier.reportError(err, t.installer.checkFailed);
-                } finally {
-                    button.setDisabled(false);
-                }
-            })
+            .onClick(() =>
+                void runWithProgress({
+                    ctx,
+                    name: item.name,
+                    button,
+                    icon: "search",
+                    startMessage: t.installer.progressChecking(item.name),
+                    fallbackError: t.installer.checkFailed,
+                    work: async () => {
+                        const result = await ctx.checker.checkOne(item);
+                        await ctx.service.recordUpdateChecks([result]);
+                        if (result.error !== undefined) {
+                            ctx.service.deps.notifier.error(`${item.name}: ${result.error}`);
+                        } else if (result.hasUpdate) {
+                            ctx.service.deps.notifier.info(
+                                t.installer.updateAvailable(item.name, result.latestVersion)
+                            );
+                        } else {
+                            ctx.service.deps.notifier.info(t.installer.upToDate(item.name));
+                        }
+                        ctx.refresh();
+                    },
+                })
+            )
     );
 
     // 更新到最新
@@ -211,33 +214,37 @@ function renderRow(
         button
             .setIcon("download")
             .setTooltip(t.installer.updateToLatest)
-            .onClick(async () => {
-                button.setDisabled(true);
-                try {
-                    const result =
-                        item.kind === "theme"
-                            ? await ctx.service.updateTheme(item)
-                            : await ctx.service.install({
-                                  repo: `${item.owner}/${item.repo}`,
-                                  version: "latest",
-                                  enableAfterInstall: true,
-                                  defaultHost: item.host,
-                              });
-                    // 报**实际**用的来源（可能刚换成镜像）—— 见 downloadSourceLabel。
-                    ctx.service.deps.notifier.success(
-                        t.installer.updated(
-                            item.name,
-                            result.version,
-                            downloadSourceLabel(t, result)
-                        )
-                    );
-                    ctx.refresh();
-                } catch (err) {
-                    ctx.service.deps.notifier.reportError(err, t.installer.installFailed);
-                } finally {
-                    button.setDisabled(false);
-                }
-            });
+            .onClick(() =>
+                void runWithProgress({
+                    ctx,
+                    name: item.name,
+                    button,
+                    icon: "download",
+                    startMessage: t.installer.progressUpdating(item.name),
+                    fallbackError: t.installer.installFailed,
+                    work: async (onProgress) => {
+                        const result =
+                            item.kind === "theme"
+                                ? await ctx.service.updateTheme(item, onProgress)
+                                : await ctx.service.install({
+                                      repo: `${item.owner}/${item.repo}`,
+                                      version: "latest",
+                                      enableAfterInstall: true,
+                                      defaultHost: item.host,
+                                      onProgress,
+                                  });
+                        // 报**实际**用的来源（可能刚换成镜像）—— 见 downloadSourceLabel。
+                        ctx.service.deps.notifier.success(
+                            t.installer.updated(
+                                item.name,
+                                result.version,
+                                downloadSourceLabel(t, result)
+                            )
+                        );
+                        ctx.refresh();
+                    },
+                })
+            );
 
         // 有更新时把这个按钮标成主操作（强调色）—— ExtraButtonComponent
         // 没有 setClass，但暴露了元素本身。
@@ -254,20 +261,23 @@ function renderRow(
             // 圆箭头留给「重装」独占（检查更新已换成放大镜），指代「再来一遍」。
             .setIcon("refresh-cw")
             .setTooltip(t.installer.reinstall)
-            .onClick(async () => {
-                button.setDisabled(true);
-                try {
-                    const result = await ctx.service.reinstall(item);
-                    ctx.service.deps.notifier.success(
-                        t.installer.reinstalled(item.name, downloadSourceLabel(t, result))
-                    );
-                    ctx.refresh();
-                } catch (err) {
-                    ctx.service.deps.notifier.reportError(err, t.installer.installFailed);
-                } finally {
-                    button.setDisabled(false);
-                }
-            })
+            .onClick(() =>
+                void runWithProgress({
+                    ctx,
+                    name: item.name,
+                    button,
+                    icon: "refresh-cw",
+                    startMessage: t.installer.progressUpdating(item.name),
+                    fallbackError: t.installer.installFailed,
+                    work: async (onProgress) => {
+                        const result = await ctx.service.reinstall(item, onProgress);
+                        ctx.service.deps.notifier.success(
+                            t.installer.reinstalled(item.name, downloadSourceLabel(t, result))
+                        );
+                        ctx.refresh();
+                    },
+                })
+            )
     );
 
     // 冻结（不参与自动更新）
@@ -355,20 +365,12 @@ function appendVersionButton(
             .setIcon("history")
             .setTooltip(t.installer.versionManage)
             .onClick(() => {
-                new VersionManagerModal(
-                    ctx.app,
-                    ctx.service,
-                    t,
-                    {
-                        name: plugin.name,
-                        // 版本列表要按**实际使用**的来源查（走镜像时即镜像）——
-                        // 与更新检查、下载同源（见 `itemRepoRef` 的注释）。
-                        repoRef: itemRepoRef(plugin),
-                        installedVersion: plugin.installedVersion,
-                        requestedVersion: plugin.requestedVersion,
-                    },
-                    (option) => void switchVersion(ctx, plugin, option, button)
-                ).open();
+                new VersionManagerModal(ctx.app, ctx.service, t, plugin, {
+                    onChoose: (option) => void switchVersion(ctx, plugin, option, button),
+                    // 弹窗里可以换下载来源（改用镜像 / 手填地址）—— 记录变了，
+                    // 底下那张列表的两行地址也要跟着变，否则用户关掉弹窗看到的是旧地址。
+                    onSourceChanged: () => ctx.refresh(),
+                }).open();
             })
     );
 }
@@ -380,6 +382,9 @@ function appendVersionButton(
  * 而这里要装的正是用户刚选的那一个。`install` 会把它写回记录 ——
  * 也就是「钉在这一版」：此后「重装」装回它，而「更新到最新版本」会把记录改回
  * `latest`（恢复跟随最新）。这条语义是现成的，这里不另造一套。
+ *
+ * 「从哪个仓库下载」不出现在这里：它写在记录里（`host/owner/repo`），弹窗里换过
+ * 来源之后，下面的 `formatRepoId`/`defaultHost` 读到的就已经是新来源了。
  */
 async function switchVersion(
     ctx: TrackedItemsContext,
@@ -388,30 +393,90 @@ async function switchVersion(
     button: ExtraButtonComponent
 ): Promise<void> {
     const t = ctx.t;
-    button.setDisabled(true);
+    await runWithProgress({
+        ctx,
+        name: plugin.name,
+        button,
+        icon: "history",
+        startMessage: t.installer.progressUpdating(plugin.name),
+        fallbackError: t.installer.installFailed,
+        work: async (onProgress) => {
+            const result = await ctx.service.install({
+                repo: formatRepoId(plugin),
+                version: option.value,
+                // 与这一行上的「更新到最新」「重装」同一口径：装完保持可用。
+                enableAfterInstall: true,
+                defaultHost: plugin.host,
+                onProgress,
+            });
+            // 报**实际装成的版本**（manifest 里那个，可能与 tag 不同形：
+            // tag `v1.2.0` → version `1.2.0`）与来源。
+            ctx.service.deps.notifier.success(
+                t.installer.versionSwitched(
+                    plugin.name,
+                    result.version,
+                    downloadSourceLabel(t, result)
+                )
+            );
+            ctx.refresh();
+        },
+    });
+}
+
+/**
+ * 跑一次「要打网络、可能要等十几秒」的行内动作，并把「还在跑」显示出来。
+ *
+ * 两处反馈都要有，因为它们的可见性条件不同：
+ *
+ * 1. **被点的那个图标按钮自己转起来** —— 它不受「显示操作结果提示」设置影响，
+ *    把提示关掉的用户也得看得见；
+ * 2. **进度提示里写清正在取哪个文件** —— 卡在 GitHub 资产域名上时（国内常态，
+ *    实测第一次请求 17~20 秒，见 HANDOVER 第七节第 19 条），用户唯一能判断
+ *    「没卡死」的依据就是它就着文件名在动。
+ *
+ * 用户原话：「不然我根本不知道你是不是在更新」。
+ */
+async function runWithProgress(options: {
+    ctx: TrackedItemsContext;
+    name: string;
+    button: ExtraButtonComponent;
+    icon: string;
+    startMessage: string;
+    fallbackError: string;
+    work: (onProgress: (file: string) => void) => Promise<void>;
+}): Promise<void> {
+    const { ctx, name, button, icon, startMessage } = options;
+    const stopSpinner = startSpinner(button, icon);
+    const progress = ctx.service.deps.notifier.progress(startMessage);
     try {
-        const result = await ctx.service.install({
-            repo: formatRepoId(plugin),
-            version: option.value,
-            // 与这一行上的「更新到最新」「重装」同一口径：装完保持可用。
-            enableAfterInstall: true,
-            defaultHost: plugin.host,
+        await options.work((file) => {
+            progress.update(ctx.t.installer.progressFetching(name, file));
         });
-        // 报**实际装成的版本**（manifest 里那个，可能与 tag 不同形：
-        // tag `v1.2.0` → version `1.2.0`）与来源。
-        ctx.service.deps.notifier.success(
-            t.installer.versionSwitched(
-                plugin.name,
-                result.version,
-                downloadSourceLabel(t, result)
-            )
-        );
-        ctx.refresh();
     } catch (err) {
-        ctx.service.deps.notifier.reportError(err, t.installer.installFailed);
+        ctx.service.deps.notifier.reportError(err, options.fallbackError);
     } finally {
-        button.setDisabled(false);
+        progress.done();
+        stopSpinner();
     }
+}
+
+/**
+ * 把按钮的图标临时换成会转的 loader。
+ *
+ * 用 `loader` + 一条 CSS 动画（`.obsync-spinning`）而不是自己画一个元素：
+ * `setIcon` 是 ExtraButtonComponent 唯一能改内容的口子，而图标本身就是 SVG。
+ * 返回的函数把图标换回去 —— 注意重绘之后这个按钮已经被替换掉了，
+ * 对脱离文档的元素调用它是无害的（与其它行内动作的处理一致）。
+ */
+function startSpinner(button: ExtraButtonComponent, icon: string): () => void {
+    button.setDisabled(true);
+    button.setIcon("loader");
+    button.extraSettingsEl.addClass("obsync-spinning");
+    return () => {
+        button.extraSettingsEl.removeClass("obsync-spinning");
+        button.setIcon(icon);
+        button.setDisabled(false);
+    };
 }
 
 /**

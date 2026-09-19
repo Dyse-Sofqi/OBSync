@@ -38,6 +38,13 @@ export type InstallerErrorDetail =
      * release 资产冷连接超时而报成「找不到 main.js」。
      */
     | { kind: "assetDownloadFailed"; repo: string; files: string; of: TrackedKind }
+    /**
+     * 手填的镜像地址里，插件 id 与跟踪的那一项不一致 —— **拒绝采用**。
+     *
+     * 只比仓库名会装错东西：同名不同项目在 Gitee 上很常见，而插件是能读写整个库的
+     * 代码。所以这条不是客气的提醒，是硬拦（与自动探测同一条判据）。
+     */
+    | { kind: "mirrorIdMismatch"; repo: string; expected: string; found: string }
     | { kind: "missingBuildArtifacts" }
     | { kind: "incompatibleApp"; name: string; minVersion: string }
     | { kind: "pluginIdConflict"; pluginId: string; repo: string }
@@ -99,6 +106,8 @@ export function describeInstallerError(
             return e.missingRequiredFiles(detail.repo, detail.files, ofKind(detail.of));
         case "assetDownloadFailed":
             return e.assetDownloadFailed(detail.repo, detail.files, ofKind(detail.of));
+        case "mirrorIdMismatch":
+            return e.mirrorIdMismatch(detail.repo, detail.expected, detail.found);
         case "missingBuildArtifacts":
             return e.missingBuildArtifacts;
         case "incompatibleApp":

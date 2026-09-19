@@ -3,6 +3,7 @@ import type { App } from "obsidian";
 import {
     createdSettings,
     resetCreatedSettings,
+    Notice,
     type ButtonComponent,
     type DropdownComponent,
     type Setting,
@@ -62,6 +63,13 @@ function render(
 function fakeService(options: {
     repoRef: RepoRef;
     origin?: RepoRef;
+    /**
+     * 让安装慢一拍，并回放一次「正在取 main.js」的逐文件进度。
+     *
+     * 用来断言**长耗时期间的反馈**（按钮转圈、进度文案）—— 不慢一拍的话，
+     * 那些状态在同一个微任务里就被收掉了，测不到。
+     */
+    slow?: boolean;
 }): {
     service: InstallerService;
     notices: string[];
@@ -85,18 +93,28 @@ function fakeService(options: {
 
     const service = {
         deps: { notifier },
-        install: async (request: { repo: string; version?: string }) => {
+        install: async (request: {
+            repo: string;
+            version?: string;
+            onProgress?: (file: string) => void;
+        }) => {
             installs.push(request);
+            if (options.slow) {
+                request.onProgress?.("main.js");
+                await new Promise((resolve) => setTimeout(resolve, 0));
+            }
             return result;
         },
         updateTheme: async () => ({ ...result, wasActive: false }),
         reinstall: async () => result,
+        recordUpdateChecks: async () => undefined,
         // 版本管理弹窗要的列表。真实实现在 installerService.listVersions 里，
         // 这里只要求形状对得上（第一项固定是「最新版本」）。
         listVersions: async () => [
             { value: "latest", label: zhCN.installer.versionLatest, prerelease: false },
             { value: "1.0.0", label: "1.0.0", prerelease: false },
         ],
+        probeMirror: async () => undefined,
     } as unknown as InstallerService;
 
     return { service, notices, installs };
@@ -104,14 +122,15 @@ function fakeService(options: {
 
 function renderWith(
     service: InstallerService,
-    tracked: TrackedItem[]
+    tracked: TrackedItem[],
+    checker: UpdateChecker = {} as UpdateChecker
 ): { rows: Setting[] } {
     const container = document.createElement("div") as HTMLElement;
     renderTrackedItems(container, {
         app: {} as App,
         t: zhCN,
         service,
-        checker: {} as UpdateChecker,
+        checker,
         getTracked: () => tracked,
         getUpdateFor: () => undefined,
         getMirrorSuggestion: () => undefined,
@@ -500,5 +519,71 @@ describe("版本管理", () => {
         const { rows } = render([plugin({ requestedVersion: "latest" })]);
 
         expect(badges(rows[0]!).some((text) => text.includes("已固定"))).toBe(false);
+    });
+});
+
+/**
+ * 长耗时动作的反馈。
+ *
+ * 用户原话：「获取插件时，请显示加载动画，不然我根本不知道你是不是在更新」。
+ * 装一个插件的网络等待可以到 17~20 秒（GitHub 资产域名的冷连接，见 HANDOVER
+ * 第七节第 19 条），这段时间必须**看得出在跑**。两处反馈都要有：
+ *
+ * 1. 被点的那个图标按钮自己转起来 —— 它不受「显示操作结果提示」设置影响；
+ * 2. 提示条里按文件写清在取什么 —— 卡住时用户唯一能判断「没死」的依据。
+ */
+describe("行内长耗时动作的反馈", () => {
+    /** 提示条里的全部文本。 */
+    function noticeTexts(notice: { noticeEl: HTMLElement }): string[] {
+        const walk = (node: unknown): string[] => {
+            const el = node as { text?: string; children?: unknown[] };
+            return [...(el.text ? [el.text] : []), ...(el.children ?? []).flatMap(walk)];
+        };
+        return ((notice.noticeEl.children as unknown) as unknown[]).flatMap(walk);
+    }
+
+    it("点「更新到最新」之后按钮变成会转的 loader，做完换回原图标", async () => {
+        const { service } = fakeService({ repoRef: GITHUB, slow: true });
+        const { rows } = renderWith(service, [plugin()]);
+        const button = rows[0]!.buttons.find((candidate) => candidate.icon === "download")!;
+
+        void button.click();
+
+        // 转圈期间：图标换成 loader、加上动画类、并且禁用（避免重复点）
+        expect(button.icon).toBe("loader");
+        expect(button.extraSettingsEl.hasClass("obsync-spinning")).toBe(true);
+        expect(button.disabled).toBe(true);
+
+        await vi.waitFor(() => expect(button.icon).toBe("download"));
+        expect(button.extraSettingsEl.hasClass("obsync-spinning")).toBe(false);
+        expect(button.disabled).toBe(false);
+    });
+
+    it("进度提示里写清**在取哪个文件**（不然只看到一句不说话的不动界面）", async () => {
+        const before = Notice.instances.length;
+        const { service } = fakeService({ repoRef: GITHUB, slow: true });
+        const { rows } = renderWith(service, [plugin()]);
+
+        await clickIcon(rows[0]!, "download");
+
+        const texts = Notice.instances.slice(before).flatMap(noticeTexts);
+        expect(texts).toContain(zhCN.installer.progressFetching("Demo Plugin", "main.js"));
+    });
+
+    it("「检查更新」同样转圈（它也是网络动作）", async () => {
+        const { service } = fakeService({ repoRef: GITHUB });
+        const checker = {
+            checkOne: async () => {
+                await new Promise((resolve) => setTimeout(resolve, 0));
+                return { tracked: plugin(), latestVersion: "2.0.0", hasUpdate: false };
+            },
+        } as unknown as UpdateChecker;
+        const { rows } = renderWith(service, [plugin()], checker);
+        const button = rows[0]!.buttons.find((candidate) => candidate.icon === "search")!;
+
+        void button.click();
+
+        expect(button.icon).toBe("loader");
+        await vi.waitFor(() => expect(button.icon).toBe("search"));
     });
 });

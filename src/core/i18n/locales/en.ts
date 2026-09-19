@@ -197,6 +197,23 @@ export const en = {
         versionSwitched: (name: string, version: string, source: string) =>
             `Switched ${name} to ${version} (from ${source})`,
         versionPinned: (version: string) => `Pinned to ${version}`,
+        /** The "download source" section of the version dialog (plugins only). */
+        versionSourceLabel: "Download source",
+        versionSourceCurrent: (host: string, repo: string) => `Downloading from: ${host} · ${repo}`,
+        versionSourceOrigin: (host: string, repo: string) => `Source repository: ${host} · ${repo}`,
+        versionMirrorFound: (host: string, repo: string) => `Possible mirror found: ${host} · ${repo}`,
+        versionMirrorNone:
+            "No mirror found. Discovery only guesses two candidates: a same-named repository, and a " +
+            "same-named repository under your own Gitee account (the latter needs a Gitee token first). " +
+            "If the mirror lives under some other account, type its address below.",
+        versionUseMirror: (host: string) => `Use the ${host} mirror`,
+        versionManualLabel: "Mirror address",
+        versionManualDesc:
+            "For example sofqi/Trefoil, or paste a full URL. The plugin id there must match this entry, or the switch is refused.",
+        versionManualPlaceholder: "e.g. sofqi/Trefoil",
+        versionManualApply: "Use this address",
+        versionManualChecking: "Checking the address…",
+        versionMirrorFailed: "Could not switch to that mirror",
         enableAfterInstall: "Enable after installing",
         install: "Install",
         installing: "Installing…",
@@ -309,6 +326,10 @@ export const en = {
                 `Could not download ${files} from ${repo}: the ${of}'s release does list the file, ` +
                 `so this is a failed download rather than a missing file (release asset CDNs are ` +
                 `often unreachable from mainland China). Check your network and retry, or use the Gitee mirror.`,
+            /** A hand-typed mirror whose plugin id does not match — refused, not merely warned about. */
+            mirrorIdMismatch: (repo: string, expected: string, found: string) =>
+                `The plugin id in ${repo} is "${found}", but this entry tracks "${expected}" — ` +
+                `the switch was refused so nothing wrong gets installed. Check that the address points at a mirror of the same plugin.`,
         },
 
         browse: "Browse community plugins",
@@ -325,6 +346,10 @@ export const en = {
         updateFailedMany: (count: number) => `${count} item(s) failed to update`,
         checkFailed: "Update check failed",
         checking: "Checking for updates…",
+        /** Long-running progress notices (with a spinner) — they must say *what* is happening. */
+        progressChecking: (name: string) => `${name}: checking for updates…`,
+        progressUpdating: (name: string) => `${name}: updating…`,
+        progressFetching: (name: string, file: string) => `${name}: fetching ${file}…`,
         updateAvailable: (name: string, version: string) => `${name} has a newer version: ${version}.`,
         updatesAvailable: (count: number, names: string) =>
             `${count} item(s) can be updated: ${names}`,

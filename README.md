@@ -109,7 +109,12 @@ Chinese-first UI with an equal English one.
   **同名仓库**，以及**你 Gitee 账号下的同名仓库**（镜像常挂在作者自己的 Gitee 账号下、
   名字与 GitHub 不同；这一条需要先填 Gitee 令牌）。命中只算**提议**：列表里把两个地址
   列出来，点确认、看过那段警示（判据只有 `id` 相同，证明不了是同一份代码）之后才改用镜像，
-  之后每次下载完成的提示也会报来源
+  之后每次下载完成的提示也会报来源。**探测不到时可以手填地址**：在「版本管理」弹窗里
+  输入镜像仓库（例如 `sofqi/Trefoil`），同样按 `id` 校验 —— 探测只猜那两个候选，
+  镜像挂在第三个账号下时永远猜不到（实测 Trefoil：GitHub 是 `Dyse-Sofqi`、镜像是 `sofqi`）
+- **长耗时动作看得见** —— 点下的那个图标按钮会变成转圈，同时一条带圆环的提示写明
+  **在取哪个文件**（「Trefoil：正在获取 main.js…」）。国内网络下第一次访问 GitHub 的
+  release 资产常常要等十几秒，没有这个反馈就分不清是在下载还是卡住了
 - **OBSync 自身更新** —— 设置页「OBSync 自身」一节：检查更新、更新（写新版本文件，重启 Obsidian 生效）
 
 #### 🔐 平台与体验
@@ -307,7 +312,13 @@ Needs the system `git` binary, so it is **desktop-only** (Windows / macOS / Linu
   probed: a **same-named repository**, and a **same-named repository under your own Gitee account** (mirrors
   often live on the author's Gitee account under a different name — this one needs a Gitee token). A hit is
   only a **proposal**: the tracked list lists both addresses, and the switch happens after you confirm it and
-  read the warning (the `id` match proves the same plugin, not the same code). Downloads then report their source
+  read the warning (the `id` match proves the same plugin, not the same code). Downloads then report their source.
+  **No mirror found? Type the address yourself** in the version dialog (e.g. `sofqi/Trefoil`) — it is verified
+  the same way. Discovery only guesses those two candidates, so a mirror under some third account is invisible
+  to it (as measured with Trefoil: GitHub `Dyse-Sofqi`, mirror `sofqi`)
+- **Long operations are visible** — the icon button you clicked turns into a spinner, and a notice with a
+  spinner states **which file is being fetched** ("Trefoil: fetching main.js…"). The first request to GitHub's
+  release asset CDN often takes 10+ seconds from mainland China; without this you cannot tell download from stall
 - **Self-update** — check and apply new versions of OBSync itself (restart required)
 
 #### 🔐 Platform and UX

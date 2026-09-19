@@ -9,8 +9,9 @@ import {
     type InstallerHost,
 } from "../../src/features/installer/installerService";
 import type { RepoRef } from "../../src/host/types";
-import type { TrackedTheme } from "../../src/features/installer/types";
+import type { TrackedPlugin, TrackedTheme } from "../../src/features/installer/types";
 import { createFakeApp, type FakeApp } from "../helpers/fakeApp";
+import { expectInstallerError } from "../helpers/expectInstallerError";
 
 /**
  * **源地址**在记录里的存续 —— 自动发现 Gitee 镜像之后，两个地址都要留下。
@@ -649,5 +650,81 @@ describe("主题的镜像提议", () => {
 
         expect(result.mirror).toBeUndefined();
         expect(calls.some((url) => url.includes("gitee.com"))).toBe(false);
+    });
+});
+
+/**
+ * 手填镜像地址（`InstallerService.setMirror`）。
+ *
+ * 这是自动探测的**兜底**，也是唯一能处理「镜像挂在第三个账号下」的路。
+ * 实测动因（2026-09-19）：Trefoil 的镜像是 `gitee.com/sofqi/Trefoil`，而它的
+ * GitHub owner 是 `Dyse-Sofqi` —— Gitee 上**没有**这个 owner，而另一个候选
+ * （你 Gitee 账号下的同名仓库）要先解析账号名、**那需要 Gitee 令牌**。
+ * 两个候选都不成立时，探测永远找不到它，用户就只能手填。
+ *
+ * 判据与自动探测完全一致：**manifest 的 `id`** —— 只比仓库名会装错东西。
+ */
+describe("手填镜像地址", () => {
+    const MANUAL: RepoRef = { host: "gitee", owner: "sofqi", repo: "mirror-demo" };
+    const MANUAL_MANIFEST_ROUTE =
+        /^https:\/\/gitee\.com\/sofqi\/mirror-demo\/raw\/HEAD\/manifest\.json$/;
+
+    /** 装好一个跟踪项；**探测关掉** —— 这条路的意义就是「探测不到时也能用」。 */
+    async function installed(): Promise<{
+        service: InstallerService;
+        settings: ObsyncSettings;
+        record: TrackedPlugin;
+    }> {
+        const fake = createFakeApp();
+        const { service, settings } = createService(fake, false);
+        routeGitHubSource();
+        await service.install({ repo: "owner/demo", allowMirror: false });
+        return { service, settings, record: settings.installer.tracked[0]! as TrackedPlugin };
+    }
+
+    it("id 一致时采用：来源换成手填的地址，原来源进 origin", async () => {
+        const { service, record } = await installed();
+        route(MANUAL_MANIFEST_ROUTE, () => ({ status: 200, text: MIRROR_MANIFEST }));
+
+        const ref = await service.setMirror(record, "sofqi/mirror-demo");
+
+        expect(ref).toEqual(MANUAL);
+        expect({ host: record.host, owner: record.owner, repo: record.repo }).toEqual(MANUAL);
+        // 源地址必须留着：列表上「源仓库 + 镜像」两行靠它（与 confirmMirror 同一条语义）
+        expect(record.origin).toEqual(GITHUB);
+    });
+
+    it("**id 不一致时拒绝采用**，记录一动不动", async () => {
+        const { service, record } = await installed();
+        route(MANUAL_MANIFEST_ROUTE, () => ({
+            status: 200,
+            text: JSON.stringify({
+                id: "something-else",
+                name: "Other Plugin",
+                version: "1.0.0",
+                minAppVersion: "1.0.0",
+            }),
+        }));
+
+        const error = await expectInstallerError(
+            () => service.setMirror(record, "sofqi/mirror-demo"),
+            "mirrorIdMismatch"
+        );
+
+        expect(error.detail).toMatchObject({ expected: "demo", found: "something-else" });
+        expect(record.host).toBe("github");
+        expect(record.origin).toBeUndefined();
+    });
+
+    it("地址里读不到 manifest.json 时如实报错，不静默采用", async () => {
+        const { service, record } = await installed();
+        route(MANUAL_MANIFEST_ROUTE, () => ({ status: 404, text: "not found" }));
+
+        await expectInstallerError(
+            () => service.setMirror(record, "sofqi/mirror-demo"),
+            "missingManifest"
+        );
+
+        expect(record.host).toBe("github");
     });
 });
