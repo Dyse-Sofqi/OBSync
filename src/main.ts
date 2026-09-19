@@ -349,7 +349,12 @@ export default class ObsyncPlugin extends Plugin {
         this.addCommand({
             id: "push",
             name: t.sync.cmdPush,
-            callback: () => void this.runSyncAction(() => this.sync!.service.push()),
+            // `announceIfUpToDate`：用户按下的动作必须有个回音 ——
+            // 本地没有新提交时界面本来一点变化都没有（见 SyncService.push）。
+            callback: () =>
+                void this.runSyncAction(() =>
+                    this.sync!.service.push({ announceIfUpToDate: true })
+                ),
         });
 
         this.addCommand({

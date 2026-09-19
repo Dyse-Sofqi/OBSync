@@ -176,7 +176,11 @@ export class SourceControlView extends ItemView {
             .addButton((button) =>
                 button
                     .setButtonText(t.sync.actPush)
-                    .onClick(() => void this.run(() => this.deps.service.push()))
+                    .onClick(() =>
+                        void this.run(() =>
+                            this.deps.service.push({ announceIfUpToDate: true })
+                        )
+                    )
             );
     }
 

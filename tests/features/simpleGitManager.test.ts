@@ -332,3 +332,37 @@ describe("远端：push / pull / 冲突", () => {
         await expect(b.manager.getRemoteUrl()).resolves.toBe(other);
     });
 });
+
+/**
+ * 非交互环境变量**真的到了 git 子进程**。
+ *
+ * 上面 `gitInstanceGuards.test.ts` 验的是「我们把这个设置交给了 simple-git」，
+ * 但那一层是替身：它只能证明我们**调了** `.env()`，证明不了 git 真的**看见**了。
+ * 而这里要防的正是「看见了没有」—— 没看见的话，git 拿不到凭据时就会去提问，
+ * 而在 Obsidian 里没有人能回答它（见 `GIT_NONINTERACTIVE_ENV` 的说明）。
+ *
+ * 做法：让 git 自己把环境打出来。`alias.x=!<命令>` 是 git 用 `sh -c` 执行的
+ * 外部命令，它拿到的正是 git 进程的环境 —— 这是从外面唯一能观察到的证据。
+ */
+describe("非交互设置真的传到了 git 进程", () => {
+    it("GIT_TERMINAL_PROMPT / GCM_INTERACTIVE 在子进程里可见", async () => {
+        const { dir, manager } = await makeReadyRepo("noninteractive");
+
+        // 观察点用 **git 钩子**：钩子是 git 自己用 `sh` 起的子进程，
+        // 它拿到的正是 git 进程的环境 —— 这是从外面唯一能观察到的证据。
+        // （本想用 `-c alias.x=!…`，但 simple-git 默认禁止配置 alias。）
+        const hook = path.join(dir, ".git", "hooks", "pre-commit");
+        await fs.writeFile(
+            hook,
+            '#!/bin/sh\necho "$GIT_TERMINAL_PROMPT/$GCM_INTERACTIVE" > .git/obsync-env.txt\n',
+            { mode: 0o755 }
+        );
+
+        await write(dir, "probe.md", "probe\n");
+        await manager.stage([]);
+        await manager.commit("probe env");
+
+        const seen = await fs.readFile(path.join(dir, ".git", "obsync-env.txt"), "utf8");
+        expect(seen.trim()).toBe("0/never");
+    });
+});

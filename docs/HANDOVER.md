@@ -817,6 +817,63 @@ syncService 在库根目录写《OBSync 冲突指南.md》（冲突文件清单 
 `openSyncView()`）：它是屏幕上唯一常驻的同步入口，此前完全不可点。悬停提示
 （`aria-label`）每次渲染时写入，所以切换语言后也跟着变（见五点八第 2 条）。
 
+### 「尝试推送后一直看到正在推送」——两个独立成因（2026-09-19）
+
+用户这句话下面有两个**互不相干**的故障，都查实了：
+
+**一、状态栏的活动态没有终点（真 bug，已修）。**
+
+`activity` 是 `StatusBar` 的实例状态，而它的 `render()` 在活动态下
+**只显示活动文案并直接返回** —— 只要没人把它改回 `idle`，状态栏就永远停在
+「正在推送…」，而且**连分支 / `↑ahead ↓behind` / 脏文件数都不再显示**，
+一直到重载插件为止。而在此之前的整个 `src` 里，`setActivity("idle")`
+**一次都没出现过**（`git log -S` 查过：从来就没有）。
+
+它一直没被发现，是因为 `statusBar.test.ts` 那条「活动态盖过仓库状态，动作结束后
+能恢复」是**手工调** `setActivity("idle")` 验的 —— 验的是「这个 API 能恢复」，
+而不是「服务真的会调它」。缺的正是后者。（同一类问题见第七节「测试约定」。）
+
+现场证据：用户库里 `master == origin/master`（`rev-list --left-right --count` 是
+`0 0`）—— 也就是说他点的那次推送**早就结束了**（本地根本没有新提交，
+`doPush()` 在 `ahead === 0` 时直接返回 `up-to-date`），界面却还在说它正在进行。
+
+修法：`SyncService.withActivity(activity, run)` 把「设活动态 → 跑 → **在 finally 里
+恢复成 idle 并刷新状态**」收成一处。收在 `finally` 是因为**出错时更需要恢复**：
+失败会让用户盯着「正在推送…」等一个永远不会来的结果。现在有 4 条用例钉着
+（提交 / 拉取 / 推送 / 完整同步，外加**出错路径**）。
+
+**二、git 可能真的在等人回答（已加护栏）。**
+
+git 拿不到凭据会**提问**（终端提问，或 Windows 上 Git Credential Manager 的弹窗 ——
+实测环境里 `credential.helper` 就是 PortableGit 带的 GCM）。Obsidian 里没有人能回答：
+那个提问读的 stdin 是一根没人写的管子，命令就这么挂着，`isBusy` 永远是 true，
+后续所有同步动作都排在它后面（连自动定时器也一直跳过），用户只能重载插件。
+
+护栏两条，都在 `createGitInstance()` 里（**所有 spawn 路径统一走它** ——
+原来 `git()` 与 `rawGetRemoteUrl()` 各自 `simpleGit(options)`，逐处补设置必然漏一处）：
+
+- `GIT_TERMINAL_PROMPT=0` + `GCM_INTERACTIVE=never`：**禁的是「问人」，不是「用凭据」**
+  —— 已存进系统凭据助手的凭据照常可用，所以自建 GitLab / 内网 git 那类用法不受影响。
+  拿不到凭据时 git 报 `could not read Username ... terminal prompts disabled`，
+  被 `mapError` 归到鉴权失败 → 用户看到「请检查访问令牌」这句有用的话。
+- simple-git 的 `timeout.block`（120 秒**无输出**超时）：卡死不再是「永远」，
+  而是超时中止 + `GitTimeoutError` → 「git 长时间没有响应，已中止，请检查网络」。
+
+> 无输出超时靠「有没有输出」判断死活，所以 push/fetch 都带上了 `--progress`：
+> git 在 stderr **不是终端**时默认**不打传输进度**（我们正是这种情况），
+> 不带它的话，一次慢但正常的传输会被当成卡死杀掉。
+
+**三、顺带补的一句反馈。** 用户主动点「推送」而本地没有新提交时，界面原来
+**一点变化都没有**（状态栏还卡在活动态），他没法区分「没东西可推」和「卡住了」。
+现在这类入口（命令、视图按钮）会明确说「没有需要推送的内容，本地与远端一致」，
+自动推送定时器则**不**说（每 N 分钟弹一次是噪音；`announceIfUpToDate` 参数区分）。
+
+验证边界：`GIT_TERMINAL_PROMPT` 这类环境变量只由 simple-git 的替身验「我们交给了
+它什么」是不够的，所以另有一条**真 git** 用例用 **git 钩子**当观察点
+（钩子是 git 自己用 `sh` 起的子进程，拿到的是 git 进程的环境），断言它打出
+`0/never`；去掉 `.env()` 那两行，它打出 `/`（实测）。用 `-c alias.x=!…` 的写法
+走不通 —— simple-git 默认禁止配置 alias（`allowUnsafeAlias`）。
+
 **连接测试**（`syncService.diagnose()` + 设置页「仓库同步」页底部）：
 一条递进的检查链 —— git 可执行文件 → 是否 git 仓库 → 有没有远端 →
 平台能否识别（决定能否注入令牌）→ **真的 `ls-remote` 连一次**。

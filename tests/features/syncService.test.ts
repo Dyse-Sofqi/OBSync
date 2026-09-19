@@ -7,7 +7,7 @@ import { SyncService } from "../../src/features/sync/syncService";
 import { StatusBar } from "../../src/features/sync/statusBar";
 import { SecretStore } from "../../src/core/secretStore";
 import type { GitManager } from "../../src/features/sync/gitManager";
-import { ConflictError, GitAuthError } from "../../src/features/sync/errors";
+import { ConflictError, GitAuthError, PushRejectedError } from "../../src/features/sync/errors";
 import type { CommitInfo, FileChange, RepoStatus, SyncOutcome, SyncStrategy } from "../../src/features/sync/types";
 import { createFakeApp, type FakeApp } from "../helpers/fakeApp";
 
@@ -34,6 +34,9 @@ class FakeGit implements GitManager {
 
     /** 设成 promise 就把 `status()` 卡住 —— 用来验「后面的动作排在队列里」。 */
     waitBeforeStatus: Promise<void> | undefined;
+
+    /** 设了就让它抛（验「动作失败时状态栏也要恢复活动态」）。 */
+    pushError: Error | undefined;
 
     async isRepo(): Promise<boolean> {
         return this.repo;
@@ -95,6 +98,7 @@ class FakeGit implements GitManager {
     }
     async push(): Promise<SyncOutcome> {
         this.calls.push("push");
+        if (this.pushError) throw this.pushError;
         return { kind: "pushed" };
     }
     async fetch(): Promise<void> {
@@ -146,6 +150,8 @@ function makeService(git: FakeGit, fake: FakeApp) {
     const notifier = new Notifier({ getShowNotices: () => true, getT: () => zhCN });
     notifier.error = (message: string) => notices.push(message);
     notifier.warn = (message: string) => notices.push(message);
+    notifier.info = (message: string) => notices.push(message);
+    notifier.success = (message: string) => notices.push(message);
 
     // 状态栏元素直接给个假 DOM 节点 —— StatusBar 只调 setText 与 addClass
     // （后者用于把条目贴到状态栏最左，见 statusBar.ts）。
@@ -368,7 +374,9 @@ describe("sync 的阶段状态", () => {
 
         await service.sync();
 
-        expect(activities).toEqual(["committing", "pulling", "committing", "pushing"]);
+        expect(activities).toEqual(["committing", "pulling", "committing", "pushing", "idle"]);
+        // 最后那个 `idle` 是必需的：没有它状态栏会永远停在「正在推送…」，
+        // 连分支 / ahead / behind / 脏文件数都不再显示（见下面那组用例）。
     });
 });
 
@@ -708,6 +716,111 @@ describe("视图的逐文件操作", () => {
         await staged;
 
         expect(git.calls).toContain("stage:a.md");
+    });
+});
+
+/**
+ * 状态栏的「正在…」必须**有始有终**。
+ *
+ * 这里锁的是一个真 bug：`activity` 是 `StatusBar` 的实例状态，而它的 render()
+ * 在活动态下**只显示活动文案并直接返回** —— 所以只要没人把它改回 idle，
+ * 状态栏就永远停在「正在推送…」，连分支 / ahead / behind / 脏文件数都不再显示，
+ * 一直到重载插件。而在此之前 `setActivity("idle")` 在整个 src 里从没出现过。
+ *
+ * 用户报的原话：「尝试推送后一直看到正在推送」—— 他点的「推送」其实早就结束了
+ * （本地与远端一致，没有任何需要推的东西），界面却还在说它正在进行。
+ *
+ * **这两条只能测服务层**：`statusBar.test.ts` 里那条「动作结束后能恢复」
+ * 是手工调 `setActivity("idle")` 验的，也就是说它验的是「这个 API 能恢复」，
+ * 而不是「服务真的会调它」—— 后者才是缺的那一环。
+ */
+describe("状态栏活动态：动作结束后必须恢复", () => {
+    it("提交 / 拉取 / 推送 / 完整同步结束后都回到 idle", async () => {
+        for (const run of [
+            (service: SyncService) => service.commitAll(),
+            (service: SyncService) => service.pull(),
+            (service: SyncService) => service.push(),
+            (service: SyncService) => service.sync(),
+        ]) {
+            const git = new FakeGit();
+            const fake = createFakeApp();
+            const { service, activities } = makeService(git, fake);
+            git.unstaged = ["a.md"];
+
+            await run(service);
+
+            expect(activities[activities.length - 1]).toBe("idle");
+        }
+    });
+
+    it("**出错时也要恢复** —— 失败更需要恢复，用户正盯着屏幕等结果", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service, activities } = makeService(git, fake);
+        // 推送被远端拒绝：错误会上抛（由 UI 弹提示），但状态栏不能停在活动态
+        git.ahead = 1;
+        git.pushError = new PushRejectedError("push rejected (testing)");
+
+        await expect(service.push()).rejects.toBeInstanceOf(PushRejectedError);
+
+        expect(activities[activities.length - 1]).toBe("idle");
+    });
+});
+
+/**
+ * 「用户按下的动作必须有回音」。
+ *
+ * 他点的「推送」在本地没有新提交时是**静默的空操作**（`ahead === 0` 直接返回），
+ * 加上状态栏还卡在活动态 —— 界面上完全没有变化，他没法区分
+ * 「没东西可推」和「卡住了」。所以用户主动点的那两个入口要明确说一句。
+ */
+describe("推送：本地与远端一致时的反馈", () => {
+    it("用户主动推送时会说明「没有需要推送的内容」", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service, notices } = makeService(git, fake);
+        git.ahead = 0;
+
+        const outcome = await service.push({ announceIfUpToDate: true });
+
+        expect(outcome.kind).toBe("up-to-date");
+        expect(notices).toContain(zhCN.sync.pushUpToDate);
+    });
+
+    it("自动定时器**不**说这句（每 N 分钟弹一次是噪音）", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service, notices } = makeService(git, fake);
+        git.ahead = 0;
+
+        await service.push();
+
+        expect(notices).not.toContain(zhCN.sync.pushUpToDate);
+    });
+
+    it("没有远端时只说「还没配置远端」，不叠加一句「无需推送」", async () => {
+        // 两句一起说会让人以为远端一切正常。
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service, notices } = makeService(git, fake);
+        git.remoteUrl = undefined;
+
+        await service.push({ announceIfUpToDate: true });
+
+        expect(notices).toContain(zhCN.sync.noRemote);
+        expect(notices).not.toContain(zhCN.sync.pushUpToDate);
+    });
+
+    it("真有提交要推时走真实推送，不说不该说的话", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service, notices } = makeService(git, fake);
+        git.ahead = 2;
+
+        const outcome = await service.push({ announceIfUpToDate: true });
+
+        expect(outcome.kind).toBe("pushed");
+        expect(notices).not.toContain(zhCN.sync.pushUpToDate);
     });
 });
 

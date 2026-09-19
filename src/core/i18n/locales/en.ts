@@ -434,6 +434,12 @@ export const en = {
         gitAuthFailed:
             "Remote authentication failed. Check that the access token for this platform is valid and has the required scope.",
         /**
+         * git stalled and was aborted. This type exists so "nothing happens"
+         * is never the whole story: it says what happened and what to try.
+         */
+        gitTimeout:
+            "git produced no output for a long time, so this operation was aborted. Check your network (or proxy) and try again. If it keeps happening, the remote repository may be very large or may require credentials — for the latter, enter an access token in the settings.",
+        /**
          * Deliberately separate from the line above: the token is fine, the
          * problem is the username the plugin sent.
          */
@@ -446,6 +452,7 @@ export const en = {
         detachedHead:
             "HEAD is detached (not pointing at any branch), so pushing is not possible. Switch to a branch first.",
         nothingToCommit: "Nothing to commit.",
+        pushUpToDate: "Nothing to push — the local branch matches the remote.",
         noRemote: "No remote repository configured. Set the remote URL in settings.",
         conflictDetected: (count: number) =>
             `${count} conflicted file(s) detected. A conflict list has been written; resolve them and commit manually.`,

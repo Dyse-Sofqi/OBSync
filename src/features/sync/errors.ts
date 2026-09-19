@@ -71,6 +71,19 @@ export class NoUpstreamError extends ObsyncError {}
 export class DetachedHeadError extends ObsyncError {}
 
 /**
+ * git 命令卡住了（长时间没有任何输出）而被中止。
+ *
+ * 为什么要单独一个类型：它的**应对方式与别的错误都不一样**。用户看到的
+ * 症状是「状态栏一直在推送/拉取，什么都没有发生」，而这句话本身不含任何
+ * 可行动信息 —— 不知道是网络、是凭据、还是插件坏了。明确说「超时、已中止、
+ * 检查网络或代理」才是他能做的事。
+ *
+ * 现实触发路径：网络中断后的连接悬挂、需要凭据却无人可问（见
+ * `simpleGitManager` 里的 `GIT_NONINTERACTIVE_ENV`）、巨大的仓库在传输中僵住。
+ */
+export class GitTimeoutError extends ObsyncError {}
+
+/**
  * 把 git 层的错误翻译成用户可读文案。
  *
  * 在 `createSyncModule` 里注册进 `Notifier`，这样任何调用点
@@ -88,6 +101,7 @@ export function describeSyncError(err: unknown, t: LocaleStrings): string | unde
     if (err instanceof PushRejectedError) return t.sync.pushRejected;
     if (err instanceof NoUpstreamError) return t.sync.noUpstream;
     if (err instanceof DetachedHeadError) return t.sync.detachedHead;
+    if (err instanceof GitTimeoutError) return t.sync.gitTimeout;
     if (err instanceof ConflictError) return t.sync.conflictDetected(err.files.length);
     return undefined;
 }

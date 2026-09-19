@@ -5,6 +5,7 @@ import {
     GitBinaryMissingError,
     GitCredentialUsernameRejectedError,
     GitNotRepoError,
+    GitTimeoutError,
     PushRejectedError,
 } from "../../src/features/sync/errors";
 
@@ -103,6 +104,40 @@ describe("mapError 的分类", () => {
                 "pushing"
             )
         ).toBeInstanceOf(PushRejectedError);
+    });
+
+    it("**卡住被中止**是 GitTimeoutError（simple-git 超时插件 kill 后的原话）", () => {
+        // 用户报的症状是「尝试推送后一直看到正在推送」—— 那种「什么都不发生」
+        // 必须被说成「超时、已中止、去查网络」，而不是让他继续等。
+        expect(
+            mapError(
+                gitFailed("block timeout reached"),
+                "pushing"
+            )
+        ).toBeInstanceOf(GitTimeoutError);
+    });
+
+    it("git/curl 自己的网络超时也归到同一条（对用户是同一件事）", () => {
+        expect(
+            mapError(
+                gitFailed(
+                    "fatal: unable to access 'https://github.com/o/r.git/': " +
+                        "Failed to connect to github.com port 443: Operation timed out"
+                ),
+                "pulling (merge)"
+            )
+        ).toBeInstanceOf(GitTimeoutError);
+    });
+
+    it("超时判断排在鉴权之前 —— 卡死时若还带了别的输出，别报成「令牌不对」", () => {
+        // 超时插件 kill 进程后，某些 git 版本还会补一句鉴权/连接的话。
+        // 那只是症状；报成鉴权失败会把用户指去查一个没问题的令牌。
+        expect(
+            mapError(
+                gitFailed("block timeout reached\nfatal: Authentication failed"),
+                "pushing"
+            )
+        ).toBeInstanceOf(GitTimeoutError);
     });
 
     it("认不出的失败原样透传（保留 git 的原话，便于排查）", () => {

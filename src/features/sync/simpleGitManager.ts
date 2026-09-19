@@ -9,6 +9,7 @@ import {
     GitBinaryMissingError,
     GitCredentialUsernameRejectedError,
     GitNotRepoError,
+    GitTimeoutError,
     NoUpstreamError,
     DetachedHeadError,
     PushRejectedError,
@@ -48,6 +49,75 @@ import type { FileStatusResult, StatusResult } from "simple-git";
  */
 const HEAD_UNBORN_RE =
     /could not resolve ['"`]?HEAD|unborn|unknown revision|ambiguous argument ['"`]?HEAD/i;
+
+/**
+ * 「一个字节的输出来都没有」多久就认定卡死（毫秒）。
+ *
+ * simple-git 的 `timeout.block` 是**无输出**超时：只要 git 还在往
+ * stdout/stderr 写东西（拉取的进度、推送的对象计数都在 stderr 上），计时就重置。
+ * 所以它拦的是「完全僵住」，而不是「大仓库比较慢」。
+ *
+ * 为什么必须有这条出路：这里是 Obsidian 的界面进程 —— 没有人能回答 git 的提问，
+ * 也没有 Ctrl+C。没有超时的话，一次卡住会**永久**占住同步队列
+ * （`isBusy` 一直为 true，自动定时器一直跳过），用户只能重载插件。
+ *
+ * 120 秒的依据是本机实测的网络动作：Gitee `ls-remote` 1.7 秒、
+ * GitHub 冷连接 17~25 秒（见第七节第 19 条）。真正毫无输出的两分钟不可能是正常传输。
+ */
+const GIT_BLOCK_TIMEOUT_MS = 120_000;
+
+/**
+ * 绝不让「人机交互」挂住 git。
+ *
+ * ## 为什么必须禁掉
+ *
+ * git 拿不到凭据时会**问用户**（终端提问，或 Windows 上 Git Credential Manager
+ * 的弹窗 —— 实测环境里 `credential.helper` 就是 PortableGit 带的 GCM）。
+ * Obsidian 里没有人能回答它：那个提问读的 stdin 是一根没人写的管子，
+ * 命令就这么挂着。症状是状态栏永远停在「正在推送…」，而且**没有任何报错**。
+ *
+ * - `GIT_TERMINAL_PROMPT=0` —— git 自己的终端提问直接失败，报
+ *   `could not read Username ... terminal prompts disabled`，被 `mapError`
+ *   归到鉴权失败，于是用户得到「请检查访问令牌」这句有用的话。
+ * - `GCM_INTERACTIVE=never` —— GCM 只用已经存好的凭据，不再弹窗。
+ *   **注意它禁的是「问人」，不是「用凭据」**：依赖系统凭据助手的那类用户
+ *   （自建 GitLab / 内网 git，见设置页的说明）照常能用。
+ */
+const GIT_NONINTERACTIVE_ENV = {
+    GIT_TERMINAL_PROMPT: "0",
+    GCM_INTERACTIVE: "never",
+} as const;
+
+/**
+ * 构造 simple-git 实例。
+ *
+ * **所有 spawn 路径都要走这里。** 之前有两处各自 `simpleGit(options)`：
+ * `git()`（带鉴权）与 `rawGetRemoteUrl()`（不带）—— 逐处补设置必然漏一处，
+ * 而漏掉的那一处照样能挂住整个同步。
+ *
+ * 导出是为了能单独验「非交互环境变量与超时真的挂上去了」：这两条只能验
+ * 「我们交给了库什么」，库内部的行为（超时到点 kill 掉子进程）由它自己的
+ * 实现保证，而**要观察它就得真造一个卡死的 git 进程** —— 那正是它要防的事。
+ */
+export function createGitInstance(options: {
+    baseDir: string;
+    gitPath?: string;
+    /** `-c key=value`，来自 `withAuth()` 的令牌注入。 */
+    config?: string[];
+}): SimpleGit {
+    const instanceOptions: Partial<SimpleGitOptions> = {
+        baseDir: options.baseDir,
+        timeout: { block: GIT_BLOCK_TIMEOUT_MS },
+    };
+    if (options.gitPath) instanceOptions.binary = options.gitPath;
+    if (options.config && options.config.length > 0) instanceOptions.config = options.config;
+
+    const instance = simpleGit(instanceOptions);
+    for (const [name, value] of Object.entries(GIT_NONINTERACTIVE_ENV)) {
+        instance.env(name, value);
+    }
+    return instance;
+}
 
 export interface SimpleGitManagerOptions {
     /** vault（git 仓库）的绝对路径。 */
@@ -97,10 +167,11 @@ export class SimpleGitManager implements GitManager {
             ? credentialForRemote(remoteUrl, this.secretStore!)
             : undefined;
 
-        const options: Partial<SimpleGitOptions> = { baseDir: this.baseDir };
-        if (this.gitPath) options.binary = this.gitPath;
-
-        this.git_ = simpleGit(withAuth(options, credential));
+        this.git_ = createGitInstance({
+            baseDir: this.baseDir,
+            gitPath: this.gitPath,
+            config: withAuth({}, credential).config,
+        });
         this.authedForRemote = remoteUrl;
         return this.git_;
     }
@@ -236,7 +307,11 @@ export class SimpleGitManager implements GitManager {
             git.revparse([status.current!])
         );
 
-        await wrap("fetching", () => git.fetch());
+        // `--progress` 是必需的，不是好看：git 在 stderr **不是终端**时默认
+        // **不输出传输进度**（我们正是这种情况 —— 子进程的 stderr 是管道）。
+        // 而上面那个无输出超时全靠「有没有输出」来判断死活：没有进度输出时，
+        // 一次慢但正常的传输会被当成卡死杀掉。带上它，传输中就有输出 → 计时重置。
+        await wrap("fetching", () => git.fetch(["--progress"]));
 
         const upstreamCommit = await wrap("resolving remote head", () =>
             git.revparse([status.tracking!])
@@ -332,13 +407,17 @@ export class SimpleGitManager implements GitManager {
             throw new DetachedHeadError("push: HEAD is detached");
         }
 
-        await wrap("pushing", () => git.push(["-u", "origin", status.current!]));
+        // `--progress` 是必需的，不是好看：git 在 stderr **不是终端**时默认
+        // **不输出传输进度**（我们正是这种情况 —— 子进程的 stderr 是管道）。
+        // 而无输出超时全靠「有没有输出」判断死活：没有进度输出时，
+        // 一次慢但正常的推送会被当成卡死杀掉。带上它，传输中就有输出 → 计时重置。
+        await wrap("pushing", () => git.push(["--progress", "-u", "origin", status.current!]));
         return { kind: "pushed" };
     }
 
     async fetch(): Promise<void> {
         const git = await this.git();
-        await wrap("fetching", () => git.fetch());
+        await wrap("fetching", () => git.fetch(["--progress"]));
     }
 
     // ── 分支 ──────────────────────────────────────────────────────────────
@@ -390,9 +469,12 @@ export class SimpleGitManager implements GitManager {
     }
 
     private async rawGetRemoteUrl(): Promise<string | undefined> {
-        const options: Partial<SimpleGitOptions> = { baseDir: this.baseDir };
-        if (this.gitPath) options.binary = this.gitPath;
-        const git = simpleGit(options);
+        // 也走 createGitInstance：这条路径每次 `git()` 都会跑，
+        // 而且同样会 spawn 一个 git 子进程（漏掉守卫就漏掉一个能挂住的地方）。
+        const git = createGitInstance({
+            baseDir: this.baseDir,
+            gitPath: this.gitPath,
+        });
         const remotes = await git.getRemotes(true);
         const origin = remotes.find((remote) => remote.name === "origin");
         return origin?.refs.push ?? origin?.refs.fetch;
@@ -507,6 +589,14 @@ export function mapError(err: unknown, what: string): Error {
     }
     if (/not a git repository/i.test(message)) {
         return new GitNotRepoError(`not a git repository (${detail})`, { cause: err });
+    }
+    // 放在鉴权判断**之前**：simple-git 的超时插件 kill 掉进程后，有些 git 版本
+    // 还会补一句「Authentication failed」之类的输出 —— 那只是症状，
+    // 真正的结论是「它卡住了」，报成鉴权失败会把用户指去查一个没问题的令牌。
+    // 两种措辞都收：`block timeout reached` 是 simple-git 自己的，
+    // `timed out` 是 git/curl 的（连接层面超时，对用户是同一件事）。
+    if (/block timeout reached|timed out/i.test(message)) {
+        return new GitTimeoutError(`git operation timed out (${detail})`, { cause: err });
     }
     // 放在鉴权判断**之前**：某些平台会把「用户名不被支持」和
     // 「Authentication failed」一起打出来，此时更具体的这条应当胜出

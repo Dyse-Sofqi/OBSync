@@ -8,6 +8,7 @@ import {
     GitBinaryMissingError,
     GitCredentialUsernameRejectedError,
     GitNotRepoError,
+    GitTimeoutError,
     PushRejectedError,
     describeSyncError,
 } from "../../src/features/sync/errors";
@@ -46,6 +47,11 @@ describe("describeSyncError", () => {
         ).toBe(zhCN.sync.gitCredentialUsernameRejected);
         expect(describeSyncError(new PushRejectedError("push rejected"), zhCN)).toBe(
             zhCN.sync.pushRejected
+        );
+        // 卡住被中止：必须说出「超时 + 去查网络」，否则用户只能继续盯着
+        // 「正在推送…」等一个不会来的结果（他报的就是这个症状）。
+        expect(describeSyncError(new GitTimeoutError("block timeout reached"), zhCN)).toBe(
+            zhCN.sync.gitTimeout
         );
     });
 

@@ -15,7 +15,7 @@ import type {
     SyncOutcome,
     SyncStrategy,
 } from "./types";
-import { StatusBar } from "./statusBar";
+import { StatusBar, type StatusBarActivity } from "./statusBar";
 
 /**
  * 同步编排：把 GitManager 的原子操作组合成用户语义的动作。
@@ -124,40 +124,64 @@ export class SyncService {
 
     // ── 用户动作 ──────────────────────────────────────────────────────────
 
+    /**
+     * 跑一个动作：期间状态栏显示「正在…」，结束后**无论成败都恢复**成仓库状态。
+     *
+     * ## 为什么这件事必须收在一处（真 bug 的修复）
+     *
+     * `activity` 是 `StatusBar` 的实例状态，而它的 `render()` 在
+     * `activity !== "idle"` 时**只显示活动文案并直接返回** —— 也就是说
+     * 一旦没人把它改回 `idle`，状态栏就永远停在「正在推送…」，
+     * 而且**连分支 / ahead / behind / 脏文件数都一起不显示了**，
+     * 一直到重载插件为止。在此之前 `setActivity("idle")` 在整个 `src` 里
+     * **一次都没出现过**（只有测试里手工调用过，所以没被发现）。
+     *
+     * 用户报的就是这个症状：「尝试推送后一直看到正在推送」——
+     * 推送早就结束（成功或失败）了，界面却还在说它正在进行。
+     *
+     * 收在 `finally` 里，是因为**出错时更需要恢复**：失败会让用户盯着
+     * 「正在推送…」等一个永远不会来的结果。
+     */
+    private async withActivity<T>(
+        activity: StatusBarActivity,
+        run: () => Promise<T>
+    ): Promise<T> {
+        this.statusBar.setActivity(activity);
+        try {
+            return await run();
+        } finally {
+            this.statusBar.setActivity("idle");
+            await this.refreshStatus();
+        }
+    }
+
     /** 提交全部更改（暂存所有 + 提交）。没有更改时是静默的空操作。 */
     async commitAll(): Promise<SyncOutcome> {
-        return this.enqueue(async () => {
-            this.statusBar.setActivity("committing");
-            try {
-                return await this.doCommitAll();
-            } finally {
-                await this.refreshStatus();
-            }
-        });
+        return this.enqueue(() => this.withActivity("committing", () => this.doCommitAll()));
     }
 
     /** 拉取。冲突时写指南文件并把 `ConflictError` 转成用户提示（不抛出）。 */
     async pull(): Promise<SyncOutcome> {
-        return this.enqueue(async () => {
-            this.statusBar.setActivity("pulling");
-            try {
-                return await this.doPull();
-            } finally {
-                await this.refreshStatus();
-            }
-        });
+        return this.enqueue(() => this.withActivity("pulling", () => this.doPull()));
     }
 
-    /** 推送。 */
-    async push(): Promise<SyncOutcome> {
-        return this.enqueue(async () => {
-            this.statusBar.setActivity("pushing");
-            try {
-                return await this.git.push();
-            } finally {
-                await this.refreshStatus();
-            }
-        });
+    /**
+     * 推送。
+     *
+     * `announceIfUpToDate` 只由**用户主动**的入口传 true（命令面板、视图里的按钮）。
+     * 自动推送定时器不传：本地没有新提交是常态，每 N 分钟弹一次
+     * 「没有需要推送的内容」纯属噪音。
+     *
+     * 为什么需要这句话：没有它时，用户点「推送」而本地与远端一致 ——
+     * 界面**一点变化都没有**（状态栏还停在「正在推送…」，见 `withActivity`），
+     * 他没法区分「没东西可推」和「卡住了」。
+     */
+    async push(options: { announceIfUpToDate?: boolean } = {}): Promise<SyncOutcome> {
+        return this.enqueue(() =>
+            this.withActivity("pushing", () =>
+                this.doPush(options.announceIfUpToDate === true)
+            )
+        );
     }
 
     /**
@@ -167,13 +191,12 @@ export class SyncService {
      * 继续提交会把冲突标记写进历史，继续推送会把它们推上远端。
      */
     async sync(): Promise<SyncOutcome> {
-        return this.enqueue(async () => {
-            try {
-                // 每个阶段都更新活动状态 —— 只在开头设一次的话，
-                // 整条链路（含拉取、推送）都会显示「正在提交」，与实际不符。
-                this.statusBar.setActivity("committing");
+        return this.enqueue(() =>
+            this.withActivity("committing", async () => {
                 await this.doCommitAll();
 
+                // 每个阶段都更新活动状态 —— 只在开头设一次的话，
+                // 整条链路（含拉取、推送）都会显示「正在提交」，与实际不符。
                 this.statusBar.setActivity("pulling");
                 const pulled = await this.doPull();
                 if (pulled.kind === "conflict") return pulled;
@@ -186,10 +209,8 @@ export class SyncService {
 
                 this.statusBar.setActivity("pushing");
                 return await this.doPush();
-            } finally {
-                await this.refreshStatus();
-            }
-        });
+            })
+        );
     }
 
     /** 放弃冲突现场（回到 pull 之前）。 */
@@ -468,7 +489,7 @@ export class SyncService {
         }
     }
 
-    private async doPush(): Promise<SyncOutcome> {
+    private async doPush(announceIfUpToDate = false): Promise<SyncOutcome> {
         const status = await this.git.status();
         // 没有远端时 push 必然失败 —— 提前给出更有指导性的错误。
         if (!(await this.git.getRemoteUrl())) {
@@ -476,7 +497,14 @@ export class SyncService {
             this.deps.notifier.warn(t.sync.noRemote);
             return { kind: "up-to-date" };
         }
-        if (status.ahead === 0) return { kind: "up-to-date" };
+        if (status.ahead === 0) {
+            // 注意「没有远端」那条**不**走这里：它已经给过警告了，
+            // 再说一句「没有需要推送的内容」会让人以为远端一切正常。
+            if (announceIfUpToDate) {
+                this.deps.notifier.info(this.deps.getT().sync.pushUpToDate);
+            }
+            return { kind: "up-to-date" };
+        }
         return this.git.push();
     }
 
