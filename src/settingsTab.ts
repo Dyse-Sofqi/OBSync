@@ -443,6 +443,20 @@ export class ObsyncSettingsTab extends PluginSettingTab {
                     await this.commit();
                 })
             );
+
+        new Setting(this.containerEl)
+            .setName(t.settings.general.statusBarFullWidth)
+            .setDesc(t.settings.general.statusBarFullWidthDesc)
+            .addToggle((toggle) =>
+                toggle
+                    .setValue(this.obsync.settings.statusBarFullWidth)
+                    .onChange(async (value) => {
+                        this.obsync.settings.statusBarFullWidth = value;
+                        // `commit()` → `applyDerivedSettings()` → 给 body 加/摘那个类，
+                        // 所以拨开关是**立刻**生效的（不用重载插件、也不用重开设置页）。
+                        await this.commit();
+                    })
+            );
     }
 
     private renderInstaller(): void {
