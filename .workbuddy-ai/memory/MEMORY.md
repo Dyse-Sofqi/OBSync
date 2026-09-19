@@ -226,3 +226,18 @@ pnpm hooks:install  # 启用 .githooks/（把 verify:head 挂到 pre-push）
   而症状恰好是「本地一切正常」。提交前用 `git status` 对着改动清单核一遍。
 - 这个项目的 commit message 风格：**中文、带用户原话、写清「为什么」与「代价」**，
   一条提交只讲一件事。别把几轮改动揉进一个提交。
+- **拆不开就别硬拆**：改动在同一个 hunk 里交织时（如「视图注释改名」与「注意事项的 CSS」
+  同块），合成一个提交、在 message 里分段写清，比造出误导性历史好。
+
+### 发版（`docs/RELEASE.md` 之外的几条）
+- **`scripts/api-replay.mjs` 不碰标签**（2026-09-20 修）。它曾硬编码一行把 `0.1.1`
+  重指到 `parent` —— 那是首推时的一次性修正，留在通用脚本里会把**本来正确**的标签
+  拖到新提交上。症状：`git checkout 0.1.1` 拿到 0.1.2 的代码，而脚本还报 ✔。
+- **顺序必须是「先推分支、再建 release」**：GitHub 建 release 时按 `tag_name` 创建 tag，
+  指向「当时默认分支的 HEAD」。反过来会让 tag 落在旧提交上。
+- **校验资产不要下载**（`github.com:443` 时段性阻断），用
+  `gh api repos/.../releases/tags/X --jq '.assets[] | "\(.name) \(.size) \(.digest)"'`
+  与本地 `sha256sum` 比对 —— 三个都逐字节一致才算成。
+- **Gitee 镜像只同步代码与标签，不同步 release**：每次发版要手动建一次。
+  且 Gitee 的「创建发行版」接口**没有 `files` 参数**（传了会被静默忽略），
+  附件是独立接口、一次一个。需要 PAT（账号密码一律 401）。

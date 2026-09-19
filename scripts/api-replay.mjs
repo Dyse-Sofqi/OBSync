@@ -144,9 +144,15 @@ for (const sha of commits) {
 await api("PATCH", `/repos/${repo}/git/refs/heads/main`, { sha: parent, force: true });
 console.log(`✔ main → ${parent}`);
 
-// 标签跟着历史重指（release API 建的那个 tag 指向被丢弃的合并提交）
-await api("PATCH", `/repos/${repo}/git/refs/tags/0.1.1`, { sha: parent, force: true });
-console.log(`✔ 标签 0.1.1 → ${parent}`);
+// 标签**不在这里碰**。发版时 tag 由「建 release 的 `tag_name`」自动创建，而 GitHub 会把
+// 它指向**当时默认分支的 HEAD** —— 所以顺序必须是「先推分支、再建 release」
+// （见 docs/RELEASE.md 第三、四节）。
+//
+// 这里曾经硬编码着一行 `PATCH .../tags/0.1.1 { sha: parent }`，那是**首推时的一次性
+// 修正**（当时 release 的 tag 指向了一个后来被丢弃的合并提交）。留在通用脚本里就成了
+// 定时炸弹：第二次用它推历史时，会把**本来正确**的 `0.1.1` 标签也拖到新提交上 ——
+// 2026-09-20 发 0.1.2 时实测踩到，症状是「checkout 0.1.1 拿到的是 0.1.2 的代码」。
+// 要修正某个标签时，用一条显式的 PATCH 命令去做，别写进通用脚本。
 
 console.log(`\n远端 main = ${parent}`);
 console.log(`本地 HEAD = ${toSha}`);
