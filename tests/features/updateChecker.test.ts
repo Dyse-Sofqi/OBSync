@@ -784,9 +784,9 @@ describe("checkSelf", () => {
         // 若实现去读磁盘（而不是用传进来的 currentVersion），这里会得到
         // 「已是最新」—— 而用户跑的还不是它，那就成了假话。
         const fake = createFakeApp(
-            seedPlugin("obsync", {
+            seedPlugin("ob-sync", {
                 "manifest.json": JSON.stringify({
-                    id: "obsync",
+                    id: "ob-sync",
                     name: "OBSync",
                     version: "0.3.0",
                     minAppVersion: "1.8.7",

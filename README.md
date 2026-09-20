@@ -97,7 +97,7 @@ Chinese-first UI with an equal English one.
   自动同步会被暂停** —— 否则每一轮都会静默丢掉刚提交的东西）。
   如果你确实不想让拉取动工作区，就分两步走：`提交` → `推送`
 - **初始化仓库** —— 顺便建一份 `.gitignore`（默认排除 `.obsidian/workspace.json`、
-  `.obsidian/plugins/obsync/data.json` 这类**每台设备各自维护**的文件，同步它们只会
+  `.obsidian/plugins/ob-sync/data.json` 这类**每台设备各自维护**的文件，同步它们只会
   制造冲突）。**已存在的 `.gitignore` 绝不覆盖**，
   另有「编辑 .gitignore」命令可以随时改它
 - **冲突处理** —— 检测到冲突时在库根目录写一份《OBSync 冲突指南.md》列出冲突文件，
@@ -222,7 +222,7 @@ Chinese-first UI with an equal English one.
 插件尚未上架官方市场。手动安装：
 
 1. 下载 `main.js`、`manifest.json`、`styles.css`
-2. 放进 `<你的库>/.obsidian/plugins/obsync/`
+2. 放进 `<你的库>/.obsidian/plugins/ob-sync/`
 3. 在 Obsidian 的「第三方插件」里启用 OBSync
 
 两个发布地址（内容一致，选连得上的那个）：
@@ -281,13 +281,13 @@ pnpm test:live   # 真实 API 测试，需要网络
 pnpm verify:head # 在 **HEAD** 上跑测试（提交后跑一次，见下）
 ```
 
-- 部署目标默认是 `F:/_Workspace/Plugin-Test/.obsidian/plugins/obsync`。
+- 部署目标默认是 `F:/_Workspace/Plugin-Test/.obsidian/plugins/ob-sync`。
   环境变量 `OBSYNC_DEPLOY_DIR` 可以覆盖，而且**接受多个目录**（用 `;` 分隔）——
   一次构建同时更新几个库；设为空串则跳过部署。
 
   ```bash
   # 一次部署到两个库（pnpm build:both 就是这条）
-  OBSYNC_DEPLOY_DIR="F:/_Workspace/Plugin-Test/.obsidian/plugins/obsync;D:/_Workspace/learning-records/.obsidian/plugins/obsync" pnpm build
+  OBSYNC_DEPLOY_DIR="F:/_Workspace/Plugin-Test/.obsidian/plugins/ob-sync;D:/_Workspace/learning-records/.obsidian/plugins/ob-sync" pnpm build
   ```
 
   只复制 `main.js` / `manifest.json` / `styles.css` 三个文件，**不碰 `data.json`**
@@ -367,7 +367,7 @@ Needs the system `git` binary, so it is **desktop-only** (Windows / macOS / Linu
   committed). If you really do not want the pull to touch your working tree, do it in two steps:
   `Commit` → `Push`
 - **Initialize repository** — also creates a `.gitignore` (excluding per-device files such as
-  `.obsidian/workspace.json` and `.obsidian/plugins/obsync/data.json`, which only ever produce
+  `.obsidian/workspace.json` and `.obsidian/plugins/ob-sync/data.json`, which only ever produce
   conflicts). An existing `.gitignore` is **never overwritten**, and there is an "Edit .gitignore"
   command
 - **Conflicts** — on conflict OBSync writes a resolution guide listing the conflicted files and
@@ -513,7 +513,7 @@ versions), never in `data.json`, and never synced to other devices.
 Not in the community plugin list yet. Manual install:
 
 1. Download `main.js`, `manifest.json` and `styles.css`
-2. Put them in `<your vault>/.obsidian/plugins/obsync/`
+2. Put them in `<your vault>/.obsidian/plugins/ob-sync/`
 3. Enable OBSync under Community plugins
 
 Two release locations (same artifacts — use whichever is reachable):
@@ -574,7 +574,7 @@ pnpm test:live   # live API tests (needs network)
 pnpm verify:head # runs the tests on **HEAD**, not the working tree (see below)
 ```
 
-The default deploy target is `F:/_Workspace/Plugin-Test/.obsidian/plugins/obsync`. The
+The default deploy target is `F:/_Workspace/Plugin-Test/.obsidian/plugins/ob-sync`. The
 `OBSYNC_DEPLOY_DIR` environment variable overrides it and accepts **several** directories
 separated by `;`, so one build can update multiple vaults; set it to an empty string to
 skip deploying. Only `main.js`, `manifest.json` and `styles.css` are copied — never

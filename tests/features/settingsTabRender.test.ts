@@ -32,7 +32,7 @@ function createTab(fake: FakeApp, raw: Record<string, unknown> = {}): ObsyncSett
 
     const plugin = {
         app: fake.app,
-        manifest: { id: "obsync", version: "0.9.0" },
+        manifest: { id: "ob-sync", version: "0.9.0" },
         t: zhCN,
         settings,
         notifier,

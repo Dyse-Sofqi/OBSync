@@ -127,7 +127,7 @@ export const en = {
             selfSourceDesc:
                 "Empty = the official repository (github.com/Dyse-Sofqi/OBSync). If GitHub is slow " +
                 "or blocked, enter a mirror address — it is then used every time, with no automatic " +
-                "probing. Before writing, the remote manifest's id must be obsync, so a wrong " +
+                "probing. Before writing, the remote manifest's id must be ob-sync, so a wrong " +
                 "address cannot overwrite another plugin.",
             selfSourcePlaceholder: "https://gitee.com/sofqi/OBSync",
             mirrorDiscovery: "Discover Gitee mirrors",
@@ -350,7 +350,7 @@ export const en = {
             cannotEnablePlugin:
                 "This version of Obsidian does not allow a plugin to enable other plugins.",
             selfIdMismatch: (repo: string, id: string) =>
-                `The plugin id in ${repo} is "${id}", not OBSync itself (obsync) — the update was aborted so it cannot overwrite another plugin.`,
+                `The plugin id in ${repo} is "${id}", not OBSync itself (ob-sync) — the update was aborted so it cannot overwrite another plugin.`,
             selfUpdateDowngrade: (current: string, latest: string) =>
                 `The latest remote version ${latest} is older than the running ${current}; aborted — updating should not downgrade you.`,
             communityIndexFailed: (status: number) =>

@@ -33,7 +33,7 @@ import type { SelfUpdateCheck } from "./types";
  *
  * 写死在代码里，不从 manifest / authorUrl 推导 —— manifest 没有 repo 字段，
  * 而 `authorUrl` 是作者主页。也正因如此，`updateSelf` 在写盘前必须校验远端
- * manifest 的 id 是不是 `obsync`：这个常量万一指错了地方，拦住远比
+ * manifest 的 id 是不是 `ob-sync`：这个常量万一指错了地方，拦住远比
  * 按错的 id 去解析目录、覆盖掉别的插件强。
  */
 export const SELF_REPO: RepoRef = {
@@ -47,8 +47,16 @@ export const SELF_REPO: RepoRef = {
  *
  * 两个用途：绑定列表跳过自己（`existingPlugins.ts`），
  * 以及自我更新时校验远端身份（不是这个 id 就不写盘）。
+ *
+ * ## 为什么 id 是 `ob-sync` 而不是 `obsync`
+ *
+ * 插件市场里 `obsync` 已被占用，id 撞车的插件无法上架，所以发布前改成了 `ob-sync`。
+ * 它与**插件名**「OBSync」、以及那些 `obsync-` 前缀的内部标识（CSS 类名、
+ * `obsync-sync-view` 视图类型、`obsync-token-` 密钥 id）**刻意不一致**：后者是
+ * 各自的命名空间，不是插件身份，改名只会白白作废用户已存的令牌与视图状态。
+ * 换句话说，看到 `obsync-` 不必跟着改 —— 只有这一个常量跟着 manifest 走。
  */
-export const SELF_PLUGIN_ID = "obsync";
+export const SELF_PLUGIN_ID = "ob-sync";
 
 /**
  * 这次该从哪个仓库更新自己。

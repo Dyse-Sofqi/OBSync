@@ -25,7 +25,7 @@
 
 ## 一、项目是什么
 
-单个 Obsidian 插件（id `obsync`），把两个参考项目的能力合并并扩展：
+单个 Obsidian 插件（id `ob-sync`），把两个参考项目的能力合并并扩展：
 
 | 能力 | 复刻自 | 扩展点 |
 | --- | --- | --- |
@@ -38,7 +38,7 @@
 
 1. **仅桌面**。Git 同步只用系统 git（simple-git），不做 isomorphic-git。
 2. **分阶段交付，逐段验收**。
-3. 插件标识 `obsync` / OBSync。
+3. 插件标识 `ob-sync` / OBSync（名字仍是 OBSync；id 用 `ob-sync` 是因为市场上 `obsync` 已被占用，见 `selfUpdate.ts` 的 `SELF_PLUGIN_ID`）。
 4. Gitee 插件发现 = 手动输入 + GitHub→Gitee 镜像自动发现。
 
 ## 二、当前进度
@@ -223,7 +223,7 @@ commit 是本地历史、随时能 `git reset`，**push 才是「别人能看到
 > ⚠ 别改回 `require("./features/sync")`：Obsidian 桌面端能用，但测试环境是 ESM，
 > `require` 不存在，启动测试会全部失败。（试过，踩了。）
 
-- 部署目标默认 `F:/_Workspace/Plugin-Test/.obsidian/plugins/obsync`；环境变量
+- 部署目标默认 `F:/_Workspace/Plugin-Test/.obsidian/plugins/ob-sync`；环境变量
   `OBSYNC_DEPLOY_DIR` 可覆盖，而且**接受多个目录**（`;` 分隔）—— `pnpm build:both`
   就是「同时部署到测试库与真实库」那条命令。设空串跳过；某个目标写失败只警告，
   既不中断构建、也不影响另一个目标。**只复制三个产物，永远不碰 `data.json`。**
@@ -538,7 +538,7 @@ src/
 
 | 规则 | 为什么 |
 | --- | --- |
-| 远端 manifest 的 id 必须是 `obsync` | `SELF_REPO` 是写死的常量（manifest 没有 repo 字段），万一指错地方，按错的 id 解析目录会**覆盖别的插件** |
+| 远端 manifest 的 id 必须是 `ob-sync` | `SELF_REPO` 是写死的常量（manifest 没有 repo 字段），万一指错地方，按错的 id 解析目录会**覆盖别的插件** |
 | 不允许降级（远端比当前旧就中止） | 「更新」不该把用户降回旧版本 |
 | 允许**同版本重装** | 把一个坏掉的安装修回来是合理需求 |
 
@@ -852,7 +852,7 @@ gitee 镜像下载的选择**」。两件事在同一句话里：GitHub 资产�
 - **`.gitignore` 那条是回退，不是遗漏**：测试库那份旧 `.gitignore` 里明确有
   `.obsidian/plugins/gitee-sync-plus/data.json`（和 `workspace.json` 写在同一段注释下），
   而 `gitignoreTemplate` 只有前两条 —— 改插件 id 时漏搬了。现在补的是
-  `.obsidian/plugins/obsync/data.json`。
+  `.obsidian/plugins/ob-sync/data.json`。
   **刻意不写成 `*/data.json`**：那会波及用户库里其他插件的设置，不该替他决定。
 - **硬防护在 `Automatics.start()`，不在设置页**：`AutomaticsSettings` 新增
   `syncStrategy` 字段，为 `reset` 时一个定时器都不起。这是**同一个坑的第二次** ——

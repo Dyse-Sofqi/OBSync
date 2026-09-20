@@ -66,7 +66,7 @@ export interface InstallerSettings {
      * 它**不是**「镜像发现」那套（那套只提议、要用户确认、每次都要探测）：
      * 这是用户写下的**固定来源**，填一次就一直用它，不再探测。
      *
-     * 校验照旧：远端 manifest 的 `id` 必须是 `obsync`，否则拒绝写盘 ——
+     * 校验照旧：远端 manifest 的 `id` 必须是 `ob-sync`，否则拒绝写盘 ——
      * 所以地址填错不会把别的插件覆盖掉。
      */
     selfUpdateSource: string;

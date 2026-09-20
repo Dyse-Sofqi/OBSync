@@ -22,7 +22,7 @@ import { createFakeApp, type FakeApp } from "./helpers/fakeApp";
  */
 
 const MANIFEST = {
-    id: "obsync",
+    id: "ob-sync",
     name: "OBSync",
     version: "0.1.0",
     minAppVersion: "1.5.0",

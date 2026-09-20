@@ -8,6 +8,28 @@
 
 ---
 
+## [0.1.4] — 2026-09-20
+
+### 变更
+
+- **插件 id 从 `obsync` 改为 `ob-sync`** —— 插件市场里 `obsync` 已被别的插件占用，
+  id 撞车的插件无法上架。插件名仍是 **OBSync**，功能与设置项一个没少。
+
+  只动了「插件身份」这一处：`manifest.json` 的 `id`、自我更新时校验远端身份用的
+  常量，以及它们派生出来的东西（`.gitignore` 模板里的设置文件路径、安装目录）。
+  那些 `obsync-` 前缀的内部标识**刻意不动** —— CSS 类名、`obsync-sync-view` 视图
+  类型、`obsync-token-` 密钥 id 各有各的命名空间，跟着改只会白白作废用户已存的
+  令牌与面板状态。
+
+  **升级注意**：Obsidian 按 id 找插件，所以目录会从
+  `.obsidian/plugins/obsync/` 变成 `.obsidian/plugins/ob-sync/`。旧目录要手动删掉，
+  否则库里会同时存在两份（同一个名字、两个 id），插件列表里会出现两个 OBSync。
+  旧的 `data.json`（设置与跟踪列表）不会自动搬过去，需要重新配置。
+
+[0.1.4]: https://github.com/Dyse-Sofqi/OBSync/releases/tag/0.1.4
+
+---
+
 ## [0.1.3] — 2026-09-20
 
 ### 新增

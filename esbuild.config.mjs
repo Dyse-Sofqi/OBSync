@@ -30,7 +30,7 @@ const NODE_BUILTINS = [
  * 分隔符固定用 `;` 而**不是** `path.delimiter`：后者在 POSIX 上是 `:`，
  * 而 Windows 盘符 `F:/…` 里本来就带冒号 —— 用它会把一份配置切碎。
  */
-const DEFAULT_DEPLOY_DIRS = ["F:/_Workspace/Plugin-Test/.obsidian/plugins/obsync"];
+const DEFAULT_DEPLOY_DIRS = ["F:/_Workspace/Plugin-Test/.obsidian/plugins/ob-sync"];
 
 const deployDirs = (process.env.OBSYNC_DEPLOY_DIR ?? DEFAULT_DEPLOY_DIRS.join(";"))
     .split(";")

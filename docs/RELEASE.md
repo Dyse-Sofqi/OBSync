@@ -31,7 +31,8 @@ pnpm verify:mobile  # 构建 + 用真实产物验证「移动端能加载」（�
 
 - [ ] 在测试库里**手动点一遍**两个功能的入口：安装器弹窗能打开、设置页四个标签能切、
       同步命令出现在命令面板里
-- [ ] `manifest.json` 的 `id` 仍是 `obsync`（改 id 等于换插件，用户数据会断）
+- [ ] `manifest.json` 的 `id` 仍是 `ob-sync`（改 id 等于换插件，用户数据会断；
+      发布件里的 manifest 与仓库里的这份必须一致，否则市场校验不过）
 - [ ] 中英文都扫一眼：把语言切成 English，确认没有中文残留
 - [ ] 设置页「OBSync 自身」：点一次「检查更新」，版本号应与 `manifest.json` 一致
       （这条同时验了发布件里的 manifest 与仓库坐标没写错）
@@ -293,7 +294,7 @@ OBSync 把两件事合在一起：**用 git 同步笔记仓库** + **安装社�
 
 ## 安装
 下载 `main.js` / `manifest.json` / `styles.css`，放进
-`<你的库>/.obsidian/plugins/obsync/`，然后在 Obsidian 里启用。
+`<你的库>/.obsidian/plugins/ob-sync/`，然后在 Obsidian 里启用。
 
 ## 要求
 - Obsidian ≥ 1.8.7
