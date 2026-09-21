@@ -741,7 +741,7 @@ describe("主题的更新检查", () => {
 });
 
 /**
- * OBSync 自己的更新检查。
+ * SyncHub 自己的更新检查。
  *
  * 与插件同构，但有两处刻意的不同：**不写 `availableUpdates`**（它不在跟踪
  * 列表里，那张表是「谁该有徽标」）；以及比较的是**运行中**的版本 ——
@@ -752,7 +752,7 @@ describe("checkSelf", () => {
     it("远端有更新版本时报有更新", async () => {
         const fake = createFakeApp();
         const { checker } = createContext(fake);
-        route(/repos\/Dyse-Sofqi\/OBSync\/releases\/latest$/, () => ({
+        route(/repos\/Dyse-Sofqi\/SyncHub\/releases\/latest$/, () => ({
             status: 200,
             text: releaseJson("0.2.0"),
         }));
@@ -768,7 +768,7 @@ describe("checkSelf", () => {
     it("远端同版本时报已是最新", async () => {
         const fake = createFakeApp();
         const { checker } = createContext(fake);
-        route(/repos\/Dyse-Sofqi\/OBSync\/releases\/latest$/, () => ({
+        route(/repos\/Dyse-Sofqi\/SyncHub\/releases\/latest$/, () => ({
             status: 200,
             text: releaseJson("0.1.0"),
         }));
@@ -784,17 +784,17 @@ describe("checkSelf", () => {
         // 若实现去读磁盘（而不是用传进来的 currentVersion），这里会得到
         // 「已是最新」—— 而用户跑的还不是它，那就成了假话。
         const fake = createFakeApp(
-            seedPlugin("ob-sync", {
+            seedPlugin("synchub", {
                 "manifest.json": JSON.stringify({
-                    id: "ob-sync",
-                    name: "OBSync",
+                    id: "synchub",
+                    name: "SyncHub",
                     version: "0.3.0",
                     minAppVersion: "1.8.7",
                 }),
             })
         );
         const { checker } = createContext(fake);
-        route(/repos\/Dyse-Sofqi\/OBSync\/releases\/latest$/, () => ({
+        route(/repos\/Dyse-Sofqi\/SyncHub\/releases\/latest$/, () => ({
             status: 200,
             text: releaseJson("0.3.0"),
         }));
@@ -807,7 +807,7 @@ describe("checkSelf", () => {
     it("**不写 availableUpdates**（自己不在跟踪列表里）", async () => {
         const fake = createFakeApp();
         const { checker, settings } = createContext(fake);
-        route(/repos\/Dyse-Sofqi\/OBSync\/releases\/latest$/, () => ({
+        route(/repos\/Dyse-Sofqi\/SyncHub\/releases\/latest$/, () => ({
             status: 200,
             text: releaseJson("0.2.0"),
         }));

@@ -1,10 +1,27 @@
-# OBSync 项目长期约定
+# SyncHub 项目长期约定
 
 ## 项目定位
-单个 Obsidian 插件（id `obsync`），两个功能模块共用一层平台抽象：
+单个 Obsidian 插件（显示名 **SyncHub**，id `synchub`），两个功能模块共用一层平台抽象：
 - `features/installer` —— 复刻 BRAT 的社区插件安装能力
 - `features/sync` —— 复刻 obsidian-git 的笔记仓库同步能力
 - `host/` —— GitHub / Gitee 双平台适配层，两个模块共用
+
+### 名字的三层区分（**别混**，2026-09-21 因审核打回而梳理）
+
+| 层 | 值 | 能不能改 |
+| --- | --- | --- |
+| 显示名（`manifest.json` 的 `name`、状态栏、命令名、i18n、README） | `SyncHub` | 可改，但**绝不能含 Obsidian 的缩写片段**（见下） |
+| 插件 id（`manifest.json` 的 `id`、安装目录名） | `synchub` | 改了会让用户的安装目录与 `data.json` 失联（得手动搬 `data.json`） |
+| 内部标识前缀（CSS 类、`obsync-sync-view`、`obsync-token-`） | `obsync-` | **一律不动** —— 改了会作废用户已存的令牌与面板状态 |
+
+id 的历史：`obsync`（市场重名）→ `ob-sync`（0.1.4）→ `synchub`（0.1.5，与显示名统一）。
+**唯一事实来源是 `selfUpdate.ts` 的 `SELF_PLUGIN_ID`**，它必须与 manifest 的 `id` 一致。
+
+**显示名为什么叫 SyncHub**：原名 `OBSync` 被社区审核以
+*Plugin name must not include parts of the name "Obsidian"* 打回 —— 它以全大写 `OBS` 开头，
+正是 "Obsidian" 前三字母的缩写。规则查的是商标**片段**，不是整词。
+（商标规则**只管显示名、不管 id**：目录里 `obsync-ptop`、`obsync-webdav-gpg`
+等一大批 id 含 `obsync` 照旧在架。所以 id 改成 `synchub` 是"统一"考虑，不是审核要求。）
 
 参考源码在 `F:\_Workspace\GitHub-Project\` 下，**只读参考，不要改动**。
 
@@ -12,7 +29,7 @@
 ```
 pnpm dev            # esbuild watch + 自动部署到测试库
 pnpm check          # 项目自查（scripts/checks.mjs，6 项）
-pnpm build          # check + typecheck + 生产构建 + 部署
+pnpm build          # check + lint:review + typecheck + 生产构建 + 部署
 pnpm typecheck      # tsc --noEmit
 pnpm test           # 单元测试（不含网络）
 pnpm test:live      # 真实 API 测试（需要网络）

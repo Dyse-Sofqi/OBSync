@@ -12,10 +12,10 @@ import {
 
 describe("parseRepoRef", () => {
     it("解析 owner/repo 简写并使用默认平台", () => {
-        expect(parseRepoRef("Dyse-Sofqi/OBSync")).toEqual({
+        expect(parseRepoRef("Dyse-Sofqi/SyncHub")).toEqual({
             host: "github",
             owner: "Dyse-Sofqi",
-            repo: "OBSync",
+            repo: "SyncHub",
         });
     });
 

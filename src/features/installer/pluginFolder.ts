@@ -36,7 +36,7 @@ export interface PluginFolderLookup {
      * **其他也声明了同一 id 的目录**（通常是一份残留备份）。
      *
      * 只要它非空，就说明 `plugins/` 里有两个目录抢同一个插件 id —— 而 Obsidian
-     * 认哪一个**是不定的**（实测：重启后它加载了备份那份 2.5.16，而 OBSync 按
+     * 认哪一个**是不定的**（实测：重启后它加载了备份那份 2.5.16，而 SyncHub 按
      * `md-razor/` 的 manifest 记着 2.6.4，于是更新检查永远报「已是最新」）。
      */
     duplicates: string[];
@@ -86,7 +86,7 @@ async function findFoldersDeclaringId(app: App, pluginId: string): Promise<strin
  * 它给出的目录才是用户实际在跑的那份；拿不到时才退回「同名优先」的猜测。
  *
  * 调用方**必须**看看 `duplicates`：非空意味着用户机器上有一份看不见的第二安装，
- * 它会让「实际装的是什么」与「OBSync 显示的是什么」长期不一致。
+ * 它会让「实际装的是什么」与「SyncHub 显示的是什么」长期不一致。
  */
 export async function resolvePluginFolderInfo(
     app: App,

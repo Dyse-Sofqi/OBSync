@@ -8,6 +8,60 @@
 
 ---
 
+## [0.1.5] — 2026-09-21
+
+### 变更
+
+- **插件名从 `OBSync` 改为 `SyncHub`** —— 社区审核以
+  *Plugin name must not include parts of the name "Obsidian"* 打回。
+  原因不是"含 Obsidian 这个词"（`OBSync` 并不含），而是它以**全大写 `OBS`** 开头 ——
+  那正是 "Obsidian" 前三字母的缩写写法，规则查的是商标的**片段**。
+
+  实测佐证：插件目录 7884 个已上架插件里，**没有任何一个**显示名含全大写 `OBS`；
+  而含 `Obs` / `obs` / `Ob` 的各种写法都大量在架（`WeChat Obsync`、`Tree Obs`、
+   `ObShare`、`GitHobs`…）。
+
+  改动范围：`manifest.json` 的 `name`、状态栏文案、命令名、i18n 文案、README，
+  以及**自我更新的仓库坐标**（GitHub / Gitee 仓库同步改名为 `SyncHub`）。
+
+  **那些 `obsync-` 前缀的内部标识一律不动** —— CSS 类名、`obsync-sync-view`
+  视图类型、`obsync-token-` 密钥 id 各有各的命名空间，跟着改只会白白作废用户
+  已存的令牌与面板状态。
+
+  **升级注意**：仓库改名后 GitHub 会自动重定向旧地址，自我更新不受影响。
+  但若你把设置页的「自身更新来源」手填成了 `.../OBSync`，需要改成 `.../SyncHub`。
+
+- **插件 id 从 `ob-sync` 改为 `synchub`** —— 与显示名统一。
+  **这不是审核要求的**：商标规则只管显示名，目录里 `obsync-ptop`、
+  `obsync-webdav-gpg` 等一大批 id 含 `obsync` 照旧在架。改它是因为**现在最便宜** ——
+  插件尚未上架，全世界的安装只有作者自己的库，迁移成本只有那几处；
+  等上架之后再改，代价就是所有用户的数据。
+
+  **升级注意（重要）**：Obsidian 按 id 找插件，安装目录会从
+  `.obsidian/plugins/ob-sync/` 变成 `.obsidian/plugins/synchub/`，
+  而 `data.json`（设置 + 跟踪列表）**不会自动跟着走** —— 需要手动把它复制到新目录，
+  否则插件会以默认设置启动。旧的 `ob-sync/` 目录可以删掉，
+  否则插件列表里可能出现两份。
+
+  **已存的访问令牌不受影响**：它们存在 `obsync-token-*` 这个密钥 id 下，
+  与插件 id 无关（这正是内部前缀刻意不改的价值）。
+
+  **跨 id 这一跳不能靠自我更新**：旧安装里的自我更新会校验远端 manifest 的 id，
+  而远端已是 `synchub`，校验不通过就会**拒绝写盘**（这道守卫本就是为了防止
+  覆盖别的插件）。所以需要**手动重装**一次；重装后两边 id 一致，自我更新恢复正常。
+
+### 修复
+
+- **英文界面的 `.gitignore` 模板漏了排除本插件自己的 `data.json`** ——
+  中文模板一直有这条（本插件的设置是按设备的，同步它只会让两台设备互相覆盖设置），
+  英文模板却**没有**，于是英文用户初始化仓库时写出的 `.gitignore` 不会排除它。
+  i18n 的编译期检查只管**键结构**、不管字符串内容，所以这条漂移长期没被发现。
+  已补齐，中英模板现在一致。
+
+[0.1.5]: https://github.com/Dyse-Sofqi/SyncHub/releases/tag/0.1.5
+
+---
+
 ## [0.1.4] — 2026-09-20
 
 ### 变更
@@ -26,7 +80,7 @@
   否则库里会同时存在两份（同一个名字、两个 id），插件列表里会出现两个 OBSync。
   旧的 `data.json`（设置与跟踪列表）不会自动搬过去，需要重新配置。
 
-[0.1.4]: https://github.com/Dyse-Sofqi/OBSync/releases/tag/0.1.4
+[0.1.4]: https://github.com/Dyse-Sofqi/SyncHub/releases/tag/0.1.4
 
 ---
 
@@ -51,7 +105,7 @@
   跨 host 传递时必须另传 `defaultHost`，否则 Gitee 的坐标会被按 GitHub 解析 ——
   而界面看起来毫无异常
 
-[0.1.3]: https://github.com/Dyse-Sofqi/OBSync/releases/tag/0.1.3
+[0.1.3]: https://github.com/Dyse-Sofqi/SyncHub/releases/tag/0.1.3
 
 ---
 
@@ -148,7 +202,7 @@
 - 838 条单元测试（55 个文件）
 - 交接文档新增五点七（版本管理）与五点八（仓库同步视图）两节
 
-[0.1.2]: https://github.com/Dyse-Sofqi/OBSync/releases/tag/0.1.2
+[0.1.2]: https://github.com/Dyse-Sofqi/SyncHub/releases/tag/0.1.2
 
 ---
 
@@ -245,4 +299,4 @@
 - 交接文档 [`docs/HANDOVER.md`](docs/HANDOVER.md)、参考项目分析
   [`docs/reference-analysis.md`](docs/reference-analysis.md)、发版清单 [`docs/RELEASE.md`](docs/RELEASE.md)
 
-[0.1.1]: https://github.com/Dyse-Sofqi/OBSync/releases/tag/0.1.1
+[0.1.1]: https://github.com/Dyse-Sofqi/SyncHub/releases/tag/0.1.1

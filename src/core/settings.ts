@@ -30,7 +30,7 @@ export interface InstallerSettings {
     autoCheckOnStartup: boolean;
     /** 启动检查的延迟秒数 —— 避开 Obsidian 自身的启动流程。 */
     autoCheckDelaySeconds: number;
-    /** 打开 OBSync 设置页时自动检查更新。默认开启。 */
+    /** 打开 SyncHub 设置页时自动检查更新。默认开启。 */
     autoCheckOnSettingsOpen: boolean;
     /** 安装 GitHub 插件时是否优先探测 Gitee 镜像。 */
     discoverGiteeMirrors: boolean;
@@ -42,9 +42,9 @@ export interface InstallerSettings {
      */
     lastUpdateCheckAt: number;
     /**
-     * 上次把 OBSync 自己更新到了哪个版本、但还没重启（空串 = 没有待重启的更新）。
+     * 上次把 SyncHub 自己更新到了哪个版本、但还没重启（空串 = 没有待重启的更新）。
      *
-     * OBSync **不重载自己**：对普通插件是 disable → enable，对自己则是先卸载正在
+     * SyncHub **不重载自己**：对普通插件是 disable → enable，对自己则是先卸载正在
      * 执行这段代码的实例（剩下半段靠闭包才活着）—— 能成也是靠副作用成功，
      * 失败就停在「已禁用」。所以更新只写文件，由用户重启完成剩下的事，
      * 而这段时间磁盘上的版本比运行中的代码新，这个字段就是唯一的凭据：
@@ -56,7 +56,7 @@ export interface InstallerSettings {
      */
     pendingRestartVersion: string;
     /**
-     * **自身更新来源**（空串 = 官方仓库 `github.com/Dyse-Sofqi/OBSync`）。
+     * **自身更新来源**（空串 = 官方仓库 `github.com/Dyse-Sofqi/SyncHub`）。
      *
      * 为什么允许指定：`github.com` 在本机会被**时段性阻断**，而 Gitee 镜像能直连。
      * 没有这个字段时，想从镜像更新自己只能绕道「添加插件仓库」把自己加进跟踪列表 ——
@@ -66,7 +66,7 @@ export interface InstallerSettings {
      * 它**不是**「镜像发现」那套（那套只提议、要用户确认、每次都要探测）：
      * 这是用户写下的**固定来源**，填一次就一直用它，不再探测。
      *
-     * 校验照旧：远端 manifest 的 `id` 必须是 `ob-sync`，否则拒绝写盘 ——
+     * 校验照旧：远端 manifest 的 `id` 必须是 `synchub`，否则拒绝写盘 ——
      * 所以地址填错不会把别的插件覆盖掉。
      */
     selfUpdateSource: string;

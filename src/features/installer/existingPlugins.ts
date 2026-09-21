@@ -79,7 +79,7 @@ export async function listInstalledPlugins(app: App): Promise<ExistingPlugin[]> 
             continue;
         }
         // 自己不进列表：跟踪自己不是「用户装了什么」的一部分（自制更新的入口
-        // 在设置页的「OBSync 自身」一节）。id 来自 selfUpdate 的单一事实来源。
+        // 在设置页的「SyncHub 自身」一节）。id 来自 selfUpdate 的单一事实来源。
         if (manifest.id === SELF_PLUGIN_ID) continue;
 
         if (seen.has(manifest.id)) {

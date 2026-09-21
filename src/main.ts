@@ -45,7 +45,7 @@ function applyStatusBarWidth(fullWidth: boolean): void {
 }
 
 /**
- * OBSync 主类。
+ * SyncHub 主类。
  *
  * 设计上刻意保持「只做装配」：主类不实现任何业务逻辑，只负责
  * 加载设置、构造共用的基础设施（i18n / 令牌存储 / 提示器），
@@ -103,7 +103,7 @@ export default class ObsyncPlugin extends Plugin {
     async onload(): Promise<void> {
         await this.loadSettings();
 
-        // 上次把 OBSync 自己更新过、但用户没重启 —— 这次加载跑的就是新版本了，
+        // 上次把 SyncHub 自己更新过、但用户没重启 —— 这次加载跑的就是新版本了，
         // 待重启的标记到此为止（不清掉的话设置页会一直挂着「已下载 x，重启后生效」，
         // 而用户明明已经重启过）。见 features/installer/selfUpdate.ts。
         if (clearPendingRestart(this.settings)) {
@@ -422,7 +422,7 @@ export default class ObsyncPlugin extends Plugin {
         this.addCommand({
             id: "open-source-control-view",
             // 命令名用 `cmdOpenView` 而不是 `viewTitle`：命令面板里要能搜到，
-            // 所以必须以 `OBSync` 开头（有测试钉着），而面板标题不该带前缀。
+            // 所以必须以 `SyncHub` 开头（有测试钉着），而面板标题不该带前缀。
             name: t.sync.cmdOpenView,
             callback: () => void this.openSyncView(),
         });

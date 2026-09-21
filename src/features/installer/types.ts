@@ -47,7 +47,7 @@ interface TrackedBase {
      *
      * 为什么需要它：`host/owner/repo` 只有一个位置，镜像命中后就被镜像占了，
      * 源地址随即从记录里消失。那意味着用户装完之后既看不到插件的家在哪，
-     * 也无从判断「OBSync 到底在跟谁说话」—— 列表要把两个地址都摆出来，
+     * 也无从判断「SyncHub 到底在跟谁说话」—— 列表要把两个地址都摆出来，
      * 就得有人记着另一个。
      *
      * 用户直接填 Gitee 地址时它是 `undefined`：那没有第二个地址可展示。
@@ -86,14 +86,14 @@ interface TrackedBase {
     installedAt: number;
 }
 
-/** 一个被 OBSync 跟踪的插件仓库。 */
+/** 一个被 SyncHub 跟踪的插件仓库。 */
 export interface TrackedPlugin extends TrackedBase {
     kind: "plugin";
     /** 用户要求的版本：`"latest"` 或具体 tag。主题没有版本钉选，故只有插件有。 */
     requestedVersion: string;
 }
 
-/** 一个被 OBSync 跟踪的主题仓库。 */
+/** 一个被 SyncHub 跟踪的主题仓库。 */
 export interface TrackedTheme extends TrackedBase {
     kind: "theme";
 }
@@ -271,10 +271,10 @@ export interface UpdateCheckResult {
 }
 
 /**
- * 「OBSync 自身」的更新检查结果。
+ * 「SyncHub 自身」的更新检查结果。
  *
  * 单独一个类型而不是复用 `UpdateCheckResult`：后者带着一个 `tracked` 条目，
- * 而 OBSync **不在跟踪列表里**（那张表是「用户装了什么」，见 `selfUpdate.ts`）。
+ * 而 SyncHub **不在跟踪列表里**（那张表是「用户装了什么」，见 `selfUpdate.ts`）。
  */
 export interface SelfUpdateCheck {
     /** **运行中**的版本（插件 manifest 里那个，不是磁盘上那份）。 */

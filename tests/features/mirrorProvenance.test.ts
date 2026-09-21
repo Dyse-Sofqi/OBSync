@@ -20,7 +20,7 @@ import { expectInstallerError } from "../helpers/expectInstallerError";
  *
  * 镜像一旦命中，`host/owner/repo` 这三个位置就被镜像占了（下载与更新检查都得走它，
  * 那是镜像的意义所在）。源地址若不在别处另留一份，它会**当场消失**：
- * 用户装完之后看不到插件的家在 GitHub，也看不出 OBSync 到底在跟谁说话 ——
+ * 用户装完之后看不到插件的家在 GitHub，也看不出 SyncHub 到底在跟谁说话 ——
  * 而跟踪列表要把两个地址都摆出来，靠的就是这份记录。
  *
  * ## 三条用例对应三种不同的失效方式

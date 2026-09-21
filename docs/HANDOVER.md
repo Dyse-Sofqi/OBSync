@@ -1,4 +1,4 @@
-# OBSync 交接文档
+# SyncHub 交接文档
 
 > **这是接手本项目的第一份必读文件。** 配套阅读：`docs/PLAN.md`（总体规划与阶段划分）、
 > `docs/reference-analysis.md`（两个参考项目的源码分析）、`.workbuddy-ai/memory/`（历次工作日志）、
@@ -16,7 +16,7 @@
 >
 > 上一轮：2026-09-17（新增主题支持：绑定 + 更新，含设置结构 v3 迁移；
 > 顺带修掉一个「默认值被就地改写」的真 bug，见五点五节末尾。
-> 同日追加：OBSync 自身的检查更新与更新 —— **只写文件、不重载自己**，见五点六节）
+> 同日追加：SyncHub 自身的检查更新与更新 —— **只写文件、不重载自己**，见五点六节）
 >
 > 上一轮：2026-09-16（验收复查：修掉 2 个真 bug + 补 3 处降级 + 补回一个漏做的功能，
 > 详见下方「验收复查记录」）
@@ -25,7 +25,7 @@
 
 ## 一、项目是什么
 
-单个 Obsidian 插件（id `ob-sync`），把两个参考项目的能力合并并扩展：
+单个 Obsidian 插件（id `synchub`），把两个参考项目的能力合并并扩展：
 
 | 能力 | 复刻自 | 扩展点 |
 | --- | --- | --- |
@@ -38,7 +38,9 @@
 
 1. **仅桌面**。Git 同步只用系统 git（simple-git），不做 isomorphic-git。
 2. **分阶段交付，逐段验收**。
-3. 插件标识 `ob-sync` / OBSync（名字仍是 OBSync；id 用 `ob-sync` 是因为市场上 `obsync` 已被占用，见 `selfUpdate.ts` 的 `SELF_PLUGIN_ID`）。
+3. 插件标识：显示名 **SyncHub**、id **`synchub`**（两者已统一）。
+   id 的历史是 `obsync` → `ob-sync` → `synchub`：第一次因市场重名，第二次为与显示名统一，
+   详见第十节；唯一事实来源是 `selfUpdate.ts` 的 `SELF_PLUGIN_ID`。
 4. Gitee 插件发现 = 手动输入 + GitHub→Gitee 镜像自动发现。
 
 ## 二、当前进度
@@ -81,7 +83,7 @@
 | **「测试连接」报「同步配置可用」** | 过度承诺：该检查走 `ls-remote`，验不了推送路径，而 Gitee 的凭据用户名规则只在 push 路径执行。说成「配置可用」会让人以为推送也验过了 | 文案限定为「远端可读取」，并在通过时追加一句说明本次只验证了读取 |
 | **资产 404 被当成「资产通道整体不可用」** | 真 bug：`pluginFiles` 里任何资产下载失败都置 `assetUnreachable = true`，于是后续文件被跳过资产通道。而 `main.js` 通常被 gitignore、源码通道取不到它 —— **一次本可成功的安装变成失败**（变异验证时失败信息正是 `missingRequiredFiles: "main.js"`）。代码注释本来就写着「传输层原因（不是文件不存在）」，是实现没做到 | 只有 `NotFoundError` 之外才算通道不可用；新增 `tests/features/pluginFiles.test.ts`（此前该文件**没有任何单测**） |
 | **网络错误里的尝试次数不实** | 真 bug：`http` 的失败消息写死 `retries + 1`，而传输层失败会立刻 `break`（不重试）—— 于是日志里写着「failed after 3 attempt(s)」而实际只发了 1 次。排查网络问题时这会把人带去**找那两次不存在的重试**（实测在 live 测试输出里见过这句） | 改成数实际发出去的次数（`attemptsMade`）；新增 `tests/host/http.test.ts`（此前 `http.ts` 也**没有专门单测**） |
-| **安装器的命令没有插件名前缀** | UX 缺口：同步命令叫「OBSync：立即同步」，安装器命令却直接用了弹窗标题（「添加插件仓库」）。Obsidian 用户按插件名搜命令，没前缀就搜不到 | 新增 `cmdAddRepo` / `cmdBindExisting` / `cmdCheckUpdates` / `cmdUpdateAll` / `cmdOpenSettings`；弹窗标题保持不带前缀 |
+| **安装器的命令没有插件名前缀** | UX 缺口：同步命令叫「SyncHub：立即同步」，安装器命令却直接用了弹窗标题（「添加插件仓库」）。Obsidian 用户按插件名搜命令，没前缀就搜不到 | 新增 `cmdAddRepo` / `cmdBindExisting` / `cmdCheckUpdates` / `cmdUpdateAll` / `cmdOpenSettings`；弹窗标题保持不带前缀 |
 | **Gitee 的令牌会随错误消息漏出去** | 真问题（安全）：Gitee 的鉴权只能把令牌放查询串（`?access_token=`），而 `http` 把 URL 写进了错误消息与调试日志。那条消息有两个出口 —— `Notifier` 把它**弹在屏幕上**（用户截个图就带出去），`logger.error` 把它写进控制台（而用户报 issue 时贴的正是这个）。令牌存在系统密钥库里刻意绕开 `data.json`，却从这条侧路原样漏了；`repoRef` 的报错还会把用户粘进来的 `https://oauth2:TOKEN@…` 克隆地址原样回显 | 新增 `host/redact.ts`（`redactUrl`），在 `httpRequest` 的**每个** URL 出口上脱敏（含超时、重试日志、最终错误、底层错误详情），`repoRef` 回显输入前也过一遍；新增 `tests/host/redact.test.ts`，并给 `http` / `repoRef` 补上「不泄漏」用例（含一条「脱敏不能影响实际请求」的反向守卫） |
 | **既是「令牌上屏」的另两条路，也是自相矛盾的 UI** | 真问题（安全）：① `SyncService.diagnose` 的 `detail` 会**渲染在设置页上**，而它带的正是远端地址原文 —— 库的远端本来就写着带令牌的地址时（用户从前配的），令牌直接显示出来；② 「远端已设置 …」的成功提示也回显整条地址；③ 更要紧的是**设计自相矛盾**：`auth.ts` 明确论证过不能把令牌写进 remote URL（会落进 `.git/config`、`git remote -v` 一眼可见、随配置文件泄漏，实测确认），而「编辑远端地址」弹窗对这样的地址**一句提示都没有**，默默照写 | 脱敏收口到 `diagnose` 的 `add()`（报告的唯一写入点）+ `main.ts` 的回显；弹窗新增凭据警告（`classifyRemoteUrl` 抽成纯函数，判定与渲染分离，第一次有测试）；新增 `tests/features/editRemoteModal.test.ts`、扩充 `syncService.test.ts` 与 `redact.test.ts` |
 | **`data.json` 里的 `pluginId` 没查内容 → 卸载会删出插件目录** | 真 bug（路径逃逸）：`tracked[].pluginId` 最终会变成**路径的一截** —— 卸载时 `resolvePluginFolder()` 找不到同名目录就回落到 `{configDir}/plugins/{pluginId}`，紧接 `rmdir(folder, true)` **递归**删（路径算术与「真的发出这个调用」见 `tests/features/itemFolder.test.ts`）。而 `sanitizeTrackedPlugins` 只检查「是不是非空字符串」：`"../../evil"` 会拼出 `.obsidian/plugins/../../evil`。`data.json` 恰恰是这个字段**唯一**不经过 `parseManifest` 的来源（可手改，也会随笔记仓库同步到别的设备） | 抽出 `core/pluginId.ts`（`PLUGIN_ID_RE` / `isValidPluginId`）作为**单一事实来源**，`manifest.ts` 与 `settings.ts` 共用；新增 `tests/core/pluginId.test.ts`，其中两条是**防漂移**——「`parseManifest` 放行的，`normalizeSettings` 一个都不能丢」及反向 |
@@ -92,7 +94,7 @@
 | **「自动提交间隔」少写了「并同步」** | 文案与实现不符：那一项到点执行的是**完整链路**「提交 → 拉取 → 推送」（与「立即同步」同一条），而界面只写「自动提交间隔」+「设为 0 表示关闭」。用户读到的意思于是变成「只提交」，会以为把「自动推送 / 自动拉取」设为 0 就能拦住网络动作 —— 拦不住。参考项目的原名是 `Auto commit-and-sync interval`，正是这三个字 + 解释 | 改成「自动提交**并同步**间隔」，说明文案写明整条链路与「即使推送/拉取间隔为 0 也会随它发生」；`Automatics` 里那条 `commit` 分支补注释，并用测试钉住「调的是 `sync()` 而不是 `commitAll()`」 |
 | 设置页术语混用 | 「已追**踪**插件」（标签）vs「已跟**踪**的插件」（同页标题） | 统一为「跟踪」 |
 | **「更新完还报可更新」，点了还是同一个版本** | 真 bug（同一个根因的第二张脸）：记录里的 `installedVersion` 被抹成空串，而 `isNewerVersion("1.4.2", "")` 两边有一边解析不了，退化成「字符串不同即视为有更新」→ **永远报可更新**；点更新装回 1.4.2、设置页一开又被抹掉，成了循环。抹掉的来路是上一行那个「记录与磁盘对账」功能自己：它用**插件**的 manifest 解析器去读**主题**的 manifest（主题没有 `id`）→ 抛错 → 当成「没装」→ 写空 | 主题改用 `readThemeManifestVersion`（主题解析器）；并且**读不到就不动记录** —— 只有「目录真的不存在」才记成未安装（那样更新检查会给出可更新，是有用的）。另：`checkTheme`/`checkPlugin` 曾试过「本地版本未知就不报可更新」，但那会关掉「绑定来的无版本主题也能更新到有版本那份」这条既有能力，已撤回 —— 该修的是记录，不是判据。见 `tests/features/installedVersionReconcile.test.ts` |
-| **插件「更新后重启又退回旧版本」，而 OBSync 说已是最新** | 真 bug（记录与事实脱节）：`plugins/` 里除正牌目录外多了一份**同 id** 的残留备份（`md-razor-backup-2.5.16-…`）。Obsidian 按 manifest id 建索引，两个目录抢一个 id 时**加载哪个是不定的** —— 重启后它加载了备份那份 2.5.16（实测证据：MDRazor 写在自己插件目录里的镜像文件时间戳是当天 07:56，而正牌目录停在 00:49）；而 OBSync 按正牌目录的 manifest 记着 2.6.4，于是更新检查拿 2.6.4 比远端 2.6.4，**永远报「无可用更新」**，用户被卡在旧版本且看不出原因。附带暴露两个缺口：`installedVersion` 写进 `data.json` 后再没人核对过；`resolvePluginFolder` 只按「目录名==id / 任意同 id 目录」猜，不认 Obsidian 实际加载的那份 | `resolvePluginFolderInfo()`：**优先用 `manifests[id].dir`（Obsidian 实际加载的目录）**，并报出其他同 id 的目录；新增 `reconcileInstalledVersions()` 用磁盘 manifest 校正记录（读不到记空版本 → 会给出「可更新」而不是卡死），`checkOne` 在比较前先校正；设置页打开时校正一次并提示，重复 id 在列表**上方**用警示色常驻提示。见 `tests/features/installedVersionReconcile.test.ts` |
+| **插件「更新后重启又退回旧版本」，而 SyncHub 说已是最新** | 真 bug（记录与事实脱节）：`plugins/` 里除正牌目录外多了一份**同 id** 的残留备份（`md-razor-backup-2.5.16-…`）。Obsidian 按 manifest id 建索引，两个目录抢一个 id 时**加载哪个是不定的** —— 重启后它加载了备份那份 2.5.16（实测证据：MDRazor 写在自己插件目录里的镜像文件时间戳是当天 07:56，而正牌目录停在 00:49）；而 SyncHub 按正牌目录的 manifest 记着 2.6.4，于是更新检查拿 2.6.4 比远端 2.6.4，**永远报「无可用更新」**，用户被卡在旧版本且看不出原因。附带暴露两个缺口：`installedVersion` 写进 `data.json` 后再没人核对过；`resolvePluginFolder` 只按「目录名==id / 任意同 id 目录」猜，不认 Obsidian 实际加载的那份 | `resolvePluginFolderInfo()`：**优先用 `manifests[id].dir`（Obsidian 实际加载的目录）**，并报出其他同 id 的目录；新增 `reconcileInstalledVersions()` 用磁盘 manifest 校正记录（读不到记空版本 → 会给出「可更新」而不是卡死），`checkOne` 在比较前先校正；设置页打开时校正一次并提示，重复 id 在列表**上方**用警示色常驻提示。见 `tests/features/installedVersionReconcile.test.ts` |
 | `autoCheckDelay` 的置灰状态不更新 | 小 bug：切换上面的开关后，下面的输入框还是灰的（`commit()` 不重绘） | 持有 `TextComponent` 引用，在开关回调里即时 `setDisabled` |
 | **缺 README** | 发布件缺失（阶段四） | 新增中文优先的 `README.md` |
 | **自动定时器的时间戳没按库隔离** | 真 bug：用原生 `globalThis.localStorage`（所有库共用一个存储区），于是 A 库的自动提交会影响 B 库的计时。参考项目 obsidian-git 专门写过迁移来修这个 | 改走 `app.saveLocalStorage` / `app.loadLocalStorage` |
@@ -109,7 +111,7 @@
 | 绑定弹窗的空状态 / 扫描中没有底部按钮 | 小缺口：只能按 Esc 或点弹窗外，与其他状态不一致 | 两个状态都渲染 footer |
 | `AddRepoModal` 用笼统的「加载中…」 | 小缺口：`installer.resolving` / `installing` 两个键写了没接上，用户不知道卡在哪一步 | `busy` 改为阶段枚举，显示具体文案 |
 | **跟踪列表不显示安装来源** | 小缺口：`installer.sourceRaw` 写了没接上。从源码装的插件更新检查查不到版本，用户会以为功能坏了 | 仅在 `channel === "raw"` 时显示来源（常见情况不加噪音） |
-| **自动发现镜像后源地址从记录里消失了** | 真缺口：`host/owner/repo` 只有三个位置，镜像命中后就被镜像占了（下载与更新检查都走它，那是镜像的意义），而**用户填的源地址没有任何地方可放** —— 装完之后列表只显示 Gitee，用户看不出插件的家在 GitHub，也看不出 OBSync 在跟谁说话。修的时候还带出一条不显眼的规则：更新路径手里**没有**源地址（传进去的 `repo` 已经是镜像，而镜像发现要求 `ref.host === "github"` 不会再跑），不继承的话用户更新一次插件，GitHub 那一行就凭空消失 | `TrackedItem.origin` 记源地址（只在走了镜像时才有）；列表「源仓库一行 + 镜像另起一行」，第二行必须点明**下载走镜像**；`recordItem` 只在**来源没变时**继承 `origin`（与上一次的 ref 做 `isSameRepo` 比对 —— 无条件继承会让「同一个插件换个仓库装」显示上一个仓库的地址）；`sanitizeOrigin` 在读取侧兜住手改的 `data.json`（坏值只丢它自己，与主来源相同的值视为没写）。见 `tests/features/mirrorProvenance.test.ts` |
+| **自动发现镜像后源地址从记录里消失了** | 真缺口：`host/owner/repo` 只有三个位置，镜像命中后就被镜像占了（下载与更新检查都走它，那是镜像的意义），而**用户填的源地址没有任何地方可放** —— 装完之后列表只显示 Gitee，用户看不出插件的家在 GitHub，也看不出 SyncHub 在跟谁说话。修的时候还带出一条不显眼的规则：更新路径手里**没有**源地址（传进去的 `repo` 已经是镜像，而镜像发现要求 `ref.host === "github"` 不会再跑），不继承的话用户更新一次插件，GitHub 那一行就凭空消失 | `TrackedItem.origin` 记源地址（只在走了镜像时才有）；列表「源仓库一行 + 镜像另起一行」，第二行必须点明**下载走镜像**；`recordItem` 只在**来源没变时**继承 `origin`（与上一次的 ref 做 `isSameRepo` 比对 —— 无条件继承会让「同一个插件换个仓库装」显示上一个仓库的地址）；`sanitizeOrigin` 在读取侧兜住手改的 `data.json`（坏值只丢它自己，与主来源相同的值视为没写）。见 `tests/features/mirrorProvenance.test.ts` |
 | **意外 HTTP 状态码漏出英文技术文案** | 真缺口：`host.requestFailed` 写了没接上。500/502/422 这类状态码会落到 `ObsyncError → err.message`，中文用户看到的是 `Unexpected HTTP 500 from ...` | 新增 `HttpStatusError`（带 status + 服务端说明），`describeError` 里加翻译分支 |
 | **`statusMapper` 没有任何测试** | 测试盲区：一次变异验证打偏才发现的 —— 我把 `HttpStatusError` 换回 `ObsyncError` 后用例照样全绿，因为用例直接构造错误对象，没走映射路径 | 新增 `statusMapper.test.ts`（10 项，覆盖两个平台各自的限流表达方式） |
 | 死键清理 | 25 个未被引用的 i18n 键：4 个背后是真缺口（见上），其余是通用词汇（保留）或设计上不该存在（`plugin.commandCategory` —— Obsidian 命令 API 没有分类字段；`settings.title` —— 被 `cmdOpenSettings` 取代） | 逐个分诊处理 |
@@ -223,7 +225,7 @@ commit 是本地历史、随时能 `git reset`，**push 才是「别人能看到
 > ⚠ 别改回 `require("./features/sync")`：Obsidian 桌面端能用，但测试环境是 ESM，
 > `require` 不存在，启动测试会全部失败。（试过，踩了。）
 
-- 部署目标默认 `F:/_Workspace/Plugin-Test/.obsidian/plugins/ob-sync`；环境变量
+- 部署目标默认 `F:/_Workspace/Plugin-Test/.obsidian/plugins/synchub`；环境变量
   `OBSYNC_DEPLOY_DIR` 可覆盖，而且**接受多个目录**（`;` 分隔）—— `pnpm build:both`
   就是「同时部署到测试库与真实库」那条命令。设空串跳过；某个目标写失败只警告，
   既不中断构建、也不影响另一个目标。**只复制三个产物，永远不碰 `data.json`。**
@@ -378,7 +380,7 @@ src/
 - **更新检查与执行分离**（`updateChecker.ts`）：**没有任何自动安装**。
   两个自动**检查**时机：
   1. 启动后延迟 N 秒（`autoCheckOnStartup`，**v2 起默认关闭**）；
-  2. 打开 OBSync 设置页（`autoCheckOnSettingsOpen`，默认开启，
+  2. 打开 SyncHub 设置页（`autoCheckOnSettingsOpen`，默认开启，
      由 `display`/`hide` 区分「打开页签」与「页内重绘」，并有 10 分钟节流
      `SETTINGS_OPEN_CHECK_INTERVAL_MS` + 持久化的 `lastUpdateCheckAt`）。
   执行更新永远手动：命令「更新全部插件」、行上的 ⬇ / ↻ 按钮。
@@ -480,7 +482,7 @@ src/
 列表里的那个按钮以前是 `uninstall`：禁用插件、`rmdir(folder, true)` 递归删掉整个目录，
 主题还先把正在使用的那个切回默认。**这越界了** —— 跟踪列表记的是「我在跟哪个仓库」，
 而插件 / 主题的安装与移除归 Obsidian 自己管（设置里的「已安装插件」与「外观」）。
-对**绑定**进来的对象尤其糟：用户从官方商店装好之后让 OBSync 认下它，点「移除」时想表达的
+对**绑定**进来的对象尤其糟：用户从官方商店装好之后让 SyncHub 认下它，点「移除」时想表达的
 几乎一定是「别再跟了」，却换来了不可逆的删除。
 
 现在 `InstallerService.unbind` 只做两件事：从跟踪列表里去掉、清掉它的更新徽标。
@@ -503,9 +505,9 @@ src/
   （症状：删掉的条目又回来、全新库凭空多出跟踪条目）。现在所有默认值都过 `cloneDefault`。
 - 顺带清掉一个死导出：`isPluginInstalled`（只被测试用过，`readInstalledManifest` 覆盖同一件事）。
 
-## 五点六、OBSync 更新自己（2026-09-17）
+## 五点六、SyncHub 更新自己（2026-09-17）
 
-设置页「安装器」页最后有一节「OBSync 自身」：当前版本 + 检查更新 + 更新到最新 + 一行状态。
+设置页「安装器」页最后有一节「SyncHub 自身」：当前版本 + 检查更新 + 更新到最新 + 一行状态。
 实现在 `features/installer/selfUpdate.ts`（坐标与状态文案）、`updateChecker.checkSelf`
 （查）、`installerService.updateSelf`（写）。
 
@@ -538,7 +540,7 @@ src/
 
 | 规则 | 为什么 |
 | --- | --- |
-| 远端 manifest 的 id 必须是 `ob-sync` | `SELF_REPO` 是写死的常量（manifest 没有 repo 字段），万一指错地方，按错的 id 解析目录会**覆盖别的插件** |
+| 远端 manifest 的 id 必须是 `synchub` | `SELF_REPO` 是写死的常量（manifest 没有 repo 字段），万一指错地方，按错的 id 解析目录会**覆盖别的插件** |
 | 不允许降级（远端比当前旧就中止） | 「更新」不该把用户降回旧版本 |
 | 允许**同版本重装** | 把一个坏掉的安装修回来是合理需求 |
 
@@ -553,7 +555,7 @@ src/
 
 ### 更新来源可以指定（2026-09-20）
 
-`settings.installer.selfUpdateSource`（设置页「OBSync 自身」一节的输入框，默认空）：
+`settings.installer.selfUpdateSource`（设置页「SyncHub 自身」一节的输入框，默认空）：
 
 - **空串 → 官方 `SELF_REPO`**；
 - **填了 → `resolveSelfRepo()` 解析成 `RepoRef`**，检查与更新**都**用它
@@ -571,7 +573,7 @@ src/
 
 ⚠ **踩过的坑（被测试抓到的）**：第一版写成
 `fetchItem(PLUGIN_SPEC, formatRepoId(source), …)`，而 **`formatRepoId` 只给
-`owner/repo`、不带 host** —— 于是 `sofqi/OBSync` 被 `resolveRepo` 按默认 host（github）
+`owner/repo`、不带 host** —— 于是 `sofqi/SyncHub` 被 `resolveRepo` 按默认 host（github）
 重新解析，用户填的 Gitee 地址**悄悄失效**，而界面看起来一切正常。修法是把 host 一并
 传下去：`{ allowMirror: false, defaultHost: source.host }`（`installerService.ts` 第 528
 行有同样的先例）。
@@ -735,16 +737,16 @@ gitee 镜像下载的选择**」。两件事在同一句话里：GitHub 资产�
 
 这句话之下藏着**三个真问题**，一个都不是「不好看」：
 
-1. **侧栏唯一的图标打开的是安装器。** 它的悬停文案写的是「OBSync：同步笔记仓库 /
+1. **侧栏唯一的图标打开的是安装器。** 它的悬停文案写的是「SyncHub：同步笔记仓库 /
    安装插件」—— 一句话描述两件事，而点开只有一件（装插件）。想找同步详情的人
    点它、看到一个装插件的弹窗，然后**在界面上找不到那个面板**。（现在两个图标，
    各自一条文案。）
-2. **状态栏条目不可点。** 它是屏幕上唯一常驻的同步入口（`OBSync: main ~3`），
+2. **状态栏条目不可点。** 它是屏幕上唯一常驻的同步入口（`SyncHub: main ~3`），
    却没有任何交互 —— 看见了信息，没有下一步。
 3. **面板本身内容单薄。** 只有一个标题、四个按钮和一串文件名：没有 ahead/behind、
    没有远端地址、看不出哪些文件已暂存（README 却写着「逐个文件暂存 / 取消暂存」，
    而代码里**根本没有暂存这个动作**）、不是仓库时只提示「尚未初始化 git」而没有任何
-   出路。另外打开它的命令名取自 `t.sync.viewTitle`，而那个键的值是「OBSync」——
+   出路。另外打开它的命令名取自 `t.sync.viewTitle`，而那个键的值是「SyncHub」——
    命令面板里搜「同步」**搜不到**它。
 
 ### 现在有什么
@@ -852,7 +854,7 @@ gitee 镜像下载的选择**」。两件事在同一句话里：GitHub 资产�
 - **`.gitignore` 那条是回退，不是遗漏**：测试库那份旧 `.gitignore` 里明确有
   `.obsidian/plugins/gitee-sync-plus/data.json`（和 `workspace.json` 写在同一段注释下），
   而 `gitignoreTemplate` 只有前两条 —— 改插件 id 时漏搬了。现在补的是
-  `.obsidian/plugins/ob-sync/data.json`。
+  `.obsidian/plugins/synchub/data.json`。
   **刻意不写成 `*/data.json`**：那会波及用户库里其他插件的设置，不该替他决定。
 - **硬防护在 `Automatics.start()`，不在设置页**：`AutomaticsSettings` 新增
   `syncStrategy` 字段，为 `reset` 时一个定时器都不起。这是**同一个坑的第二次** ——
@@ -878,8 +880,8 @@ gitee 镜像下载的选择**」。两件事在同一句话里：GitHub 资产�
 ### 六个必须记住的点
 
 1. **命令名与面板标题是两条 i18n 键。** `viewTitle`（「仓库同步」）是标题，
-   `cmdOpenView`（「OBSync：打开仓库同步面板」）是命令名 —— 命令面板里要能搜到，
-   所以必须有 `OBSync：` 前缀（`tests/pluginBoot.test.ts` 有一条用例扫**所有**命令名）。
+   `cmdOpenView`（「SyncHub：打开仓库同步面板」）是命令名 —— 命令面板里要能搜到，
+   所以必须有 `SyncHub：` 前缀（`tests/pluginBoot.test.ts` 有一条用例扫**所有**命令名）。
    原来两者共用一个键，于是要么标题带前缀、要么命令搜不到。
 2. **视图取文案必须 `getT()`，不能快照 `t`。** 面板是**常驻**的（打开后一直挂在
    侧边栏），构造时快照会让它切换语言后一直显示旧语言 —— 与 `StatusBar` 同一个坑。
@@ -970,7 +972,7 @@ obsidian-git 验证过的形态），merge/rebase 直接整合；**reset = stash
 不用那套。
 
 **冲突哲学**：不自动解决。merge/rebase 冲突 → 抛 `ConflictError` →
-syncService 在库根目录写《OBSync 冲突指南.md》（冲突文件清单 + 处理/放弃指引）
+syncService 在库根目录写《SyncHub 冲突指南.md》（冲突文件清单 + 处理/放弃指引）
 → **sync 链路立即停止**（继续提交会把冲突标记写进历史，继续推送会推上远端）。
 恢复出路：手动解决后「立即同步」，或「放弃当前合并」（abortMerge）。
 
@@ -1342,7 +1344,7 @@ simple-git 的 config 传递（不碰网络、不需令牌）。
     Windows 上 git 进程退出后目录句柄还会被占一会儿，清理要带
     `maxRetries`/`retryDelay`，否则 EBUSY。
 16. 测试库里已装的第三方插件 `gitee-sync-plus` 不是真 git 实现（只做文件级收发），
-    所以 OBSync 走真 git 是差异化，不是重复劳动。
+    所以 SyncHub 走真 git 是差异化，不是重复劳动。
 17. **`git ls-remote` 的输出可能撑爆 Node 的 `execFile` 缓冲**。
     默认 `maxBuffer` 是 1MB，而 `mindspore/mindspore` 实测有 **18 万个引用**，
     会以 `stdout maxBuffer length exceeded` 失败 —— 看着像网络问题，实则不是。
@@ -1548,7 +1550,200 @@ simple-git 的 config 传递（不碰网络、不需令牌）。
   概念，而弹出窗口里没有状态栏；
 - `window.open` 打开的是系统浏览器，与窗口上下文无关。
 
-## 九、交接习惯（沿用 WorkBuddy 的做法）
+## 九、社区审核打回两条（0.1.4 之后）
+
+0.1.4 提交社区后被打回两条。两条都**不是**「代码写错了」，而是「审核看不懂 /
+判据不同」—— 这正是上一节（第八节）自查全过却仍然被打回的原因。
+
+### 报的两条
+
+| 审核报的 | 位置 | 根因 |
+| --- | --- | --- |
+| `Uses Obsidian APIs newer than the declared minAppVersion`（`obsidianmd/no-unsupported-api`）×4 | `src/core/secretStore.ts` | 用了 `app.secretStorage` / `getSecret` / `setSecret`（都是 `@since 1.11.4`），而 `minAppVersion` 是 **1.8.7**；原写法只靠 `typeof … === "function"` 运行时探测，规则不认 |
+| `Unexpected undescribed directive comment`（`eslint-comments/require-description`） | `src/core/themeName.ts:35` | `// eslint-disable-next-line no-control-regex` 没写理由 |
+
+### 关键：为什么第八节「全过」却还是被打回
+
+`scripts/checks.mjs` 第 1 项**本来就在查这件事**，但它把 `SecretStorage.*`
+放进了 `KNOWN_SAFE` 豁免表 —— **恰好把审核要查的那几条放过去了**。
+教训：**自己重写一遍判据，就会重写一遍它的盲区。**
+所以这轮不再扩写自查脚本，而是**直接跑官方规则的本体**。
+
+### 复现方式（不靠猜规则）
+
+装了 `eslint-plugin-obsidianmd`（审核用的同一套），本地实跑复现出**一模一样**的
+6 条错误（4 条 API + 1 条指令 + 1 条 `no-unsafe-assignment`）。
+
+### `requireApiVersion` 的三个硬性写法要求（逐条实测）
+
+规则只在**成员访问位于被守卫的分支内部**时才算数。实测矩阵：
+
+| 写法 | 审核 |
+| --- | --- |
+| `if (requireApiVersion("1.11.4")) { app.secretStorage.getSecret(id) }` | ✅ |
+| `requireApiVersion("1.11.4") && app.secretStorage.getSecret(id)` | ✅ |
+| `requireApiVersion("1.11.4") ? app.secretStorage.getSecret(id) : undefined` | ✅ |
+| `if (!requireApiVersion("1.11.4")) return; app.secretStorage.getSecret(id)` | ❌ **不认** |
+| `requireApiVersion(SECRET_STORAGE_SINCE)`（**常量**而非字面量） | ❌ **不认** |
+
+后两条是陷阱：语义都完全正确，但规则沿父链找不到守卫 / 取不到版本号。
+**提前 return 型守卫**和**抽成常量**这两件事都特别自然，所以都在
+`secretStore.ts` 的文件头注释里写死了「别改回去」。
+
+### 没走的那条捷径
+
+试过「把类型换成结构类型 `SecretStorageLike`」—— 规则确实不报了。
+**但那是把闸门拆了**：变异测试证明，守卫整段删掉 lint 依然全绿。
+所以最终用**正向 `if` + 字面量**，让「报不报」真的取决于守卫在不在。
+
+### 新增两道防线（各自管一半）
+
+| 防线 | 管什么 | 变异验证 |
+| --- | --- | --- |
+| `pnpm lint:review`（接进 `build`） | 官方规则本体；守卫没了就红 | 删守卫 → 6 条错误；字面量换常量 → 7 条错误 |
+| `tests/core/secretStore.test.ts` | **运行时**真不去碰（lint 证明不了这个） | 把版本调到 1.10.0 并注入 SecretStorage → 必须一次都不调用 |
+
+lint 只开这两条、其余显式关闭（`eslint.review.config.mjs`），因为完整那套在本仓库
+有约 48 条既有告警 —— 全开会让闸门从第一天起就是红的，等于没有。
+
+### 顺带查出的真 bug：清空令牌后「令牌就绪」
+
+写运行时测试时发现两条分支对同一个问题给出**相反答案**：
+
+- localStorage 分支：空串 → `undefined`；
+- SecretStorage 分支：`value ?? undefined` → 返回 **`""`**。
+
+而 `syncService.ts:552` 判的是 `getToken(...) !== undefined`，于是**清空令牌后
+鉴权诊断会报「平台已就绪」**。已统一为「空串算没有」，并由用例锁住。
+
+### 顺手补的运行时兜底（差点写漏）
+
+第一版把守卫写成 `if (requireApiVersion("1.11.4"))` 就去掉了对象存在性检查，
+结果**版本够新但 `secretStorage` 缺失时令牌被静默丢弃**（`?.` 吞掉整次读写）。
+3 个测试文件、4 条用例立刻变红（`secretStore` / `hostRegistry` / `auth`）——
+是测试抓住的，不是人看出来的。最终条件是两个都要：
+`requireApiVersion("1.11.4") && this.app.secretStorage`。
+
+## 十、插件改名：OBSync → SyncHub（2026-09-21）
+
+审核第三条打回：*Plugin name must not include parts of the name "Obsidian"*
+（`manifest.json` 的 `name`）。这条和第九节那两条不同 —— 代码没问题，**名字**有问题。
+
+### 判断依据
+
+政策原文见 [Developer policies](https://docs.obsidian.md/Developer+policies)：
+
+> Respect Obsidian's trademark policy. Don't use the "Obsidian" trademark in a way
+> that could confuse users into thinking your plugin or theme is a first-party creation.
+
+**但这条不是官方 eslint 规则发的**（这点必须记清，否则会去改错地方）：
+`obsidianmd/eslint-plugin` 的 `validateManifest.ts` 里，禁用词只有
+`["obsidian", "plugin"]` 两个字面子串，作用于 `name` / `description` / `id`。
+把这段原逻辑套到我们的 manifest 上：
+
+| 字段 | 结果 |
+| --- | --- |
+| `id` = `synchub` | 通过 |
+| `name` = `OBSync` | **通过**（不含 `obsidian`） |
+| `description` | 命中 `plugin`（但见下，这不是问题） |
+
+所以报错来自**审核门户自己那套更严的匹配器**（源码未公开），它查的是商标的**片段**。
+
+### 为什么 `OBSync` 会中
+
+`OBSync` 以**全大写 `OBS`** 开头 —— "Obsidian" 前三字母的缩写写法。实测 7884 个
+已上架插件：
+
+| 名字 | 含什么 | 在架 |
+| --- | --- | --- |
+| `OBSync` | **全大写 `OBS`** | ❌ 被打回 |
+| `WeChat Obsync` / `Tree Obs` / `Source Observer` | 词首大写 `Obs` | ✅ |
+| `GitHobs` | 小写 `obs` | ✅ |
+| `ObShare` / `ObDrawIO` | `Ob` + 大写 | ✅ |
+| `Ostracon OB` | 全大写 `OB`（**2 字母**、词尾） | ✅ |
+
+**没有任何一个在架显示名含全大写 `OBS`**；而 `Obs`/`obs`/`Ob` 各写法都大量存在。
+⇒ 它认的是"全大写三字母 `OBS`"这个缩写，不是朴素子串。
+
+### 一个反过来的强证据：id 不受影响
+
+目录里本来就有一批 **id 含 `obsync`** 的插件，但它们的**显示名**都不含：
+
+| id | 显示名 |
+| --- | --- |
+| `obsync-ptop` | P2P Vault Sync |
+| `obsync-webdav-gpg` | Webdav PQC Sync |
+| `obsync-private-sync` | Self Hosted Private Sync |
+| `obsyncer` | Oppsyncer |
+
+**id 大方用着 `obsync`，显示名一律避开。** 这证明商标规则**只管显示名、不管 id**。
+
+### 改了哪些、没改哪些（**下次别再纠结**）
+
+| 层 | 原值 | 新值 | 处置 |
+| --- | --- | --- | --- |
+| 显示名（manifest `name` / 状态栏 / 命令名 / i18n / README / CHANGELOG） | `OBSync` | `SyncHub` | 改 |
+| 自我更新仓库坐标（`selfUpdate.ts` 的 `repo`、发布脚本的 `OWNER_REPO`、占位符 URL） | `OBSync` | `SyncHub` | 改（仓库同步改名） |
+| 插件 id（manifest `id`、安装目录） | `ob-sync` | `synchub` | **同日再改一次**，见下 |
+| 内部前缀（`obsync-` CSS 类、`obsync-sync-view`、`obsync-token-`） | `obsync-` | `obsync-` | **一律不改** |
+
+显示名改名共 284 处、36 个文件。**没有用全局无脑替换**：脚本只替换大小写敏感的
+`OBSync`，小写 `obsync-` 前缀天然不受影响；且排除了构建产物与按日期归档的工作日志。
+
+### id 为什么又改了一次（`ob-sync` → `synchub`）
+
+显示名改完后用户要求"统一一下"。**这不是审核要求的** —— 上面那张表已经证明
+商标规则不管 id，`obsync-ptop` 那批就是活证据。改的理由是**趁便宜**：
+
+- 插件**还没进目录**（0.1.4 被打回），全世界的安装只有用户自己的两个库，
+  改 id 只需迁移这两处。等上架之后再改，代价就是所有用户的数据；
+- `synchub` 这个 id 在目录里**空闲**（已查：无同名、无 id 冲突）。
+
+**代价（已实际处理）**：Obsidian 按 id 找插件，安装目录从 `plugins/ob-sync/`
+变成 `plugins/synchub/`，而 `data.json`（设置 + 跟踪列表）**不会自动跟着走** ——
+不迁移就是静默丢配置。两个库的 `data.json` 已搬到新目录。
+
+**令牌不受影响**：SecretStorage 的密钥 id 是 `obsync-token-*`，与插件 id 无关，
+所以已存令牌照旧可用。这正是内部前缀**刻意不改**的价值。
+
+**自我更新的一个后果**：旧安装（id `ob-sync`）跑自我更新时，它自己的
+`SELF_PLUGIN_ID` 是 `ob-sync`，而远端 manifest 的 id 已是 `synchub` ——
+守卫会**拒绝**这次更新（它的职责正是"远端 id 不是我就不写盘"）。
+所以跨 id 这一跳**必须手动重装**，不能靠自我更新；重装之后两边 id 又一致，
+后续自我更新恢复正常。
+
+### 顺手发现的两处（都不在审核清单里）
+
+1. **`scripts/gitee-release.mjs` 写死了仓库名** `sofqi/OBSync`。仓库一改名，
+   `pnpm gitee:release` 就会打到旧路径上 —— 已同步改为 `sofqi/SyncHub`。
+   另有两个发布脚本的 User-Agent 一并更新。
+2. **`MEMORY.md` 里的 id 是过期的**（写着 `obsync`，而 0.1.4 起是 `ob-sync`、
+   0.1.5 起是 `synchub`）。已修正，并把「名字的三层区分」写成长期约定。
+3. **`en` 的 `.gitignore` 模板比 `zh-cn` 少一条**（见下方"待办"）—— 未改。
+
+### 已核实但**不是**问题的
+
+`description` 里含 "plugin"（`community plugins`）—— 虽然官方那条公开规则会命中它，
+但目录里 **7884 个有 5362 个** description 含 "plugin"、**5348 个**含 "obsidian"，
+说明该规则实际并未执行。**不改**，免得为了消一个不存在的告警把文案改别扭。
+
+### 待办（需要人来定）
+
+- **版本号未动**：`manifest.json` / `package.json` / `versions.json` 仍是 `0.1.4`，
+  CHANGELOG 的新条目挂在「未发布」下。重新提交审核前需要决定是否升到 `0.1.5`
+  并按 `docs/RELEASE.md` 走一遍发版。
+- **仓库改名已完成**（GitHub / Gitee 上 `OBSync` → `SyncHub`，旧地址自动重定向，
+  所以已装用户的自我更新不会断）。若你把设置页的「自身更新来源」手填成了
+  `.../OBSync`，需要改成 `.../SyncHub`。
+- **`en` 的 `.gitignore` 模板比 `zh-cn` 少一条**（**真 bug，未改**）：`zh-cn` 的模板
+  里有 `.obsidian/plugins/synchub/data.json`（本插件自己的设置，按设备、不该同步），
+  **`en` 的模板里根本没有这一条**。i18n 的编译期检查只管**键结构**、不管字符串内容，
+  所以这条漂移一直没被发现。后果：英文用户的 `.gitignore` 不会排除插件自己的
+  `data.json`，于是设置会被同步 —— 正是该模板注释里警告的"两台设备互相覆盖设置"。
+  修法是一行（给 `en` 补上同一条），但它会改变英文用户初始化仓库时写入的文件内容，
+  属于 i18n 内容变更，留给人决定。
+
+## 十一、交接习惯（沿用 WorkBuddy 的做法）
 
 - **边做边写文档**：本文件随代码一起更新；当日工作日志追加到
   `.workbuddy-ai/memory/YYYY-MM-DD.md`；新的"实测发现/踩坑"一定记入第七节。

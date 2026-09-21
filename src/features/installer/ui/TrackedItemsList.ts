@@ -133,7 +133,7 @@ function renderRow(
     // 「owner/repo」被列了两遍。顺序也刻意：先源仓库，再镜像。
     //
     // 尾巴上那句「下载使用此源」是必须的：只写「Gitee 镜像」的话，用户看到
-    // 第一行是 GitHub、第二行是 Gitee，无从判断 OBSync 到底在跟谁说话 ——
+    // 第一行是 GitHub、第二行是 Gitee，无从判断 SyncHub 到底在跟谁说话 ——
     // 而事实是下载与更新检查都走镜像。
     if (item.origin) {
         const mirror = itemRepoRef(item);
@@ -295,7 +295,7 @@ function renderRow(
             .setTooltip(t.installer.openRepo)
             .onClick(() => {
                 // 打开的是**实际使用**的来源（走镜像时即镜像）—— 那正是上面
-                // 「下载使用此源」那句说的地方，也是 OBSync 真能取到东西的地址。
+                // 「下载使用此源」那句说的地方，也是 SyncHub 真能取到东西的地址。
                 // 源仓库的地址就在描述行的第一行，用户要看它的主页自己点得过去。
                 window.open(repoWebUrl(itemRepoRef(item)), "_blank");
             })

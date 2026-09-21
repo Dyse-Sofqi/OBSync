@@ -130,7 +130,7 @@ export class GiteeHost implements IRepoHost {
     private baseHeaders(): Record<string, string> {
         return {
             Accept: "application/json",
-            "User-Agent": "OBSync",
+            "User-Agent": "SyncHub",
         };
     }
 

@@ -39,7 +39,7 @@ async function makeReadyRepo(name: string): Promise<{ manager: SimpleGitManager;
     await manager.init();
     // 提交身份只设在仓库本地，不碰全局配置。
     await simpleGit(dir).addConfig("user.email", "test@example.com");
-    await simpleGit(dir).addConfig("user.name", "OBSync Test");
+    await simpleGit(dir).addConfig("user.name", "SyncHub Test");
     // 不同 git 版本的 init 默认分支名不同，统一成 main 让断言稳定。
     await simpleGit(dir).raw(["checkout", "-b", "main"]);
     return { manager, dir };
@@ -163,7 +163,7 @@ describe("状态与提交", () => {
         expect(entries[0]!.message).toBe("second commit");
         expect(entries[0]!.hash).toMatch(/^[0-9a-f]{40}$/);
         expect(entries[0]!.shortHash).toHaveLength(7);
-        expect(entries[0]!.author).toBe("OBSync Test");
+        expect(entries[0]!.author).toBe("SyncHub Test");
         expect(entries[1]!.message).toBe("first commit");
     });
 });
@@ -217,7 +217,7 @@ describe("远端：push / pull / 冲突", () => {
         const bDir = path.join(root, "clone-b");
         await simpleGit(root).clone(origin, bDir);
         await simpleGit(bDir).addConfig("user.email", "test@example.com");
-        await simpleGit(bDir).addConfig("user.name", "OBSync Test");
+        await simpleGit(bDir).addConfig("user.name", "SyncHub Test");
         const bManager = new SimpleGitManager({ baseDir: bDir });
 
         return { origin, a: { manager: aManager, dir: aDir }, b: { manager: bManager, dir: bDir } };

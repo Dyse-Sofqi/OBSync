@@ -32,7 +32,10 @@ export function isValidThemeName(value: unknown): value is string {
     if (value !== value.trim()) return false;
     if (value.endsWith(".")) return false;
     if (value.includes("/") || value.includes("\\")) return false;
-    // eslint-disable-next-line no-control-regex
+    // 下面这条控制字符检查是**故意**用正则的：`/[\u0000-\u001f\u007f]/` 比逐字符
+    // 比较短得多，也一眼能看出拦的是哪一段。eslint 的 no-control-regex 假定
+    // 「正则里出现控制字符」都是笔误（多半是想写字面量却漏了转义），这里不是。
+    // eslint-disable-next-line no-control-regex -- 有意为之：这里要匹配的就是控制字符本身
     if (/[\u0000-\u001f\u007f]/.test(value)) return false;
     return true;
 }

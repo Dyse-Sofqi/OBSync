@@ -376,7 +376,7 @@ export class SimpleGitManager implements GitManager {
                     "push",
                     "--include-untracked",
                     "--message",
-                    "OBSync: auto-stash before reset pull",
+                    "SyncHub: auto-stash before reset pull",
                 ]);
             }
         } catch (err) {

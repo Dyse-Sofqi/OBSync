@@ -1,10 +1,10 @@
 <div align="center">
 
-# OBSync
+# SyncHub
 
 用 git 同步你的笔记仓库，同时安装社区插件与主题 —— GitHub / Gitee 双平台。
 
-[![GitHub Release](https://img.shields.io/github/v/release/Dyse-Sofqi/OBSync?style=flat-square&logo=github&color=%2342b883)](https://github.com/Dyse-Sofqi/OBSync/releases) [![License](https://img.shields.io/github/license/Dyse-Sofqi/OBSync?style=flat-square&color=%2342b883)](LICENSE) [![Obsidian Min App](https://img.shields.io/badge/Obsidian-%5E1.8.7-%234a7ec1?style=flat-square&logo=obsidian&logoColor=%234a7ec1)](https://obsidian.md) [![GitHub Stars](https://img.shields.io/github/stars/Dyse-Sofqi/OBSync?style=flat-square&logo=github&color=%23e4b341)](https://github.com/Dyse-Sofqi/OBSync)
+[![GitHub Release](https://img.shields.io/github/v/release/Dyse-Sofqi/SyncHub?style=flat-square&logo=github&color=%2342b883)](https://github.com/Dyse-Sofqi/SyncHub/releases) [![License](https://img.shields.io/github/license/Dyse-Sofqi/SyncHub?style=flat-square&color=%2342b883)](LICENSE) [![Obsidian Min App](https://img.shields.io/badge/Obsidian-%5E1.8.7-%234a7ec1?style=flat-square&logo=obsidian&logoColor=%234a7ec1)](https://obsidian.md) [![GitHub Stars](https://img.shields.io/github/stars/Dyse-Sofqi/SyncHub?style=flat-square&logo=github&color=%23e4b341)](https://github.com/Dyse-Sofqi/SyncHub)
 
 </div>
 
@@ -16,23 +16,23 @@
 
 ### 简介
 
-OBSync 把两件事合在一起，并且让它们都**不只认 GitHub**：
+SyncHub 把两件事合在一起，并且让它们都**不只认 GitHub**：
 
 - **笔记仓库同步** —— 用 git 把整个库同步到 GitHub 或 Gitee：提交、拉取、推送一条链走完，
   冲突不替你决定而是留下一份处理指南
 - **社区插件与主题** —— 从 GitHub 或 Gitee 安装、更新、冻结、取消绑定；
   库里已经装好的插件与主题可以一次性绑定进来跟着一起更新
-- **OBSync 自身也能更新** —— 设置页里检查并更新它自己
+- **SyncHub 自身也能更新** —— 设置页里检查并更新它自己
 
 两个功能共用同一层平台适配，所以 **GitHub 与 Gitee 的差别只实现一次**。界面中文优先、英文对等。
 
-OBSync bundles two things and refuses to be GitHub-only:
+SyncHub bundles two things and refuses to be GitHub-only:
 
 - **Vault sync over git** — commit, pull and push your whole vault to GitHub *or* Gitee in one chain.
-  Conflicts are never resolved for you: OBSync stops the chain and writes a resolution guide instead.
+  Conflicts are never resolved for you: SyncHub stops the chain and writes a resolution guide instead.
 - **Community plugins and themes** — install, update, freeze and unbind from either platform,
   and adopt the plugins/themes you already have so they update alongside.
-- **OBSync updates itself** — check and apply new versions of the plugin from its own settings page.
+- **SyncHub updates itself** — check and apply new versions of the plugin from its own settings page.
 
 Both features share a single platform layer, so **every GitHub/Gitee difference is implemented once**.
 Chinese-first UI with an equal English one.
@@ -97,17 +97,17 @@ Chinese-first UI with an equal English one.
   自动同步会被暂停** —— 否则每一轮都会静默丢掉刚提交的东西）。
   如果你确实不想让拉取动工作区，就分两步走：`提交` → `推送`
 - **初始化仓库** —— 顺便建一份 `.gitignore`（默认排除 `.obsidian/workspace.json`、
-  `.obsidian/plugins/ob-sync/data.json` 这类**每台设备各自维护**的文件，同步它们只会
+  `.obsidian/plugins/synchub/data.json` 这类**每台设备各自维护**的文件，同步它们只会
   制造冲突）。**已存在的 `.gitignore` 绝不覆盖**，
   另有「编辑 .gitignore」命令可以随时改它
-- **冲突处理** —— 检测到冲突时在库根目录写一份《OBSync 冲突指南.md》列出冲突文件，
+- **冲突处理** —— 检测到冲突时在库根目录写一份《SyncHub 冲突指南.md》列出冲突文件，
   然后**立即停止同步链**；手动解决后重新同步，或用「放弃当前合并」回到拉取之前
 - **自动同步**（默认关闭）—— 自动提交 / 自动推送 / 自动拉取三个间隔（分钟，0 = 关闭）。
   计时基于**上次执行时间**，重启 Obsidian 不重置周期；存储按库隔离，多个库互不干扰。
   设置页「仓库同步」标题下有两段**注意事项**（选「重置」时自动同步会被暂停、
   多设备同时编辑同一个文件的风险），配之前值得先看一眼
 - **仓库同步视图**（侧边栏）—— 打开方式：侧栏的 **git 图标**、点一下**状态栏条目**，
-  或命令 **OBSync：打开仓库同步面板**。顶部是**一行**工具条（提交 / 拉取 / 推送 /
+  或命令 **SyncHub：打开仓库同步面板**。顶部是**一行**工具条（提交 / 拉取 / 推送 /
   分支下拉 / **靠右的**立即同步 / **最右的**刷新），下面是：远端地址（脱敏后回显）+ 编辑入口、
   `领先 / 落后远端`、**并排两栏**的仓库大小与待提交改动、冲突区（列出冲突文件 + 放弃合并）、
   **按「已暂存 / 更改」分组的文件列表**
@@ -156,9 +156,9 @@ Chinese-first UI with an equal English one.
 - **长耗时动作看得见** —— 点下的那个图标按钮会变成转圈，同时一条带圆环的提示写明
   **在取哪个文件**（「Trefoil：正在获取 main.js…」）。国内网络下第一次访问 GitHub 的
   release 资产常常要等十几秒，没有这个反馈就分不清是在下载还是卡住了
-- **OBSync 自身更新** —— 设置页「OBSync 自身」一节：检查更新、更新（写新版本文件，重启 Obsidian 生效）。
+- **SyncHub 自身更新** —— 设置页「SyncHub 自身」一节：检查更新、更新（写新版本文件，重启 Obsidian 生效）。
   **可以指定更新来源**：留空走官方仓库；国内访问 GitHub 慢或被阻断时，填 Gitee 镜像的地址
-  （例如 `https://gitee.com/sofqi/OBSync`），填一次就一直用它，不再自动探测
+  （例如 `https://gitee.com/sofqi/SyncHub`），填一次就一直用它，不再自动探测
 
 #### 🔐 平台与体验
 
@@ -173,44 +173,44 @@ Chinese-first UI with an equal English one.
 
 #### 安装社区插件
 
-1. 命令面板 → **OBSync：添加插件仓库**（或点设置页的「添加插件仓库」）
+1. 命令面板 → **SyncHub：添加插件仓库**（或点设置页的「添加插件仓库」）
 2. 填 `owner/repo` 简写，或直接粘贴完整链接（GitHub / Gitee 都行）
 3. 点「识别」→ 选版本 → 安装
 
 也可以点「**浏览社区插件**」从官方市场检索 —— 注意这是 Obsidian 官方维护的索引，
 **只有 GitHub 源**，Gitee 上没有等价物，所以 Gitee 的插件需要手输地址。
 
-库里已经装好的插件不用一个个手输：命令 **OBSync：绑定库里已安装的插件与主题**
+库里已经装好的插件不用一个个手输：命令 **SyncHub：绑定库里已安装的插件与主题**
 （或设置页的「绑定已有插件」）会扫描插件与主题目录，按 manifest id 反查来源仓库，一次性纳入跟踪。
 
 装完之后想换版本（比如新版有问题要退回旧版）：在设置页「已跟踪插件与主题」里点那一行右侧的
 **版本管理**按钮，选一个版本即可 —— 旧版本就是回退，选「最新版本」则恢复跟随最新。
 
-> 所有命令在命令面板里都以 `OBSync：` 开头，直接搜插件名就能找到。
+> 所有命令在命令面板里都以 `SyncHub：` 开头，直接搜插件名就能找到。
 
 #### 同步笔记仓库
 
-先在设置页的「仓库同步」里填远端地址（命令 **OBSync：编辑远端地址**），然后：
+先在设置页的「仓库同步」里填远端地址（命令 **SyncHub：编辑远端地址**），然后：
 
-- 还不是 git 仓库的话，先执行 **OBSync：初始化仓库**（仓库同步视图里也有这个按钮）
-- **OBSync：立即同步** —— 提交 → 拉取 → 推送，一条链走完（仓库同步视图的顶部工具条里也有）
+- 还不是 git 仓库的话，先执行 **SyncHub：初始化仓库**（仓库同步视图里也有这个按钮）
+- **SyncHub：立即同步** —— 提交 → 拉取 → 推送，一条链走完（仓库同步视图的顶部工具条里也有）
 - 「提交」「推送」是**两个动作**，不是一个：提交只写本地仓库，推送只发送**已提交**的
   内容。想一步到位就用「立即同步」
 - 提交信息不用填：它在设置里配模板，每次自动生成
 - 也可以在仓库同步视图里逐个文件操作（暂存 / 取消暂存、点开文件、看历史），
   或点侧边栏的状态栏条目把它打开
-- 想在浏览器里看某个文件：命令 **OBSync：在浏览器中打开当前文件**，或右键文件选「**在远端打开**」
+- 想在浏览器里看某个文件：命令 **SyncHub：在浏览器中打开当前文件**，或右键文件选「**在远端打开**」
 
 自动同步默认关闭。需要的话在设置页设「自动提交并同步 / 自动推送 / 自动拉取」的间隔（分钟）。
 
-**遇到冲突**：OBSync 不替你决定保留哪一边 —— 它写一份冲突指南并停下，等你处理。
+**遇到冲突**：SyncHub 不替你决定保留哪一边 —— 它写一份冲突指南并停下，等你处理。
 
 ### 设置页
 
 | 标签 | 内容 |
 | --- | --- |
 | 已跟踪插件与主题 | 已安装/添加的插件与主题列表，含更新徽标、检查、更新、版本管理（回退）、冻结、打开仓库、取消绑定（不删文件） |
-| 插件安装器 | 启用开关、更新检查时机、Gitee 镜像发现、**访问令牌**（GitHub / Gitee）、OBSync 自身更新（含**更新来源**） |
+| 插件安装器 | 启用开关、更新检查时机、Gitee 镜像发现、**访问令牌**（GitHub / Gitee）、SyncHub 自身更新（含**更新来源**） |
 | 仓库同步 | 同步开关、自动提交/推送/拉取间隔、提交信息模板、整合策略、git 路径、**连接测试** |
 | 通用 | 界面语言、提示开关、调试日志、**状态栏占满整屏宽** |
 
@@ -222,13 +222,13 @@ Chinese-first UI with an equal English one.
 插件尚未上架官方市场。手动安装：
 
 1. 下载 `main.js`、`manifest.json`、`styles.css`
-2. 放进 `<你的库>/.obsidian/plugins/ob-sync/`
-3. 在 Obsidian 的「第三方插件」里启用 OBSync
+2. 放进 `<你的库>/.obsidian/plugins/synchub/`
+3. 在 Obsidian 的「第三方插件」里启用 SyncHub
 
 两个发布地址（内容一致，选连得上的那个）：
 
-- GitHub：[Dyse-Sofqi/OBSync/releases](https://github.com/Dyse-Sofqi/OBSync/releases)
-- Gitee 镜像：[sofqi/OBSync/releases](https://gitee.com/sofqi/OBSync/releases)（国内直连更快）
+- GitHub：[Dyse-Sofqi/SyncHub/releases](https://github.com/Dyse-Sofqi/SyncHub/releases)
+- Gitee 镜像：[sofqi/SyncHub/releases](https://gitee.com/sofqi/SyncHub/releases)（国内直连更快）
 
 **平台要求**：笔记同步依赖系统 git，**仅桌面端可用**；插件安装是纯网络操作，移动端也能用。
 
@@ -237,9 +237,9 @@ Chinese-first UI with an equal English one.
 **笔记同步**：`obsidian-git` 很成熟，但它只认 GitHub 与 GitLab。
 **插件安装**：`obsidian42-brat` 同样只认 GitHub，而且要求插件必须发过 release。
 
-OBSync 针对这两点做了扩展：
+SyncHub 针对这两点做了扩展：
 
-| | obsidian-git / BRAT | OBSync |
+| | obsidian-git / BRAT | SyncHub |
 | --- | --- | --- |
 | 平台 | GitHub / GitLab | **GitHub + Gitee** |
 | 界面语言 | 英文 | **中文优先**，英文对等 |
@@ -251,7 +251,7 @@ OBSync 针对这两点做了扩展：
 
 **强烈建议在设置页填 Gitee 访问令牌。** Gitee 的匿名 API 配额实测极低 ——
 连续十几次请求就会返回 `403 Rate Limit Exceeded`，且一分钟内不恢复。
-没有令牌时，OBSync 会降级到「直接读仓库源码文件」来安装插件，仍然能用，
+没有令牌时，SyncHub 会降级到「直接读仓库源码文件」来安装插件，仍然能用，
 但查不到版本列表、也无法判断更新。
 
 几个已经处理掉的平台差异（如果你自己改代码，这些别改回去）：
@@ -272,22 +272,24 @@ OBSync 针对这两点做了扩展：
 ```bash
 pnpm install
 pnpm dev         # esbuild watch，构建后自动部署到测试库
-pnpm build       # 自查 + 类型检查 + 生产构建 + 部署
+pnpm build       # 自查 + 审核闸门 + 类型检查 + 生产构建 + 部署
 pnpm build:both  # 同上，但**部署到两个库**（测试库 + 真实库）
 pnpm check       # 项目自查（只读，约 0.2 秒）
+pnpm lint:review # 审核闸门：只跑社区审核打回过的两条规则（build 已包含）
+pnpm lint        # 完整 lint（官方那套规则，信息性，会报既有历史告警）
 pnpm typecheck
 pnpm test        # 单元测试（不碰网络）
 pnpm test:live   # 真实 API 测试，需要网络
 pnpm verify:head # 在 **HEAD** 上跑测试（提交后跑一次，见下）
 ```
 
-- 部署目标默认是 `F:/_Workspace/Plugin-Test/.obsidian/plugins/ob-sync`。
+- 部署目标默认是 `F:/_Workspace/Plugin-Test/.obsidian/plugins/synchub`。
   环境变量 `OBSYNC_DEPLOY_DIR` 可以覆盖，而且**接受多个目录**（用 `;` 分隔）——
   一次构建同时更新几个库；设为空串则跳过部署。
 
   ```bash
   # 一次部署到两个库（pnpm build:both 就是这条）
-  OBSYNC_DEPLOY_DIR="F:/_Workspace/Plugin-Test/.obsidian/plugins/ob-sync;D:/_Workspace/learning-records/.obsidian/plugins/ob-sync" pnpm build
+  OBSYNC_DEPLOY_DIR="F:/_Workspace/Plugin-Test/.obsidian/plugins/synchub;D:/_Workspace/learning-records/.obsidian/plugins/synchub" pnpm build
   ```
 
   只复制 `main.js` / `manifest.json` / `styles.css` 三个文件，**不碰 `data.json`**
@@ -296,6 +298,12 @@ pnpm verify:head # 在 **HEAD** 上跑测试（提交后跑一次，见下）
   代码用到的 Obsidian API、有没有硬编码的中文（会漏给英文用户）、有没有定义了却没
   接上的 i18n 键、CSS 类有没有漏定义、移动端静态导入图是否碰到 Node 依赖、
   有没有「设置项声明了却没有任何代码读它」。
+- **`pnpm lint:review` 是审核闸门**（已接进 `pnpm build`）：直接跑社区审核用的
+  `eslint-plugin-obsidianmd`，但只把**审核打回过的两条**设成 error
+  （`obsidianmd/no-unsupported-api`、`eslint-comments/require-description`），
+  其余显式关闭 —— 因为完整那套在本仓库有约 48 条既有告警，全开会让闸门从第一天
+  起就是红的，等于没有。0.1.4 就是这两条被审核打回，而 `pnpm check` 看不见它们
+  （它按成员名扫，`SecretStorage.*` 恰好在它的豁免表里）。
 - 改了 git 相关代码后注意：`simpleGitManager.test.ts` 会起真实 git 进程，
   在这台机器上单独跑约 150 秒 —— 它没挂，只是慢。
 - **提交后跑一次 `pnpm verify:head`**：`pnpm test` 读的是**工作区**，而工作区里还压着
@@ -319,13 +327,13 @@ pnpm verify:head # 在 **HEAD** 上跑测试（提交后跑一次，见下）
 
 ### Introduction
 
-OBSync bundles two things and refuses to be GitHub-only:
+SyncHub bundles two things and refuses to be GitHub-only:
 
 - **Vault sync over git** — commit, pull and push your whole vault to GitHub *or* Gitee in one chain.
-  Conflicts are never resolved for you: OBSync stops the chain and writes a resolution guide instead.
+  Conflicts are never resolved for you: SyncHub stops the chain and writes a resolution guide instead.
 - **Community plugins and themes** — install, update, freeze and unbind from either platform,
   and adopt the plugins/themes you already have so they update alongside.
-- **OBSync updates itself** — check and apply new versions of the plugin from its own settings page.
+- **SyncHub updates itself** — check and apply new versions of the plugin from its own settings page.
 
 Both features share a single platform layer, so **every GitHub/Gitee difference is implemented once**.
 Chinese-first UI with an equal English one.
@@ -367,10 +375,10 @@ Needs the system `git` binary, so it is **desktop-only** (Windows / macOS / Linu
   committed). If you really do not want the pull to touch your working tree, do it in two steps:
   `Commit` → `Push`
 - **Initialize repository** — also creates a `.gitignore` (excluding per-device files such as
-  `.obsidian/workspace.json` and `.obsidian/plugins/ob-sync/data.json`, which only ever produce
+  `.obsidian/workspace.json` and `.obsidian/plugins/synchub/data.json`, which only ever produce
   conflicts). An existing `.gitignore` is **never overwritten**, and there is an "Edit .gitignore"
   command
-- **Conflicts** — on conflict OBSync writes a resolution guide listing the conflicted files and
+- **Conflicts** — on conflict SyncHub writes a resolution guide listing the conflicted files and
   **stops the chain** (continuing would commit conflict markers or push them upstream).
   Resolve by hand and sync again, or use "Abort current merge"
 - **Auto sync** (off by default) — separate intervals for auto commit / push / pull in minutes (0 = off).
@@ -379,7 +387,7 @@ Needs the system `git` binary, so it is **desktop-only** (Windows / macOS / Linu
   "Vault sync" heading (reset suspends automatic sync; the risk of editing the same file on several
   devices) — worth reading before you configure it
 - **Repository sync view** (sidebar) — open it from the **git ribbon icon**, by **clicking the
-  status-bar item**, or via the command **OBSync: Open repository sync panel**. Its **single-row
+  status-bar item**, or via the command **SyncHub: Open repository sync panel**. Its **single-row
   toolbar** holds `Commit` / `Pull` / `Push`, the branch dropdown, **`Sync now` pushed right** and
   **`Refresh` at the far right**; below that are the remote URL (redacted) with an edit entry,
   `ahead / behind`, repository size and pending changes **side by side**, a conflict section
@@ -417,7 +425,7 @@ Needs the system `git` binary, so it is **desktop-only** (Windows / macOS / Linu
   Themes are never pinned, so they have no such button
 - **Backup before write, rollback on failure** — a failed install never leaves half a plugin behind
 - **Update checks** — single item, all items, after startup, and when opening settings (toggleable);
-  rows with updates keep a persistent badge. **OBSync only reports; installing is always manual**
+  rows with updates keep a persistent badge. **SyncHub only reports; installing is always manual**
 - **Per-item actions** — check, update, **version manager (roll back to an older release)**,
   freeze (excluded from update checks),
   open repo page, unbind (**removes the entry only, deletes no files**)
@@ -435,9 +443,9 @@ Needs the system `git` binary, so it is **desktop-only** (Windows / macOS / Linu
 - **Long operations are visible** — the icon button you clicked turns into a spinner, and a notice with a
   spinner states **which file is being fetched** ("Trefoil: fetching main.js…"). The first request to GitHub's
   release asset CDN often takes 10+ seconds from mainland China; without this you cannot tell download from stall
-- **Self-update** — check and apply new versions of OBSync itself (restart required). The
+- **Self-update** — check and apply new versions of SyncHub itself (restart required). The
   **source is configurable**: leave it empty for the official repository, or enter a mirror
-  (e.g. `https://gitee.com/sofqi/OBSync`) when GitHub is slow or blocked — it is then used
+  (e.g. `https://gitee.com/sofqi/SyncHub`) when GitHub is slow or blocked — it is then used
   every time, with no automatic probing
 
 #### 🔐 Platform and UX
@@ -455,7 +463,7 @@ Needs the system `git` binary, so it is **desktop-only** (Windows / macOS / Linu
 
 #### Installing community plugins
 
-1. Command palette → **OBSync: Add plugin repository** (or the button in the settings page)
+1. Command palette → **SyncHub: Add plugin repository** (or the button in the settings page)
 2. Enter an `owner/repo` shorthand or paste a full URL (GitHub or Gitee)
 3. Click "Resolve" → pick a version → install
 
@@ -464,7 +472,7 @@ Obsidian's own index and **covers GitHub only** (there is no Gitee equivalent), 
 have to be entered by address.
 
 Already-installed plugins do not have to be typed in one by one: the command
-**OBSync: Bind plugins and themes already installed in this vault** (or "Bind existing" in the
+**SyncHub: Bind plugins and themes already installed in this vault** (or "Bind existing" in the
 settings) scans the plugin and theme folders, resolves their source repositories from the manifest
 `id`, and tracks them all at once.
 
@@ -472,28 +480,28 @@ To switch a version later (for example rolling back after a bad update), click *
 on that row under "Tracked plugins and themes" and pick a release — an older one is a rollback,
 while "Latest release" resumes following the newest.
 
-> Every command starts with `OBSync:` in the palette, so searching the plugin name finds them all.
+> Every command starts with `SyncHub:` in the palette, so searching the plugin name finds them all.
 
 #### Syncing the vault
 
 First set the remote in the settings page under "Vault sync" (command
-**OBSync: Edit remote address**), then:
+**SyncHub: Edit remote address**), then:
 
-- If the vault is not a git repository yet, run **OBSync: Initialize repository** first (the
+- If the vault is not a git repository yet, run **SyncHub: Initialize repository** first (the
   repository sync view has the same button)
-- **OBSync: Sync now** — commit → pull → push in one chain (the view's toolbar has it too)
+- **SyncHub: Sync now** — commit → pull → push in one chain (the view's toolbar has it too)
 - "Commit" and "Push" are **two separate actions**: commit writes to the local repository only,
   push sends **committed** content only. Use "Sync now" to do both
 - No commit message to type: it comes from the template in the settings
 - You can also work per file in the repository sync view (stage / unstage, open a file, view
   history), or click the status-bar item to open it
-- To view a file in the browser: command **OBSync: Open current file in browser**, or right-click
+- To view a file in the browser: command **SyncHub: Open current file in browser**, or right-click
   the file and pick **Open on the remote**
 
 Automatic sync is off by default. Turn it on by setting the "auto commit-and-sync / auto push /
 auto pull" intervals (minutes) in the settings.
 
-**On conflict**, OBSync does not decide which side wins — it writes a resolution guide and stops,
+**On conflict**, SyncHub does not decide which side wins — it writes a resolution guide and stops,
 waiting for you.
 
 ### Settings
@@ -513,13 +521,13 @@ versions), never in `data.json`, and never synced to other devices.
 Not in the community plugin list yet. Manual install:
 
 1. Download `main.js`, `manifest.json` and `styles.css`
-2. Put them in `<your vault>/.obsidian/plugins/ob-sync/`
-3. Enable OBSync under Community plugins
+2. Put them in `<your vault>/.obsidian/plugins/synchub/`
+3. Enable SyncHub under Community plugins
 
 Two release locations (same artifacts — use whichever is reachable):
 
-- GitHub: [Dyse-Sofqi/OBSync/releases](https://github.com/Dyse-Sofqi/OBSync/releases)
-- Gitee mirror: [sofqi/OBSync/releases](https://gitee.com/sofqi/OBSync/releases)
+- GitHub: [Dyse-Sofqi/SyncHub/releases](https://github.com/Dyse-Sofqi/SyncHub/releases)
+- Gitee mirror: [sofqi/SyncHub/releases](https://gitee.com/sofqi/SyncHub/releases)
 
 Vault sync needs the system `git` binary and is **desktop-only**; plugin installation works on mobile.
 
@@ -529,9 +537,9 @@ Vault sync needs the system `git` binary and is **desktop-only**; plugin install
 **Plugin install**: `obsidian42-brat` is also GitHub-only, and requires the plugin to have published
 a release.
 
-OBSync extends both:
+SyncHub extends both:
 
-| | obsidian-git / BRAT | OBSync |
+| | obsidian-git / BRAT | SyncHub |
 | --- | --- | --- |
 | Platforms | GitHub / GitLab | **GitHub + Gitee** |
 | UI language | English | **Chinese-first**, English equal |
@@ -543,7 +551,7 @@ OBSync extends both:
 
 **Setting a Gitee access token is strongly recommended.** Gitee's anonymous API quota is measured to
 be very low — a dozen or so consecutive requests return `403 Rate Limit Exceeded`, and it does not
-recover within a minute. Without a token OBSync degrades to reading repository source files
+recover within a minute. Without a token SyncHub degrades to reading repository source files
 directly, which still works, but it cannot list versions or detect updates.
 
 A few platform differences that are already handled (do not undo them if you touch the code):
@@ -565,16 +573,18 @@ A few platform differences that are already handled (do not undo them if you tou
 ```bash
 pnpm install
 pnpm dev         # esbuild watch, deploys to the test vault after each build
-pnpm build       # self-check + typecheck + production build + deploy
+pnpm build       # self-check + review gate + typecheck + production build + deploy
 pnpm build:both  # same, but deploys to both vaults (test + real)
 pnpm check       # read-only project self-check (~0.2 s)
+pnpm lint:review # review gate: only the two rules the community review rejected (part of build)
+pnpm lint        # full lint (the official rule set; informational, reports existing findings)
 pnpm typecheck
 pnpm test        # unit tests (no network)
 pnpm test:live   # live API tests (needs network)
 pnpm verify:head # runs the tests on **HEAD**, not the working tree (see below)
 ```
 
-The default deploy target is `F:/_Workspace/Plugin-Test/.obsidian/plugins/ob-sync`. The
+The default deploy target is `F:/_Workspace/Plugin-Test/.obsidian/plugins/synchub`. The
 `OBSYNC_DEPLOY_DIR` environment variable overrides it and accepts **several** directories
 separated by `;`, so one build can update multiple vaults; set it to an empty string to
 skip deploying. Only `main.js`, `manifest.json` and `styles.css` are copied — never

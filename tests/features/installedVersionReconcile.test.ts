@@ -17,7 +17,7 @@ import { createFakeApp, seedPlugin, type FakeApp } from "../helpers/fakeApp";
  *
  * 实测场景（2026-09-19）：`plugins/` 里除了一份正常的 `md-razor/`（2.6.4），
  * 还躺着一份残留备份 `md-razor-backup-2.5.16-…/`（**manifest id 一样**）。
- * Obsidian 按 id 建索引，重启后加载了备份那份 2.5.16；而 OBSync 按 `md-razor/`
+ * Obsidian 按 id 建索引，重启后加载了备份那份 2.5.16；而 SyncHub 按 `md-razor/`
  * 记着 2.6.4 —— 于是更新检查拿 2.6.4 去比远端 2.6.4，**永远报「已是最新」**，
  * 用户卡在旧版本上且看不出原因。
  *

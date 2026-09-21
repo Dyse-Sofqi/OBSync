@@ -53,7 +53,7 @@ export class ObsyncSettingsTab extends PluginSettingTab {
      * 打开设置页时发现的「重复插件 id」条目（列表上方据此给出警告）。
      *
      * 实测坑：`plugins/` 里多出一份同 id 的残留备份，Obsidian 重启后加载了那份
-     * 旧版本，而 OBSync 记录里还写着新版本 —— 更新检查永远报「已是最新」。
+     * 旧版本，而 SyncHub 记录里还写着新版本 —— 更新检查永远报「已是最新」。
      * 这种状态只能靠人清理，所以必须摆到界面上，而不是只写进日志。
      */
     private duplicateFolders: Array<{ name: string; count: number }> = [];
@@ -529,7 +529,7 @@ export class ObsyncSettingsTab extends PluginSettingTab {
                 })
             );
 
-        // OBSync 自身放在本页最后：它是自举用的，与「装别的插件」不是一类事，
+        // SyncHub 自身放在本页最后：它是自举用的，与「装别的插件」不是一类事，
         // 但同属「来源与版本」的范畴（跟踪列表那边是「用户装了什么」，自己不在其中）。
         this.renderSelfUpdate();
 
@@ -539,7 +539,7 @@ export class ObsyncSettingsTab extends PluginSettingTab {
     }
 
     /**
-     * 「OBSync 自身」一节：检查更新 + 更新 + 一行状态。
+     * 「SyncHub 自身」一节：检查更新 + 更新 + 一行状态。
      *
      * 状态行由 `describeSelfState` 拼（纯函数，单测覆盖）—— 这里只负责在合适的
      * 时机重绘它：**不能**用 `this.display()` 重绘整页来刷新状态，那会把用户

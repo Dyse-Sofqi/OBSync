@@ -16,7 +16,7 @@ const mirrorCandidatePrefix = "疑似镜像：";
 
 export const zhCN = {
     plugin: {
-        name: "OBSync",
+        name: "SyncHub",
         /**
          * 侧边栏图标（ribbon）的悬停文案。
          *
@@ -25,8 +25,8 @@ export const zhCN = {
          * 是给唯一一个图标的，而那个图标打开的是安装器 —— 想找同步视图的人
          * 会点它、然后看到一个装插件的弹窗。
          */
-        ribbonSync: "OBSync：打开仓库同步视图",
-        ribbonInstaller: "OBSync：安装社区插件",
+        ribbonSync: "SyncHub：打开仓库同步视图",
+        ribbonInstaller: "SyncHub：安装社区插件",
     },
 
     common: {
@@ -74,7 +74,7 @@ export const zhCN = {
     },
 
     settings: {
-        cmdOpenSettings: "OBSync：打开设置",
+        cmdOpenSettings: "SyncHub：打开设置",
 
         tabs: {
             // 统一用「跟踪」而不是「追踪」—— 同页标题也用的是「跟踪」，
@@ -139,11 +139,11 @@ export const zhCN = {
             autoCheckOnSettingsOpen: "进入设置页时自动检查",
             autoCheckOnSettingsOpenDesc: "打开本设置页时自动检查一次更新。短时间内重复打开会跳过，以免白白消耗接口配额。",
             tracked: "已跟踪的插件与主题",
-            trackedDesc: "通过 OBSync 绑定、安装或更新的插件与主题。",
+            trackedDesc: "通过 SyncHub 绑定、安装或更新的插件与主题。",
             trackedEmpty: "还没有添加任何插件或主题。",
-            selfHeading: "OBSync 自身",
+            selfHeading: "SyncHub 自身",
             selfDesc:
-                "更新 OBSync 自己。只写入新版本的文件，不重载正在运行的插件 —— 重启 Obsidian 后新版本才生效。",
+                "更新 SyncHub 自己。只写入新版本的文件，不重载正在运行的插件 —— 重启 Obsidian 后新版本才生效。",
             /**
              * 自身更新的来源。
              *
@@ -153,10 +153,10 @@ export const zhCN = {
              */
             selfSource: "自身更新来源",
             selfSourceDesc:
-                "留空 = 官方仓库（github.com/Dyse-Sofqi/OBSync）。国内访问 GitHub 慢或被阻断时，" +
+                "留空 = 官方仓库（github.com/Dyse-Sofqi/SyncHub）。国内访问 GitHub 慢或被阻断时，" +
                 "可以填 Gitee 镜像的地址 —— 填一次就一直用它，不再自动探测。" +
-                "更新前会校验远端 manifest 的 id 必须是 ob-sync，所以地址填错不会覆盖别的插件。",
-            selfSourcePlaceholder: "https://gitee.com/sofqi/OBSync",
+                "更新前会校验远端 manifest 的 id 必须是 synchub，所以地址填错不会覆盖别的插件。",
+            selfSourcePlaceholder: "https://gitee.com/sofqi/SyncHub",
             mirrorDiscovery: "自动发现 Gitee 镜像",
             mirrorDiscoveryDesc: "安装 GitHub 插件时，探测 Gitee 上的镜像仓库：同名仓库，以及你 Gitee 账号下的同名仓库（后者需要先填 Gitee 令牌）。命中则改用镜像源下载，国内速度更快。",
         },
@@ -165,7 +165,7 @@ export const zhCN = {
             heading: "仓库同步",
             enabled: "启用笔记同步",
             enabledDesc:
-                "允许 OBSync 在后台自动同步这个库。关掉后自动提交 / 推送 / 拉取都会停止；" +
+                "允许 SyncHub 在后台自动同步这个库。关掉后自动提交 / 推送 / 拉取都会停止；" +
                 "命令面板里的同步命令仍然可用（那是你主动发起的）。",
             /**
              * 开关被挂起时的**替代**描述（策略为「重置」，见 `Automatics.start()`）。
@@ -229,10 +229,10 @@ export const zhCN = {
          * 但命令面板里**必须**带 —— Obsidian 用户是按插件名搜索命令的，
          * 一串没有前缀的「添加插件仓库 / 检查全部更新」在面板里根本找不着。
          */
-        cmdAddRepo: "OBSync：添加插件仓库",
-        cmdBindExisting: "OBSync：绑定库里已安装的插件与主题",
-        cmdCheckUpdates: "OBSync：检查插件与主题更新",
-        cmdUpdateAll: "OBSync：更新全部插件与主题",
+        cmdAddRepo: "SyncHub：添加插件仓库",
+        cmdBindExisting: "SyncHub：绑定库里已安装的插件与主题",
+        cmdCheckUpdates: "SyncHub：检查插件与主题更新",
+        cmdUpdateAll: "SyncHub：更新全部插件与主题",
 
         /**
          * 两种被跟踪对象的称呼。
@@ -247,7 +247,7 @@ export const zhCN = {
         modalTitle: "添加插件仓库",
         repoLabel: "仓库地址",
         repoDesc: "填写 owner/repo 简写，或粘贴完整的 GitHub / Gitee 仓库链接。",
-        repoPlaceholder: "例如：Dyse-Sofqi/OBSync 或 https://gitee.com/owner/repo",
+        repoPlaceholder: "例如：Dyse-Sofqi/SyncHub 或 https://gitee.com/owner/repo",
         resolve: "识别",
         resolving: "正在识别…",
         resolved: (host: string, repo: string) => `已识别为 ${host} 上的 ${repo}`,
@@ -349,7 +349,7 @@ export const zhCN = {
          * 跟踪列表里镜像那一行（紧跟在源仓库下面）。
          *
          * 必须点明「下载使用此源」：只写「Gitee 镜像」的话，用户看到上面一行是
-         * GitHub、下面一行是 Gitee，无从判断 OBSync 到底在跟谁说话。
+         * GitHub、下面一行是 Gitee，无从判断 SyncHub 到底在跟谁说话。
          */
         mirrorLine: (host: string, repo: string) => `${host} 镜像 · ${repo} · 下载使用此源`,
         /**
@@ -455,7 +455,7 @@ export const zhCN = {
                 `写入${of}「${id}」失败，且还原也失败。请手动检查它的目录。`,
             cannotEnablePlugin: "当前 Obsidian 版本不支持通过插件启用其他插件。",
             selfIdMismatch: (repo: string, id: string) =>
-                `${repo} 里的插件 id 是「${id}」，不是 OBSync 自己（ob-sync）—— 已中止更新，以免覆盖别的插件。`,
+                `${repo} 里的插件 id 是「${id}」，不是 SyncHub 自己（synchub）—— 已中止更新，以免覆盖别的插件。`,
             selfUpdateDowngrade: (current: string, latest: string) =>
                 `远端最新版本 ${latest} 比当前运行的 ${current} 旧，已中止 —— 「更新」不该把你降级。`,
             communityIndexFailed: (status: number) =>
@@ -543,31 +543,31 @@ export const zhCN = {
         bindDone: (count: number) => `已绑定 ${count} 项，将纳入更新检查。`,
 
         /**
-         * OBSync 自身的更新。
+         * SyncHub 自身的更新。
          *
          * 「待重启」那句是这批文案里最要紧的：更新自己时**不重载自己**，
          * 磁盘上已经是新版本而运行中的还是旧的 —— 不写清楚，用户会以为
          * 已经用上新版了（所以这里也**不**清更新徽标，而是常驻这一行）。
          */
         selfNotChecked: (version: string) => `当前版本 ${version} · 尚未检查更新`,
-        selfUpToDate: (version: string) => `OBSync ${version} 已是最新版本`,
+        selfUpToDate: (version: string) => `SyncHub ${version} 已是最新版本`,
         selfUpdateAvailable: (current: string, latest: string) =>
             `有新版本 ${latest}（当前 ${current}）`,
         selfPendingRestart: (version: string) =>
             `已下载 ${version}，重启 Obsidian 后生效`,
         selfUpdating: "正在下载新版本…",
         selfUpdateDone: (version: string) =>
-            `已下载 OBSync ${version}，重启 Obsidian 后生效`,
-        selfCheckFailed: (reason: string) => `检查 OBSync 更新失败：${reason}`,
-        selfUpdateFailed: "更新 OBSync 失败",
+            `已下载 SyncHub ${version}，重启 Obsidian 后生效`,
+        selfCheckFailed: (reason: string) => `检查 SyncHub 更新失败：${reason}`,
+        selfUpdateFailed: "更新 SyncHub 失败",
     },
 
     sync: {
         /**
          * 侧边栏视图的名字（标签页标题）。
          *
-         * 原来这里写的是「OBSync」——于是视图标题、页内标题、以及**打开它的那条
-         * 命令名**全都是「OBSync」：命令面板里搜「同步」搜不到它，也没人知道
+         * 原来这里写的是「SyncHub」——于是视图标题、页内标题、以及**打开它的那条
+         * 命令名**全都是「SyncHub」：命令面板里搜「同步」搜不到它，也没人知道
          * 它是个什么面板。改成与 README 一致的说法。
          *
          * 2026-09-19 又从「源码控制」改成「仓库同步」：面板里那个重复的页内标题
@@ -644,15 +644,15 @@ export const zhCN = {
             `检测到 ${count} 个冲突文件，已生成冲突清单，请手动处理后提交。`,
 
         // 命令名（命令面板里显示）
-        cmdSync: "OBSync：立即同步（提交 → 拉取 → 推送）",
-        cmdCommit: "OBSync：提交全部更改",
-        cmdPush: "OBSync：推送到远端",
-        cmdPull: "OBSync：从远端拉取",
-        cmdInit: "OBSync：初始化仓库",
-        cmdAbortMerge: "OBSync：放弃当前合并（冲突恢复）",
-        cmdEditRemote: "OBSync：编辑远端地址",
-        cmdOpenFileOnRemote: "OBSync：在浏览器中打开当前文件",
-        cmdOpenFileHistoryOnRemote: "OBSync：在浏览器中查看当前文件的历史",
+        cmdSync: "SyncHub：立即同步（提交 → 拉取 → 推送）",
+        cmdCommit: "SyncHub：提交全部更改",
+        cmdPush: "SyncHub：推送到远端",
+        cmdPull: "SyncHub：从远端拉取",
+        cmdInit: "SyncHub：初始化仓库",
+        cmdAbortMerge: "SyncHub：放弃当前合并（冲突恢复）",
+        cmdEditRemote: "SyncHub：编辑远端地址",
+        cmdOpenFileOnRemote: "SyncHub：在浏览器中打开当前文件",
+        cmdOpenFileHistoryOnRemote: "SyncHub：在浏览器中查看当前文件的历史",
 
         // 文件右键菜单
         menuOpenOnRemote: "在远端打开",
@@ -682,10 +682,10 @@ export const zhCN = {
          * ── 侧边栏详情面板（2026-09-19）
          *
          * 视图从「一个标题 + 四个按钮」扩成 git 插件那样的面板时新增的一组文案。
-         * `cmdOpenView` 与 `viewTitle` **必须是两条**：命令名要以 `OBSync` 开头
+         * `cmdOpenView` 与 `viewTitle` **必须是两条**：命令名要以 `SyncHub` 开头
          * 才能在命令面板里被搜到（有测试钉着），而面板标题不该带这个前缀。
          */
-        cmdOpenView: "OBSync：打开仓库同步面板",
+        cmdOpenView: "SyncHub：打开仓库同步面板",
         statusBarHint: "点击打开仓库同步面板",
         actRefresh: "刷新",
         actInit: "初始化仓库",
@@ -728,13 +728,13 @@ export const zhCN = {
         },
         // ── .gitignore ──
         gitignoreCreated: "已创建 .gitignore（排除了 Obsidian 的工作区状态文件，避免多设备冲突）。",
-        cmdEditGitignore: "OBSync：编辑 .gitignore",
+        cmdEditGitignore: "SyncHub：编辑 .gitignore",
         /**
          * 初始化仓库时写入的 .gitignore 内容（整段放在 locale 里，
          * 而不是在代码里拼 —— 它含面向用户的说明文字）。
          */
         gitignoreTemplate: [
-            "# 由 OBSync 创建。",
+            "# 由 SyncHub 创建。",
             "",
             "# Obsidian 的工作区布局（面板、标签、光标位置）。每台设备各自维护，",
             "# 同步它只会制造冲突 —— 这是 Obsidian 多设备同步最常见的坑。",
@@ -743,7 +743,7 @@ export const zhCN = {
             "",
             "# 本插件自己的设置（同步间隔、拉取策略…）。这些是**按设备**的，",
             "# 同步它只会让两台设备互相覆盖设置。",
-            ".obsidian/plugins/ob-sync/data.json",
+            ".obsidian/plugins/synchub/data.json",
             "",
             "# Obsidian 的回收站",
             ".trash/",
@@ -782,9 +782,9 @@ export const zhCN = {
             gitOk: "可用",
             gitFailed: (detail: string) => `不可用：${detail}`,
             repoOk: "已初始化",
-            repoFailed: "尚未初始化 —— 请先执行命令「OBSync：初始化仓库」",
+            repoFailed: "尚未初始化 —— 请先执行命令「SyncHub：初始化仓库」",
             remoteOk: (url: string) => url,
-            remoteFailed: "未配置 —— 请用命令「OBSync：编辑远端地址」填写",
+            remoteFailed: "未配置 —— 请用命令「SyncHub：编辑远端地址」填写",
             platformOk: (host: string) => `${host}，已配置访问令牌`,
             platformNoToken: (host: string) =>
                 `${host}，**未配置访问令牌** —— 公开仓库可以同步，私有仓库会失败`,
@@ -793,16 +793,16 @@ export const zhCN = {
         },
 
 
-        conflictGuideFile: "OBSync 冲突指南.md",
+        conflictGuideFile: "SyncHub 冲突指南.md",
         conflictGuideTitle: "同步冲突指南",
         conflictGuideIntro:
             "本次拉取时，下列文件在本地和远端都被修改了，git 无法自动决定保留哪一边。文件里的冲突位置以 <<<<<<< 与 >>>>>>> 标出。",
         conflictGuideFiles: "冲突文件：",
         conflictGuideResolve:
-            "处理方式：打开每个文件，编辑冲突位置保留你想要的内容（删掉标记行），然后执行「OBSync：立即同步」，冲突解决后会正常提交并推送。",
+            "处理方式：打开每个文件，编辑冲突位置保留你想要的内容（删掉标记行），然后执行「SyncHub：立即同步」，冲突解决后会正常提交并推送。",
         conflictGuideAbort:
-            "如果想放弃本次合并、回到拉取之前的状态，执行命令「OBSync：放弃当前合并」。",
-        conflictGuideFooter: (time: string) => `此文件由 OBSync 于 ${time} 自动生成，处理后可删除。`,
+            "如果想放弃本次合并、回到拉取之前的状态，执行命令「SyncHub：放弃当前合并」。",
+        conflictGuideFooter: (time: string) => `此文件由 SyncHub 于 ${time} 自动生成，处理后可删除。`,
     },
 };
 

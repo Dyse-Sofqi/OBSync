@@ -22,8 +22,8 @@ import { createFakeApp, type FakeApp } from "./helpers/fakeApp";
  */
 
 const MANIFEST = {
-    id: "ob-sync",
-    name: "OBSync",
+    id: "synchub",
+    name: "SyncHub",
     version: "0.1.0",
     minAppVersion: "1.5.0",
     description: "test",
@@ -170,7 +170,7 @@ describe("桌面端启动", () => {
         expect(commands.length).toBeGreaterThan(0);
 
         for (const command of commands) {
-            expect(command.name, `${command.id} 缺少 OBSync 前缀`).toMatch(/^OBSync/);
+            expect(command.name, `${command.id} 缺少 SyncHub 前缀`).toMatch(/^SyncHub/);
         }
     });
 

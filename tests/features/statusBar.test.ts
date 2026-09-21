@@ -110,7 +110,7 @@ describe("StatusBar 渲染", () => {
         const { item, last } = createItem();
         new StatusBar({ item, getT: () => zhCN });
 
-        expect(last()).toBe("OBSync");
+        expect(last()).toBe("SyncHub");
     });
 
     it("分支 + ahead/behind 用无语言符号表示", () => {
@@ -119,7 +119,7 @@ describe("StatusBar 渲染", () => {
 
         bar.update(makeStatus({ branch: "main", ahead: 2, behind: 1 }));
 
-        expect(last()).toBe("OBSync: main ↑2 ↓1");
+        expect(last()).toBe("SyncHub: main ↑2 ↓1");
     });
 
     it("ahead/behind 为 0 或 null 时不显示", () => {
@@ -128,7 +128,7 @@ describe("StatusBar 渲染", () => {
 
         bar.update(makeStatus({ branch: "main", ahead: 0, behind: null }));
 
-        expect(last()).toBe("OBSync: main");
+        expect(last()).toBe("SyncHub: main");
     });
 
     it("脏文件**按路径去重**（同一个文件同时 staged 与 unstaged 只算一个）", () => {
@@ -145,7 +145,7 @@ describe("StatusBar 渲染", () => {
             })
         );
 
-        expect(last()).toBe("OBSync: main ~3");
+        expect(last()).toBe("SyncHub: main ~3");
     });
 
     it("有冲突时显示警告数，且**盖过**脏文件计数", () => {
@@ -159,7 +159,7 @@ describe("StatusBar 渲染", () => {
             })
         );
 
-        expect(last()).toBe("OBSync: main ⚠ 2");
+        expect(last()).toBe("SyncHub: main ⚠ 2");
     });
 
     it("**完全一致时给一个 ✓**（否则「同步完了吗」只能靠「没有标记」回答）", () => {
@@ -171,7 +171,7 @@ describe("StatusBar 渲染", () => {
 
         bar.update(makeStatus({ branch: "main", ahead: 0, behind: 0 }));
 
-        expect(last()).toBe("OBSync: main ✓");
+        expect(last()).toBe("SyncHub: main ✓");
     });
 
     it("领先 / 落后 / 没有 upstream / 有改动时都**不**打勾", () => {
@@ -195,10 +195,10 @@ describe("StatusBar 渲染", () => {
 
         bar.update(makeStatus({ branch: "main" }));
         bar.setActivity("pulling");
-        expect(last()).toBe("OBSync: 正在拉取…");
+        expect(last()).toBe("SyncHub: 正在拉取…");
 
         bar.setActivity("idle");
-        expect(last()).toBe("OBSync: main");
+        expect(last()).toBe("SyncHub: main");
     });
 
     it("状态不可得时退回插件名（不是报错）", () => {
@@ -208,7 +208,7 @@ describe("StatusBar 渲染", () => {
         bar.update(makeStatus({ branch: "main" }));
         bar.update(undefined);
 
-        expect(last()).toBe("OBSync");
+        expect(last()).toBe("SyncHub");
     });
 
     it("渲染失败不向外抛（状态栏坏掉绝不能打断同步本身）", () => {
@@ -233,7 +233,7 @@ describe("StatusBar 的语言", () => {
 
         bar.setActivity("pushing");
 
-        expect(last()).toBe("OBSync: 正在推送…");
+        expect(last()).toBe("SyncHub: 正在推送…");
     });
 
     /**
@@ -251,11 +251,11 @@ describe("StatusBar 的语言", () => {
         const bar = new StatusBar({ item, getT: () => locale });
 
         bar.setActivity("pushing");
-        expect(last()).toBe("OBSync: 正在推送…");
+        expect(last()).toBe("SyncHub: 正在推送…");
 
         locale = en;
         bar.setActivity("committing");
-        expect(last()).toBe("OBSync: Committing…");
+        expect(last()).toBe("SyncHub: Committing…");
     });
 });
 
@@ -323,7 +323,7 @@ describe("StatusBar 的位置", () => {
 /**
  * 状态栏条目是**屏幕上唯一常驻**的同步入口。
  *
- * 而它此前完全不可点：用户看到「OBSync: main ~3」，却没有任何办法看到详情
+ * 而它此前完全不可点：用户看到「SyncHub: main ~3」，却没有任何办法看到详情
  * （侧栏那个图标打开的是安装器）。于是「同步面板在哪」这个问题在界面上
  * 无解 —— 这条用例锁的就是「点它 → 打开仓库同步视图」这条线。
  */

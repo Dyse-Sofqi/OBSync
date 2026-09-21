@@ -1,4 +1,4 @@
-# OBSync 复刻规划
+# SyncHub 复刻规划
 
 > 目标：独立复刻 obsidian-git 的笔记仓库同步能力 + obsidian42-brat 的社区插件安装能力，
 > 合并为单一 Obsidian 插件，并把两者从「仅 GitHub + 英文」扩展为「GitHub / Gitee 双平台 + 中文优先」。
@@ -9,7 +9,7 @@
 | --- | --- |
 | 移动端支持 | **不支持**。v1 仅桌面，Git 同步只用系统 git（`simple-git`） |
 | 交付节奏 | **分阶段，逐段验收** |
-| 插件标识 | `ob-sync` / **OBSync** |
+| 插件标识 | `synchub` / **SyncHub** |
 | Gitee 插件发现 | 手动输入 **+ 加做 GitHub→Gitee 镜像自动发现** |
 
 ---
@@ -27,7 +27,7 @@
 3. **BRAT 没有回滚，obsidian-git 的凭据方案平台耦合重。**
    → 安装器加写入前备份；同步改用 `http.extraheader` 注入鉴权。
 
-4. **两个项目都是英文优先。** BRAT 的 i18n 方案很好（编译期强制全覆盖），但它把中文当二等公民（后补的 locale）。OBSync 以中文为第一语言，英文作为对等 locale。
+4. **两个项目都是英文优先。** BRAT 的 i18n 方案很好（编译期强制全覆盖），但它把中文当二等公民（后补的 locale）。SyncHub 以中文为第一语言，英文作为对等 locale。
 
 ---
 
@@ -235,7 +235,7 @@ AnubisNekhet/AnuPpuccin `1.5.0`），Minimal 还有 21 个与版本号同名的 
 
 ---
 
-## 七、OBSync 自身的更新（后续增补，2026-09-17）
+## 七、SyncHub 自身的更新（后续增补，2026-09-17）
 
 设置页「安装器」页里的一节：当前版本 + 检查更新 + 更新到最新 + 一行状态。
 **更新只写入新版本的文件，不重载自己** —— 对普通插件是 disable → enable，
@@ -243,7 +243,7 @@ AnubisNekhet/AnuPpuccin `1.5.0`），Minimal 还有 21 个与版本号同名的 
 失败就停在「已禁用」。所以由用户重启完成剩下的事，并用一个持久化的
 「待重启」标记在那段时间里如实提示（重启后自动清除）。
 
-两道守卫：远端 manifest 的 id 必须是 `ob-sync`（仓库坐标写死在
+两道守卫：远端 manifest 的 id 必须是 `synchub`（仓库坐标写死在
 `selfUpdate.ts` 的 `SELF_REPO`，指错地方会覆盖别的插件）；不允许降级，
 但允许同版本重装（修复一个坏掉的安装）。
 

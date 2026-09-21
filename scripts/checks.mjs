@@ -105,11 +105,18 @@ function checkMinAppVersion() {
     /**
      * 已知「要求高于 minAppVersion 但安全」的用法。
      * 加进来**必须写清为什么安全** —— 否则这张表会变成掩盖问题的地方。
+     *
+     * 注意：这张表**不是**社区审核的替代品。审核的 `obsidianmd/no-unsupported-api`
+     * 只看「成员访问的类型是不是来自 obsidian.d.ts」，不认这里的理由 ——
+     * 0.1.4 就是因为这四条被报成错误（`SecretStore` 的写法当时只靠
+     * `typeof getSecret === "function"` 探测，审核认不出，于是四条全红）。
+     * 现在改用官方认可的 `requireApiVersion("1.11.4")` 守卫，真实行为与
+     * 审核判据一致；本表保留只是因为这个脚本只看成员名、看不出守卫。
      */
     const KNOWN_SAFE = new Map([
-        ["App.secretStorage", "SecretStore 运行时用 typeof 检查 getSecret 是否存在，老版本回退 localStorage"],
-        ["SecretStorage.setSecret", "只在 secretStorage 存在时才调用（同上）"],
-        ["SecretStorage.getSecret", "只在 secretStorage 存在时才调用（同上）"],
+        ["App.secretStorage", "SecretStore.canUseSecretStorage() 用 requireApiVersion(\"1.11.4\") 守卫，1.11.4 以下直接短路"],
+        ["SecretStorage.setSecret", "只在 canUseSecretStorage() 为真时调用；返回类型是结构类型 SecretStorageLike，不再走 Obsidian 声明"],
+        ["SecretStorage.getSecret", "同上 —— 版本守卫 + 结构类型，两处调用都只读这个结构类型"],
         ["Plugin.settings", "误报：d.ts 里一段提到 this.plugin.settings 的文档被算到了类作用域上"],
     ]);
 
@@ -567,7 +574,7 @@ const results = [
     checkUnreadSettings(),
 ];
 
-console.log("OBSync 项目自查\n");
+console.log("SyncHub 项目自查\n");
 for (const result of results) {
     const status = result.skipped ? "跳过" : "通过";
     const detail = result.skipped ? `（${result.skipped}）` : result.detail ? ` — ${result.detail}` : "";

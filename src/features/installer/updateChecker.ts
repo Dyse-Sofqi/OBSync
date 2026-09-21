@@ -115,7 +115,7 @@ export class UpdateChecker {
     }
 
     /**
-     * 检查 OBSync 自己有没有新版本。
+     * 检查 SyncHub 自己有没有新版本。
      *
      * 与插件同构（远端最新版本 vs 运行中的版本），但不写 `availableUpdates` ——
      * 它不是跟踪列表里的一项，那张表是「谁该有徽标」的事实来源。
@@ -130,7 +130,7 @@ export class UpdateChecker {
             const latest = await this.latestReleaseTag(repoRef, token);
 
             if (!latest) {
-                // 一个 release 都没有：OBSync 的 `main.js` 是构建产物（不入库），
+                // 一个 release 都没有：SyncHub 的 `main.js` 是构建产物（不入库），
                 // 源码通道取不到它 —— 所以这里如实说「无从比较」，不是错误。
                 return {
                     currentVersion,

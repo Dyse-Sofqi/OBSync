@@ -32,7 +32,7 @@ function createTab(fake: FakeApp, raw: Record<string, unknown> = {}): ObsyncSett
 
     const plugin = {
         app: fake.app,
-        manifest: { id: "ob-sync", version: "0.9.0" },
+        manifest: { id: "synchub", version: "0.9.0" },
         t: zhCN,
         settings,
         notifier,
@@ -84,7 +84,7 @@ describe("设置页 · 安装器页", () => {
         expect(names).toContain(zhCN.settings.installer.selfHeading);
     });
 
-    it("「OBSync 自身」一节有检查更新与更新两个按钮", () => {
+    it("「SyncHub 自身」一节有检查更新与更新两个按钮", () => {
         const fake = createFakeApp();
         const tab = createTab(fake);
 
@@ -99,10 +99,10 @@ describe("设置页 · 安装器页", () => {
         ]);
     });
 
-    it("「OBSync 自身」一节有「更新来源」输入框，初值来自设置", () => {
+    it("「SyncHub 自身」一节有「更新来源」输入框，初值来自设置", () => {
         const fake = createFakeApp();
         const tab = createTab(fake, {
-            installer: { selfUpdateSource: "https://gitee.com/sofqi/OBSync" },
+            installer: { selfUpdateSource: "https://gitee.com/sofqi/SyncHub" },
         });
 
         renderInstallerPage(tab);
@@ -112,7 +112,7 @@ describe("设置页 · 安装器页", () => {
         );
         expect(row).toBeDefined();
         expect(row?.desc).toBe(zhCN.settings.installer.selfSourceDesc);
-        expect(row?.texts[0]?.value).toBe("https://gitee.com/sofqi/OBSync");
+        expect(row?.texts[0]?.value).toBe("https://gitee.com/sofqi/SyncHub");
     });
 
     it("改「更新来源」会**真的写进设置**（否则「填了没用」），并去掉首尾空白", async () => {
@@ -130,10 +130,10 @@ describe("设置页 · 安装器页", () => {
         );
 
         // 带首尾空白：从浏览器地址栏复制时经常带上，而它会让 parseRepoRef 解析失败
-        row!.texts[0]!.type("  https://gitee.com/sofqi/OBSync  ");
+        row!.texts[0]!.type("  https://gitee.com/sofqi/SyncHub  ");
         await Promise.resolve();
 
-        expect(plugin.settings.installer.selfUpdateSource).toBe("https://gitee.com/sofqi/OBSync");
+        expect(plugin.settings.installer.selfUpdateSource).toBe("https://gitee.com/sofqi/SyncHub");
         expect(plugin.saved).toBe(1);
     });
 

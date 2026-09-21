@@ -101,7 +101,7 @@ export class GitHubHost implements IRepoHost {
         return {
             Accept: "application/vnd.github+json",
             "X-GitHub-Api-Version": API_VERSION,
-            "User-Agent": "OBSync",
+            "User-Agent": "SyncHub",
         };
     }
 

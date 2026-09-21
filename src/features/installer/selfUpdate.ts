@@ -6,7 +6,7 @@ import type { RepoRef } from "../../host/types";
 import type { SelfUpdateCheck } from "./types";
 
 /**
- * OBSync 自身的更新：检查、写盘、以及「待重启」这件事的记账。
+ * SyncHub 自身的更新：检查、写盘、以及「待重启」这件事的记账。
  *
  * ## 为什么不把它自己塞进跟踪列表
  *
@@ -29,17 +29,17 @@ import type { SelfUpdateCheck } from "./types";
  */
 
 /**
- * OBSync 自己的仓库坐标。
+ * SyncHub 自己的仓库坐标。
  *
  * 写死在代码里，不从 manifest / authorUrl 推导 —— manifest 没有 repo 字段，
  * 而 `authorUrl` 是作者主页。也正因如此，`updateSelf` 在写盘前必须校验远端
- * manifest 的 id 是不是 `ob-sync`：这个常量万一指错了地方，拦住远比
+ * manifest 的 id 是不是 `synchub`：这个常量万一指错了地方，拦住远比
  * 按错的 id 去解析目录、覆盖掉别的插件强。
  */
 export const SELF_REPO: RepoRef = {
     host: "github",
     owner: "Dyse-Sofqi",
-    repo: "OBSync",
+    repo: "SyncHub",
 };
 
 /**
@@ -48,15 +48,21 @@ export const SELF_REPO: RepoRef = {
  * 两个用途：绑定列表跳过自己（`existingPlugins.ts`），
  * 以及自我更新时校验远端身份（不是这个 id 就不写盘）。
  *
- * ## 为什么 id 是 `ob-sync` 而不是 `obsync`
+ * ## id 的来历（`obsync` → `ob-sync` → `synchub`）
  *
- * 插件市场里 `obsync` 已被占用，id 撞车的插件无法上架，所以发布前改成了 `ob-sync`。
- * 它与**插件名**「OBSync」、以及那些 `obsync-` 前缀的内部标识（CSS 类名、
- * `obsync-sync-view` 视图类型、`obsync-token-` 密钥 id）**刻意不一致**：后者是
- * 各自的命名空间，不是插件身份，改名只会白白作废用户已存的令牌与视图状态。
- * 换句话说，看到 `obsync-` 不必跟着改 —— 只有这一个常量跟着 manifest 走。
+ * 三度改名，每次都为了不同的原因，别把结论记混：
+ *
+ * 1. `obsync` → `ob-sync`（0.1.4）：插件市场里 `obsync` **已被别的插件占用**，
+ *    id 撞车的插件无法上架。
+ * 2. `ob-sync` → `synchub`（0.1.5）：插件名从 `OBSync` 改成 `SyncHub`（商标原因，
+ *    见 `docs/HANDOVER.md` 第十节），id 跟着统一。
+ *
+ * 它与那些 `obsync-` 前缀的内部标识（CSS 类名、`obsync-sync-view` 视图类型、
+ * `obsync-token-` 密钥 id）**刻意不一致**：后者是各自的命名空间，不是插件身份，
+ * 跟着改只会白白作废用户已存的令牌与视图状态。换句话说，看到 `obsync-` 不必跟着改
+ * —— 只有这一个常量跟着 manifest 走。
  */
-export const SELF_PLUGIN_ID = "ob-sync";
+export const SELF_PLUGIN_ID = "synchub";
 
 /**
  * 这次该从哪个仓库更新自己。
@@ -64,7 +70,7 @@ export const SELF_PLUGIN_ID = "ob-sync";
  * `source` 是设置里的「自身更新来源」（`settings.installer.selfUpdateSource`）：
  *
  * - **空串 → 官方 `SELF_REPO`**（默认，也是唯一「永远可用」的那个）；
- * - **填了 → 解析成 `RepoRef`**。写完整地址（`https://gitee.com/sofqi/OBSync`）或
+ * - **填了 → 解析成 `RepoRef`**。写完整地址（`https://gitee.com/sofqi/SyncHub`）或
  *   `owner/repo` 简写都行；简写按 GitHub 解释，要 Gitee 就写全。
  *
  * 与「镜像发现」的区别很重要：那套是**自动探测 + 只提议、要用户确认**，每次都要
@@ -103,7 +109,7 @@ export function clearPendingRestart(settings: ObsyncSettings): boolean {
     const pending = settings.installer.pendingRestartVersion;
     if (!pending) return false;
 
-    logger.info(`OBSync ${pending} is running now; clearing the pending-restart flag`);
+    logger.info(`SyncHub ${pending} is running now; clearing the pending-restart flag`);
     settings.installer.pendingRestartVersion = "";
     return true;
 }

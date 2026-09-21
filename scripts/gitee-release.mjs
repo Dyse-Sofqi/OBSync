@@ -27,7 +27,7 @@
 
 import fs from "node:fs";
 
-const OWNER_REPO = "sofqi/OBSync";
+const OWNER_REPO = "sofqi/SyncHub";
 const API = `https://gitee.com/api/v5/repos/${OWNER_REPO}`;
 const ASSETS = ["main.js", "manifest.json", "styles.css"];
 

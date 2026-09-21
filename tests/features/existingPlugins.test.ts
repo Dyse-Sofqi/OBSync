@@ -147,7 +147,7 @@ describe("resolveBindCandidates", () => {
         ]);
     });
 
-    it("同一 manifest id 出现在多个目录时只保留一个，且排除 OBSync 自身", async () => {
+    it("同一 manifest id 出现在多个目录时只保留一个，且排除 SyncHub 自身", async () => {
         const fake = createFakeApp({
             // 旧 id 的重复安装（实测有这种：obsidian-regex-replace/ 与 regex-replace/）
             ...seedPlugin("obsidian-regex-replace", {
@@ -166,10 +166,10 @@ describe("resolveBindCandidates", () => {
                     minAppVersion: "1.5.0",
                 }),
             }),
-            ...seedPlugin("ob-sync", {
+            ...seedPlugin("synchub", {
                 "manifest.json": JSON.stringify({
-                    id: "ob-sync",
-                    name: "OBSync",
+                    id: "synchub",
+                    name: "SyncHub",
                     version: "0.1.0",
                     minAppVersion: "1.5.0",
                 }),

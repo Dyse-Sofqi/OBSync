@@ -295,7 +295,7 @@ describe("镜像行", () => {
 
     it("镜像行必须点明**下载走它**", () => {
         // 只写「Gitee 镜像」的话，用户看到上面一行 GitHub、下面一行 Gitee，
-        // 无从判断 OBSync 到底在跟谁说话 —— 而下载与更新检查都走镜像。
+        // 无从判断 SyncHub 到底在跟谁说话 —— 而下载与更新检查都走镜像。
         const { rows } = render([mirrored()]);
 
         expect(extraLines(rows[0]!)[0]).toContain("下载使用此源");

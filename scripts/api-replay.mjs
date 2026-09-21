@@ -30,7 +30,7 @@ const headers = {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
     "Content-Type": "application/json",
-    "User-Agent": "OBSync-release-script",
+    "User-Agent": "SyncHub-release-script",
 };
 
 async function api(method, path, body, attempt = 1) {

@@ -44,7 +44,7 @@ export interface StatusBarDeps {
      * 点击条目时的动作 —— 打开仓库同步视图。
      *
      * 状态栏是**唯一常驻在屏幕上**的同步入口，而它此前完全不可点：
-     * 用户看到「OBSync: main ~3」却没有任何办法知道详情在哪（侧边栏图标打开的是
+     * 用户看到「SyncHub: main ~3」却没有任何办法知道详情在哪（侧边栏图标打开的是
      * 安装器）。参考项目 obsidian-git 的状态栏也是点开那个视图的，所以这里接上。
      * 不传则条目保持不可点（测试与移动端不需要它）。
      */
@@ -95,7 +95,7 @@ export class StatusBar {
 
             if (this.activity !== "idle") {
                 this.item.setText(
-                    `OBSync: ${
+                    `SyncHub: ${
                         this.activity === "pulling"
                             ? t.sync.statusPulling
                             : this.activity === "pushing"
@@ -107,7 +107,7 @@ export class StatusBar {
             }
 
             if (!this.status) {
-                this.item.setText("OBSync");
+                this.item.setText("SyncHub");
                 return;
             }
 
@@ -135,7 +135,7 @@ export class StatusBar {
                 parts.push("✓");
             }
 
-            this.item.setText(parts.length > 0 ? `OBSync: ${parts.join(" ")}` : "OBSync");
+            this.item.setText(parts.length > 0 ? `SyncHub: ${parts.join(" ")}` : "SyncHub");
         } catch (err) {
             // 状态栏渲染失败绝不能打断同步本身。
             logger.debug("status bar render failed", err);

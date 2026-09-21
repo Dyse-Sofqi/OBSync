@@ -25,7 +25,7 @@ import type { CommitInfo, FileChange, RepoSize, RepoStatus } from "../../src/fea
  * 仓库同步视图（源码控制视图的后继 —— 只改了显示名与顶部布局，见文件头注释）。
  *
  * 这个面板此前**一个渲染测试都没有** —— 于是它有下面这些问题而没人发现：
- * 面板标题与「打开面板」的命令名都是「OBSync」（命令面板里搜「同步」找不到）、
+ * 面板标题与「打开面板」的命令名都是「SyncHub」（命令面板里搜「同步」找不到）、
  * 不是仓库时只给一句提示没有任何出路、README 说它支持逐文件暂存而代码里
  * 根本没有暂存这个动作。
  *
@@ -303,14 +303,14 @@ describe("SourceControlView 渲染", () => {
         expect(toolbar.buttons[toolbar.buttons.length - 1]!.icon).toBe("refresh-cw");
     });
 
-    it("标题用的是面板名，不是带 OBSync 前缀的命令名", async () => {
+    it("标题用的是面板名，不是带 SyncHub 前缀的命令名", async () => {
         const h = harness({});
 
         await h.view.onOpen();
 
         expect(h.view.getDisplayText()).toBe(zhCN.sync.viewTitle);
-        expect(zhCN.sync.viewTitle).not.toMatch(/^OBSync/);
-        expect(zhCN.sync.cmdOpenView).toMatch(/^OBSync/);
+        expect(zhCN.sync.viewTitle).not.toMatch(/^SyncHub/);
+        expect(zhCN.sync.cmdOpenView).toMatch(/^SyncHub/);
     });
 
     it("面板内**不再**重复一个标题（标签页上已经写着视图名了）", async () => {

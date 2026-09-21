@@ -1,6 +1,6 @@
 # 参考项目分析总结
 
-本文是对两个参考项目的独立分析结论，用于指导 OBSync 的架构设计。
+本文是对两个参考项目的独立分析结论，用于指导 SyncHub 的架构设计。
 结论来源：直接阅读源码（非文档转述），关键机制均标注了文件位置。
 
 ---
@@ -26,7 +26,7 @@
 - `SimpleGit`：需要系统 git 二进制，但功能完整 —— SSH、askpass、冲突预检、submodule、blame、进度输出。
 - `IsomorphicGit`：纯 JS 可跑移动端，但**只支持 HTTPS**，无 SSH，无冲突预检（要等 commit 才报错），无 submodule/blame，大仓库明显更慢。
 
-OBSync 决策：**v1 只做 `SimpleGit`**。理由见规划文档。
+SyncHub 决策：**v1 只做 `SimpleGit`**。理由见规划文档。
 
 **isomorphic-git 的 fs 适配器。** `myAdapter.ts` 把 Obsidian 的 `DataAdapter` 适配成 node-fs 风格接口（10 个 `promises` 方法）。两个关键处理：
 1. `.git/index` 在内存中缓存（`index`/`indexctime`/`indexmtime`），`writeFile` 时拦截、`saveAndClear()` 时回写 —— 因为 index 读写极其频繁。
@@ -36,7 +36,7 @@ OBSync 决策：**v1 只做 `SimpleGit`**。理由见规划文档。
 
 **认证完全交给原生 git（桌面端）。** 没有 `http.extraheader`、没有 URL 内嵌 token。做法是生成一个 `obsidian_askpass.sh`（路径在 `constants.ts`），设置 `SSH_ASKPASS` + `SSH_ASKPASS_REQUIRE=force`，然后监听 `.git_credentials_input` 文件弹 `GeneralModal` 回填（`simpleGit.ts:249`）。HTTPS 则直接依赖系统 credential helper（osxkeychain / manager / libsecret）。
 
-> OBSync 的取舍：这套 askpass 方案对 Gitee 也能用，但交互重、平台相关性强。OBSync 改用 `-c http.extraheader` 注入 Basic 鉴权（GitHub 与 Gitee 的 HTTPS 都接受 token 作密码），更可控且不落盘。
+> SyncHub 的取舍：这套 askpass 方案对 Gitee 也能用，但交互重、平台相关性强。SyncHub 改用 `-c http.extraheader` 注入 Basic 鉴权（GitHub 与 Gitee 的 HTTPS 都接受 token 作密码），更可控且不落盘。
 
 **自动同步用独立定时器 + 持久化的"上次执行时间"。** `automaticsManager.ts` 维护三个 `setTimeout`（commit / pull / push），`diff()` 用持久化在 localStorage 的"上次执行时间"计算剩余分钟数，所以重启 Obsidian 后定时节奏不会重置。文件变更触发时改用 `debounce`。
 
@@ -91,7 +91,7 @@ OBSync 决策：**v1 只做 `SimpleGit`**。理由见规划文档。
 
 **repo 解析的实现比预期简单**：没有 `parseRepoString` 这样的通用解析器，只有 `scrubRepositoryUrl()`（字符串清洗）+ `AddNewPluginModal.isGitHubRepositoryMatch()` 里的正则 `^(?:https?:\/\/github\.com\/)?([\w.-]+)\/([\w.-]+)$`。
 
-> OBSync 的改进：把这两处合并成一个真正的 `parseRepoRef()`，能识别 `github.com` / `gitee.com` 的完整 URL、`owner/repo` 简写，并返回结构化 `{ host, owner, repo }`。
+> SyncHub 的改进：把这两处合并成一个真正的 `parseRepoRef()`，能识别 `github.com` / `gitee.com` 的完整 URL、`owner/repo` 简写，并返回结构化 `{ host, owner, repo }`。
 
 ### 2.2 插件 vs 主题
 
@@ -109,7 +109,7 @@ OBSync 决策：**v1 只做 `SimpleGit`**。理由见规划文档。
 
 **无回滚机制。** 只有前置校验（manifest 缺 version、main.js 为 null 则中止），`try/catch` 返回 `false`，不备份不还原。
 
-> OBSync 的改进：写入前备份现有 `main.js`/`manifest.json`/`styles.css`，失败时还原。插件目录是用户的插件，覆盖坏了很麻烦。
+> SyncHub 的改进：写入前备份现有 `main.js`/`manifest.json`/`styles.css`，失败时还原。插件目录是用户的插件，覆盖坏了很麻烦。
 
 ### 2.5 设置模型
 
@@ -129,7 +129,7 @@ OBSync 决策：**v1 只做 `SimpleGit`**。理由见规划文档。
 
 `GenericFuzzySuggester.ts` 是可复用的 `FuzzySuggestModal<SuggesterItem>`（支持 Shift/Ctrl+Enter 修饰）。
 
-`SettingsTab.ts` 存在**新旧双渲染并存**（新的 `getSettingDefinitions()` 声明式 API 需 `requireApiVersion("1.13.1")`，旧的 `display()` 手写）。这是兼容包袱，OBSync 不复刻。
+`SettingsTab.ts` 存在**新旧双渲染并存**（新的 `getSettingDefinitions()` 声明式 API 需 `requireApiVersion("1.13.1")`，旧的 `display()` 手写）。这是兼容包袱，SyncHub 不复刻。
 
 ### 2.8 依赖与构建
 
@@ -137,7 +137,7 @@ OBSync 决策：**v1 只做 `SimpleGit`**。理由见规划文档。
 
 ### 2.9 可砍清单
 
-`SettingsTab` 新旧双渲染、`Promotional`、verbose logging、per-repo token、`BratAPI` 调试接口、graduated 检测、主题支持（OBSync v1 暂不做主题）。
+`SettingsTab` 新旧双渲染、`Promotional`、verbose logging、per-repo token、`BratAPI` 调试接口、graduated 检测、主题支持（SyncHub v1 暂不做主题）。
 
 ---
 

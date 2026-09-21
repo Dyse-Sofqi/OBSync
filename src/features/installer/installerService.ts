@@ -718,7 +718,7 @@ export class InstallerService {
     // ── 更新自己 ──────────────────────────────────────────────────────────
 
     /**
-     * 更新 OBSync 自己 —— 写盘后**不重载、不记入跟踪列表**。
+     * 更新 SyncHub 自己 —— 写盘后**不重载、不记入跟踪列表**。
      *
      * ## 为什么不重载（这块的核心取舍）
      *
@@ -732,7 +732,7 @@ export class InstallerService {
      *
      * ## 两道守卫
      *
-     * - 远端 manifest 的 id 必须是 `ob-sync`。来源可能是写死的官方常量，也可能是
+     * - 远端 manifest 的 id 必须是 `synchub`。来源可能是写死的官方常量，也可能是
      *   用户在设置里填的地址 —— 无论哪个，按错的 id 解析目录都会把**别的插件**
      *   覆盖掉。拦住，而不是赌它没写错。
      * - **不允许降级**（远端比当前旧就中止）：「更新」不该把用户降回旧版本。
@@ -754,7 +754,7 @@ export class InstallerService {
             formatRepoId(source),
             "latest",
             // `formatRepoId` 只给 `owner/repo`（它**不带 host** —— 持久化与去重都用那个
-            // 形式），所以必须把 host 一并传下去。否则 `sofqi/OBSync` 会被当成 **GitHub**
+            // 形式），所以必须把 host 一并传下去。否则 `sofqi/SyncHub` 会被当成 **GitHub**
             // 上的同名仓库，用户填的 Gitee 地址就悄悄失效了 —— 而界面看起来一切正常
             // （2026-09-20 被测试抓到，见 `selfUpdate.test.ts` 的「来源取设置里的地址」）。
             { allowMirror: false, defaultHost: source.host }
@@ -786,7 +786,7 @@ export class InstallerService {
         setPendingRestart(this.settings, manifest.version);
         await this.deps.saveSettings();
 
-        logger.info(`OBSync updated to ${manifest.version}; restart required`);
+        logger.info(`SyncHub updated to ${manifest.version}; restart required`);
 
         return { version: manifest.version, replaced: backup.folderExisted };
     }
@@ -800,7 +800,7 @@ export class InstallerService {
      * 先把正在使用的主题切回默认。那是**越界**的：跟踪列表记的是「我在跟哪个仓库」，
      * 而插件 / 主题的安装与移除归 Obsidian 自己管（设置里的「已安装插件」与「外观」）。
      *
-     * 对**绑定**进来的对象来说这一点尤其要紧：用户从官方商店或手工装好之后让 OBSync
+     * 对**绑定**进来的对象来说这一点尤其要紧：用户从官方商店或手工装好之后让 SyncHub
      * 认下它，此时点「移除」想表达的几乎一定是「别再跟了」，而不是「把它从库里删掉」。
      * 后者不可逆（尤其是他自己放进去的附加文件），而前者一条命令就能加回来。
      *

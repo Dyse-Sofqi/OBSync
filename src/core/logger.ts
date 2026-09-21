@@ -7,7 +7,7 @@
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
-const PREFIX = "[OBSync]";
+const PREFIX = "[SyncHub]";
 
 export class Logger {
     private verbose = false;

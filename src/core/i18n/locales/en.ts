@@ -10,9 +10,9 @@ const mirrorCandidatePrefix = "Possible mirror: ";
 
 export const en = {
     plugin: {
-        name: "OBSync",
-        ribbonSync: "OBSync: open the repository sync view",
-        ribbonInstaller: "OBSync: install community plugins",
+        name: "SyncHub",
+        ribbonSync: "SyncHub: open the repository sync view",
+        ribbonInstaller: "SyncHub: install community plugins",
     },
 
     common: {
@@ -60,7 +60,7 @@ export const en = {
     },
 
     settings: {
-        cmdOpenSettings: "OBSync: Open settings",
+        cmdOpenSettings: "SyncHub: Open settings",
 
         tabs: {
             // One tab now covers both plugins and themes (a single list with a
@@ -117,19 +117,19 @@ export const en = {
             autoCheckOnSettingsOpen: "Check when opening settings",
             autoCheckOnSettingsOpenDesc: "Run an update check when this settings page opens. Repeated openings within a short window are skipped to save API quota.",
             tracked: "Tracked plugins and themes",
-            trackedDesc: "Plugins and themes bound, installed or updated through OBSync.",
+            trackedDesc: "Plugins and themes bound, installed or updated through SyncHub.",
             trackedEmpty: "No plugins or themes added yet.",
-            selfHeading: "OBSync itself",
+            selfHeading: "SyncHub itself",
             selfDesc:
-                "Update OBSync itself. Only the new files are written; the running plugin is not reloaded — the new version takes effect after you restart Obsidian.",
+                "Update SyncHub itself. Only the new files are written; the running plugin is not reloaded — the new version takes effect after you restart Obsidian.",
             /** Says what empty means, and what happens if the address is wrong — see the zh-cn note. */
             selfSource: "Self-update source",
             selfSourceDesc:
-                "Empty = the official repository (github.com/Dyse-Sofqi/OBSync). If GitHub is slow " +
+                "Empty = the official repository (github.com/Dyse-Sofqi/SyncHub). If GitHub is slow " +
                 "or blocked, enter a mirror address — it is then used every time, with no automatic " +
-                "probing. Before writing, the remote manifest's id must be ob-sync, so a wrong " +
+                "probing. Before writing, the remote manifest's id must be synchub, so a wrong " +
                 "address cannot overwrite another plugin.",
-            selfSourcePlaceholder: "https://gitee.com/sofqi/OBSync",
+            selfSourcePlaceholder: "https://gitee.com/sofqi/SyncHub",
             mirrorDiscovery: "Discover Gitee mirrors",
             mirrorDiscoveryDesc: "When installing a GitHub plugin, look for a Gitee mirror first: a same-named repository, or a same-named repository under your own Gitee account (the latter needs a Gitee token). Downloads then use the mirror — faster in mainland China.",
         },
@@ -138,7 +138,7 @@ export const en = {
             heading: "Vault sync",
             enabled: "Enable vault sync",
             enabledDesc:
-                "Let OBSync sync this vault in the background. Turning it off stops the " +
+                "Let SyncHub sync this vault in the background. Turning it off stops the " +
                 "automatic commit / push / pull timers; the sync commands stay available " +
                 "(those are started by you).",
             /**
@@ -200,10 +200,10 @@ export const en = {
          * the modal does not need a plugin-name prefix, but the command palette
          * does — Obsidian users search commands by plugin name.
          */
-        cmdAddRepo: "OBSync: Add plugin repository",
-        cmdBindExisting: "OBSync: Bind plugins and themes already installed in this vault",
-        cmdCheckUpdates: "OBSync: Check for plugin and theme updates",
-        cmdUpdateAll: "OBSync: Update all plugins and themes",
+        cmdAddRepo: "SyncHub: Add plugin repository",
+        cmdBindExisting: "SyncHub: Bind plugins and themes already installed in this vault",
+        cmdCheckUpdates: "SyncHub: Check for plugin and theme updates",
+        cmdUpdateAll: "SyncHub: Update all plugins and themes",
 
         /**
          * Names for the two tracked kinds. They have to read naturally inside a
@@ -216,7 +216,7 @@ export const en = {
         modalTitle: "Add plugin repository",
         repoLabel: "Repository",
         repoDesc: "Enter owner/repo, or paste a full GitHub / Gitee repository URL.",
-        repoPlaceholder: "e.g. Dyse-Sofqi/OBSync or https://gitee.com/owner/repo",
+        repoPlaceholder: "e.g. Dyse-Sofqi/SyncHub or https://gitee.com/owner/repo",
         resolve: "Resolve",
         resolving: "Resolving…",
         resolved: (host: string, repo: string) => `Resolved to ${repo} on ${host}`,
@@ -350,7 +350,7 @@ export const en = {
             cannotEnablePlugin:
                 "This version of Obsidian does not allow a plugin to enable other plugins.",
             selfIdMismatch: (repo: string, id: string) =>
-                `The plugin id in ${repo} is "${id}", not OBSync itself (ob-sync) — the update was aborted so it cannot overwrite another plugin.`,
+                `The plugin id in ${repo} is "${id}", not SyncHub itself (synchub) — the update was aborted so it cannot overwrite another plugin.`,
             selfUpdateDowngrade: (current: string, latest: string) =>
                 `The latest remote version ${latest} is older than the running ${current}; aborted — updating should not downgrade you.`,
             communityIndexFailed: (status: number) =>
@@ -443,23 +443,23 @@ export const en = {
         bindDone: (count: number) => `Bound ${count} item(s); update checks now cover them.`,
 
         /**
-         * OBSync updating itself.
+         * SyncHub updating itself.
          *
          * The pending-restart line matters most: we do **not** reload ourselves,
          * so the files on disk are newer than the running code. Without saying so
          * the user would believe the new version is already active.
          */
         selfNotChecked: (version: string) => `Version ${version} · not checked yet`,
-        selfUpToDate: (version: string) => `OBSync ${version} is up to date`,
+        selfUpToDate: (version: string) => `SyncHub ${version} is up to date`,
         selfUpdateAvailable: (current: string, latest: string) =>
             `Version ${latest} is available (you are on ${current})`,
         selfPendingRestart: (version: string) =>
             `${version} downloaded — restart Obsidian to apply it`,
         selfUpdating: "Downloading the new version…",
         selfUpdateDone: (version: string) =>
-            `OBSync ${version} downloaded — restart Obsidian to apply it`,
-        selfCheckFailed: (reason: string) => `Could not check for OBSync updates: ${reason}`,
-        selfUpdateFailed: "Failed to update OBSync",
+            `SyncHub ${version} downloaded — restart Obsidian to apply it`,
+        selfCheckFailed: (reason: string) => `Could not check for SyncHub updates: ${reason}`,
+        selfUpdateFailed: "Failed to update SyncHub",
     },
 
     sync: {
@@ -518,15 +518,15 @@ export const en = {
         conflictDetected: (count: number) =>
             `${count} conflicted file(s) detected. A conflict list has been written; resolve them and commit manually.`,
 
-        cmdSync: "OBSync: Sync now (commit → pull → push)",
-        cmdCommit: "OBSync: Commit all changes",
-        cmdPush: "OBSync: Push to remote",
-        cmdPull: "OBSync: Pull from remote",
-        cmdInit: "OBSync: Initialize repository",
-        cmdAbortMerge: "OBSync: Abort current merge (conflict recovery)",
-        cmdEditRemote: "OBSync: Edit remote URL",
-        cmdOpenFileOnRemote: "OBSync: Open current file in browser",
-        cmdOpenFileHistoryOnRemote: "OBSync: View current file history in browser",
+        cmdSync: "SyncHub: Sync now (commit → pull → push)",
+        cmdCommit: "SyncHub: Commit all changes",
+        cmdPush: "SyncHub: Push to remote",
+        cmdPull: "SyncHub: Pull from remote",
+        cmdInit: "SyncHub: Initialize repository",
+        cmdAbortMerge: "SyncHub: Abort current merge (conflict recovery)",
+        cmdEditRemote: "SyncHub: Edit remote URL",
+        cmdOpenFileOnRemote: "SyncHub: Open current file in browser",
+        cmdOpenFileHistoryOnRemote: "SyncHub: View current file history in browser",
 
         // File context menu
         menuOpenOnRemote: "Open on remote",
@@ -548,8 +548,8 @@ export const en = {
 
         // Sidebar detail view (see the zh-CN locale for why these exist).
         // `cmdOpenView` and `viewTitle` must stay separate: command names need the
-        // OBSync prefix to be findable in the command palette, panel titles do not.
-        cmdOpenView: "OBSync: Open repository sync panel",
+        // SyncHub prefix to be findable in the command palette, panel titles do not.
+        cmdOpenView: "SyncHub: Open repository sync panel",
         statusBarHint: "Click to open the repository sync panel",
         actRefresh: "Refresh",
         actInit: "Initialise repository",
@@ -592,16 +592,21 @@ export const en = {
         // ── .gitignore ──
         gitignoreCreated:
             "Created a .gitignore (it excludes Obsidian's workspace state files, which would otherwise cause conflicts between devices).",
-        cmdEditGitignore: "OBSync: Edit .gitignore",
+        cmdEditGitignore: "SyncHub: Edit .gitignore",
         /** Contents of the .gitignore written when initialising a repository. */
         gitignoreTemplate: [
-            "# Created by OBSync.",
+            "# Created by SyncHub.",
             "",
             "# Obsidian's workspace layout (panels, tabs, cursor positions). It is",
             "# per-device; syncing it only creates conflicts — the single most common",
             "# pitfall when syncing a vault across devices.",
             ".obsidian/workspace.json",
             ".obsidian/workspace-mobile.json",
+            "",
+            "# This plugin's own settings (sync interval, pull strategy…). They are",
+            "# per-device; syncing them only makes two devices overwrite each other's",
+            "# settings.",
+            ".obsidian/plugins/synchub/data.json",
             "",
             "# Obsidian's trash",
             ".trash/",
@@ -642,9 +647,9 @@ export const en = {
             gitOk: "Available",
             gitFailed: (detail: string) => `Not available: ${detail}`,
             repoOk: "Initialised",
-            repoFailed: 'Not initialised yet — run the "OBSync: Initialise repository" command first',
+            repoFailed: 'Not initialised yet — run the "SyncHub: Initialise repository" command first',
             remoteOk: (url: string) => url,
-            remoteFailed: 'Not configured — set it with the "OBSync: Edit remote URL" command',
+            remoteFailed: 'Not configured — set it with the "SyncHub: Edit remote URL" command',
             platformOk: (host: string) => `${host}, access token configured`,
             platformNoToken: (host: string) =>
                 `${host}, **no access token configured** — public repositories will work, private ones will fail`,
@@ -653,15 +658,15 @@ export const en = {
             accessOk: (count: string) => `Reachable, read ${count} branch(es)`,
         },
 
-        conflictGuideFile: "OBSync conflict guide.md",
+        conflictGuideFile: "SyncHub conflict guide.md",
         conflictGuideTitle: "Sync conflict guide",
         conflictGuideIntro:
             "The following files were changed both locally and remotely, and git could not decide which side to keep. Conflict regions are marked with <<<<<<< and >>>>>>> inside the files.",
         conflictGuideFiles: "Conflicted files:",
         conflictGuideResolve:
-            "How to resolve: open each file, edit the conflicted region to keep what you want (remove the marker lines), then run \"OBSync: Sync now\" — the resolution will be committed and pushed.",
+            "How to resolve: open each file, edit the conflicted region to keep what you want (remove the marker lines), then run \"SyncHub: Sync now\" — the resolution will be committed and pushed.",
         conflictGuideAbort:
-            "To discard this merge and return to the pre-pull state, run \"OBSync: Abort current merge\".",
-        conflictGuideFooter: (time: string) => `Generated automatically by OBSync at ${time}. Safe to delete once resolved.`,
+            "To discard this merge and return to the pre-pull state, run \"SyncHub: Abort current merge\".",
+        conflictGuideFooter: (time: string) => `Generated automatically by SyncHub at ${time}. Safe to delete once resolved.`,
     },
 } satisfies LocaleStrings;

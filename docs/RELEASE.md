@@ -31,10 +31,10 @@ pnpm verify:mobile  # 构建 + 用真实产物验证「移动端能加载」（�
 
 - [ ] 在测试库里**手动点一遍**两个功能的入口：安装器弹窗能打开、设置页四个标签能切、
       同步命令出现在命令面板里
-- [ ] `manifest.json` 的 `id` 仍是 `ob-sync`（改 id 等于换插件，用户数据会断；
+- [ ] `manifest.json` 的 `id` 仍是 `synchub`（改 id 等于换插件，用户数据会断；
       发布件里的 manifest 与仓库里的这份必须一致，否则市场校验不过）
 - [ ] 中英文都扫一眼：把语言切成 English，确认没有中文残留
-- [ ] 设置页「OBSync 自身」：点一次「检查更新」，版本号应与 `manifest.json` 一致
+- [ ] 设置页「SyncHub 自身」：点一次「检查更新」，版本号应与 `manifest.json` 一致
       （这条同时验了发布件里的 manifest 与仓库坐标没写错）
 - [ ] **在真实库里走一遍主题链路**：绑定一个已装主题（来源应被识别）→ 检查更新 →
       更新后你当前用的主题**不应该变** → 点「取消绑定」后主题目录与文件必须还在（它不删文件）
@@ -122,10 +122,10 @@ git -c credential.helper= \
 export GH_TOKEN="$(gh auth token)"
 
 # 只推「当前 HEAD 这一个提交」（远端已有它的父提交时用这个）
-node scripts/api-push.mjs Dyse-Sofqi/OBSync main "$(git rev-parse HEAD)"
+node scripts/api-push.mjs Dyse-Sofqi/SyncHub main "$(git rev-parse HEAD)"
 
 # 远端落后很多、要把整段历史都推上去时用这个（逐个提交重放）
-node scripts/api-replay.mjs Dyse-Sofqi/OBSync <远端当前 sha> "$(git rev-parse HEAD)"
+node scripts/api-replay.mjs Dyse-Sofqi/SyncHub <远端当前 sha> "$(git rev-parse HEAD)"
 ```
 
 两个脚本的共同点：**author / committer（含时区）/ message 全部照抄本地提交**，
@@ -166,7 +166,7 @@ cat > /tmp/release.json <<'JSON'
 }
 JSON
 
-gh api repos/Dyse-Sofqi/OBSync/releases --method POST --input /tmp/release.json
+gh api repos/Dyse-Sofqi/SyncHub/releases --method POST --input /tmp/release.json
 ```
 
 ⚠ **release body 用 `--input <文件>` 传，不要用 `-f body=...`** ——
@@ -191,17 +191,17 @@ gh release upload X.Y.Z main.js manifest.json styles.css
 
 ```bash
 export GH_TOKEN="$(gh auth token)"
-REL=$(gh api repos/Dyse-Sofqi/OBSync/releases/tags/X.Y.Z --jq .id)
+REL=$(gh api repos/Dyse-Sofqi/SyncHub/releases/tags/X.Y.Z --jq .id)
 for f in main.js manifest.json styles.css; do
   curl --retry 5 --retry-all-errors -X POST \
     -H "Authorization: Bearer $GH_TOKEN" \
     -H "Content-Type: application/octet-stream" \
     --data-binary "@$f" \
-    "https://uploads.github.com/repos/Dyse-Sofqi/OBSync/releases/$REL/assets?name=$f"
+    "https://uploads.github.com/repos/Dyse-Sofqi/SyncHub/releases/$REL/assets?name=$f"
 done
 ```
 
-### Gitee 镜像（`sofqi/OBSync`）：代码与标签会自动同步，**release 不会**
+### Gitee 镜像（`sofqi/SyncHub`）：代码与标签会自动同步，**release 不会**
 
 Gitee 那边开了 GitHub 同步镜像，所以**提交与标签会自己过来**
 （实测：`git ls-remote --tags gitee` 里已经有 `0.1.1`，而本地其实从没建过这个 tag），
@@ -209,7 +209,7 @@ Gitee 那边开了 GitHub 同步镜像，所以**提交与标签会自己过来*
 
 ```bash
 # 仓库已经加好了（URL 里不带凭据，凭据只在下面那一次命令里现给）
-git remote -v | grep gitee      # → https://gitee.com/sofqi/OBSync.git
+git remote -v | grep gitee      # → https://gitee.com/sofqi/SyncHub.git
 ```
 
 ⚠ **Gitee 的「创建发行版」接口没有 `files` 参数**：传 `-F files=@main.js` 会被**静默忽略**
@@ -240,7 +240,7 @@ GITEE_TOKEN="<私人令牌>" pnpm gitee:release X.Y.Z
 ```bash
 for f in main.js manifest.json styles.css; do
   curl -sL -o "$TEMP/dl-$f" -w "%{http_code} %{size_download}\n" \
-    "https://gitee.com/sofqi/OBSync/releases/download/X.Y.Z/$f"
+    "https://gitee.com/sofqi/SyncHub/releases/download/X.Y.Z/$f"
 done
 ```
 
@@ -266,7 +266,7 @@ git -c credential.helper= \
 用 API 读回元信息（含服务端算的 sha256），与本地比对：
 
 ```bash
-gh api repos/Dyse-Sofqi/OBSync/releases/tags/X.Y.Z \
+gh api repos/Dyse-Sofqi/SyncHub/releases/tags/X.Y.Z \
     --jq '.assets[] | "\(.name)  \(.size)  \(.digest)"'
 
 # 本地
@@ -283,7 +283,7 @@ sha256sum main.js manifest.json styles.css
 首版可以照这个改：
 
 ```markdown
-OBSync 把两件事合在一起：**用 git 同步笔记仓库** + **安装社区插件**，
+SyncHub 把两件事合在一起：**用 git 同步笔记仓库** + **安装社区插件**，
 并且把两者从「仅 GitHub」扩展到「GitHub / Gitee 双平台」，界面中文优先。
 
 ## 主要能力
@@ -294,7 +294,7 @@ OBSync 把两件事合在一起：**用 git 同步笔记仓库** + **安装社�
 
 ## 安装
 下载 `main.js` / `manifest.json` / `styles.css`，放进
-`<你的库>/.obsidian/plugins/ob-sync/`，然后在 Obsidian 里启用。
+`<你的库>/.obsidian/plugins/synchub/`，然后在 Obsidian 里启用。
 
 ## 要求
 - Obsidian ≥ 1.8.7

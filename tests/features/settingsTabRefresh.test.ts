@@ -35,7 +35,7 @@ function createTab(fake: FakeApp): TabHandle {
 
     const plugin = {
         app: fake.app,
-        manifest: { id: "ob-sync", version: "0.9.0" },
+        manifest: { id: "synchub", version: "0.9.0" },
         t: zhCN,
         settings: normalizeSettings({}),
         notifier,
