@@ -33,7 +33,7 @@ import type { SelfUpdateCheck } from "./types";
  *
  * 写死在代码里，不从 manifest / authorUrl 推导 —— manifest 没有 repo 字段，
  * 而 `authorUrl` 是作者主页。也正因如此，`updateSelf` 在写盘前必须校验远端
- * manifest 的 id 是不是 `synchub`：这个常量万一指错了地方，拦住远比
+ * manifest 的 id 是不是 `ob-sync`：这个常量万一指错了地方，拦住远比
  * 按错的 id 去解析目录、覆盖掉别的插件强。
  */
 export const SELF_REPO: RepoRef = {
@@ -48,21 +48,24 @@ export const SELF_REPO: RepoRef = {
  * 两个用途：绑定列表跳过自己（`existingPlugins.ts`），
  * 以及自我更新时校验远端身份（不是这个 id 就不写盘）。
  *
- * ## id 的来历（`obsync` → `ob-sync` → `synchub`）
- *
- * 三度改名，每次都为了不同的原因，别把结论记混：
+ * ## id 的来历（**别再改它了**）
  *
  * 1. `obsync` → `ob-sync`（0.1.4）：插件市场里 `obsync` **已被别的插件占用**，
  *    id 撞车的插件无法上架。
- * 2. `ob-sync` → `synchub`（0.1.5）：插件名从 `OBSync` 改成 `SyncHub`（商标原因，
- *    见 `docs/HANDOVER.md` 第十节），id 跟着统一。
+ * 2. 0.1.5 曾改成 `synchub`（想与显示名 SyncHub 统一），**0.1.6 又回退了** ——
+ *    社区审核报 *The plugin ID in (manifest.json) does not match the existing
+ *    plugin ID* ：审核系统在 0.1.4 那次提交时就把本插件登记为 `ob-sync`，
+ *    **id 是与既有登记绑定的，不是想改就能改**。
+ *
+ * 所以：**id 就定在 `ob-sync`**。它与显示名 `SyncHub` 不一致是**有意的** ——
+ * 审核登记决定了 id，商标规则决定了显示名，两者各有各的来源，不必也不该统一。
  *
  * 它与那些 `obsync-` 前缀的内部标识（CSS 类名、`obsync-sync-view` 视图类型、
- * `obsync-token-` 密钥 id）**刻意不一致**：后者是各自的命名空间，不是插件身份，
+ * `obsync-token-` 密钥 id）同样刻意不一致：后者是各自的命名空间，不是插件身份，
  * 跟着改只会白白作废用户已存的令牌与视图状态。换句话说，看到 `obsync-` 不必跟着改
  * —— 只有这一个常量跟着 manifest 走。
  */
-export const SELF_PLUGIN_ID = "synchub";
+export const SELF_PLUGIN_ID = "ob-sync";
 
 /**
  * 这次该从哪个仓库更新自己。

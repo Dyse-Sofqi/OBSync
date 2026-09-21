@@ -127,7 +127,7 @@ export const en = {
             selfSourceDesc:
                 "Empty = the official repository (github.com/Dyse-Sofqi/SyncHub). If GitHub is slow " +
                 "or blocked, enter a mirror address — it is then used every time, with no automatic " +
-                "probing. Before writing, the remote manifest's id must be synchub, so a wrong " +
+                "probing. Before writing, the remote manifest's id must be ob-sync, so a wrong " +
                 "address cannot overwrite another plugin.",
             selfSourcePlaceholder: "https://gitee.com/sofqi/SyncHub",
             mirrorDiscovery: "Discover Gitee mirrors",
@@ -350,7 +350,7 @@ export const en = {
             cannotEnablePlugin:
                 "This version of Obsidian does not allow a plugin to enable other plugins.",
             selfIdMismatch: (repo: string, id: string) =>
-                `The plugin id in ${repo} is "${id}", not SyncHub itself (synchub) — the update was aborted so it cannot overwrite another plugin.`,
+                `The plugin id in ${repo} is "${id}", not SyncHub itself (ob-sync) — the update was aborted so it cannot overwrite another plugin.`,
             selfUpdateDowngrade: (current: string, latest: string) =>
                 `The latest remote version ${latest} is older than the running ${current}; aborted — updating should not downgrade you.`,
             communityIndexFailed: (status: number) =>
@@ -606,7 +606,7 @@ export const en = {
             "# This plugin's own settings (sync interval, pull strategy…). They are",
             "# per-device; syncing them only makes two devices overwrite each other's",
             "# settings.",
-            ".obsidian/plugins/synchub/data.json",
+            ".obsidian/plugins/ob-sync/data.json",
             "",
             "# Obsidian's trash",
             ".trash/",

@@ -166,9 +166,9 @@ describe("resolveBindCandidates", () => {
                     minAppVersion: "1.5.0",
                 }),
             }),
-            ...seedPlugin("synchub", {
+            ...seedPlugin("ob-sync", {
                 "manifest.json": JSON.stringify({
-                    id: "synchub",
+                    id: "ob-sync",
                     name: "SyncHub",
                     version: "0.1.0",
                     minAppVersion: "1.5.0",

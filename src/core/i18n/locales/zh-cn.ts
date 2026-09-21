@@ -155,7 +155,7 @@ export const zhCN = {
             selfSourceDesc:
                 "留空 = 官方仓库（github.com/Dyse-Sofqi/SyncHub）。国内访问 GitHub 慢或被阻断时，" +
                 "可以填 Gitee 镜像的地址 —— 填一次就一直用它，不再自动探测。" +
-                "更新前会校验远端 manifest 的 id 必须是 synchub，所以地址填错不会覆盖别的插件。",
+                "更新前会校验远端 manifest 的 id 必须是 ob-sync，所以地址填错不会覆盖别的插件。",
             selfSourcePlaceholder: "https://gitee.com/sofqi/SyncHub",
             mirrorDiscovery: "自动发现 Gitee 镜像",
             mirrorDiscoveryDesc: "安装 GitHub 插件时，探测 Gitee 上的镜像仓库：同名仓库，以及你 Gitee 账号下的同名仓库（后者需要先填 Gitee 令牌）。命中则改用镜像源下载，国内速度更快。",
@@ -455,7 +455,7 @@ export const zhCN = {
                 `写入${of}「${id}」失败，且还原也失败。请手动检查它的目录。`,
             cannotEnablePlugin: "当前 Obsidian 版本不支持通过插件启用其他插件。",
             selfIdMismatch: (repo: string, id: string) =>
-                `${repo} 里的插件 id 是「${id}」，不是 SyncHub 自己（synchub）—— 已中止更新，以免覆盖别的插件。`,
+                `${repo} 里的插件 id 是「${id}」，不是 SyncHub 自己（ob-sync）—— 已中止更新，以免覆盖别的插件。`,
             selfUpdateDowngrade: (current: string, latest: string) =>
                 `远端最新版本 ${latest} 比当前运行的 ${current} 旧，已中止 —— 「更新」不该把你降级。`,
             communityIndexFailed: (status: number) =>
@@ -743,7 +743,7 @@ export const zhCN = {
             "",
             "# 本插件自己的设置（同步间隔、拉取策略…）。这些是**按设备**的，",
             "# 同步它只会让两台设备互相覆盖设置。",
-            ".obsidian/plugins/synchub/data.json",
+            ".obsidian/plugins/ob-sync/data.json",
             "",
             "# Obsidian 的回收站",
             ".trash/",

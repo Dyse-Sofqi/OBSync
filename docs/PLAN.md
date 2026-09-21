@@ -9,7 +9,7 @@
 | --- | --- |
 | 移动端支持 | **不支持**。v1 仅桌面，Git 同步只用系统 git（`simple-git`） |
 | 交付节奏 | **分阶段，逐段验收** |
-| 插件标识 | `synchub` / **SyncHub** |
+| 插件标识 | `ob-sync` / **SyncHub** |
 | Gitee 插件发现 | 手动输入 **+ 加做 GitHub→Gitee 镜像自动发现** |
 
 ---
@@ -243,7 +243,7 @@ AnubisNekhet/AnuPpuccin `1.5.0`），Minimal 还有 21 个与版本号同名的 
 失败就停在「已禁用」。所以由用户重启完成剩下的事，并用一个持久化的
 「待重启」标记在那段时间里如实提示（重启后自动清除）。
 
-两道守卫：远端 manifest 的 id 必须是 `synchub`（仓库坐标写死在
+两道守卫：远端 manifest 的 id 必须是 `ob-sync`（仓库坐标写死在
 `selfUpdate.ts` 的 `SELF_REPO`，指错地方会覆盖别的插件）；不允许降级，
 但允许同版本重装（修复一个坏掉的安装）。
 

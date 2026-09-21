@@ -464,7 +464,7 @@ export class PluginSettingTab {
  */
 export class Plugin {
     app: unknown = {};
-    manifest = { id: "synchub", version: "0.0.0" };
+    manifest = { id: "ob-sync", version: "0.0.0" };
     /** 记录注册了什么，供冒烟测试断言。 */
     readonly registered = {
         commands: [] as Array<{ id: string; name: string }>,

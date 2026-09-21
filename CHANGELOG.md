@@ -8,6 +8,29 @@
 
 ---
 
+## [0.1.6] — 2026-09-21
+
+### 修复
+
+- **插件 id 回退为 `ob-sync`**（0.1.5 里改成了 `synchub`）—— 社区审核报
+  *The plugin ID in (manifest.json) does not match the existing plugin ID*：
+  **审核系统在 0.1.4 那次提交时就把本插件登记为 `ob-sync`**，之后改 id 就与既有登记不匹配。
+
+  显示名 **SyncHub 保持不变**（商标那条已经过了，本次审核没有再报名字问题）。
+  所以最终形态是：**显示名 `SyncHub` + id `ob-sync`** —— 两者不一致是**有意的**：
+  审核登记决定 id，商标规则决定显示名，来源不同，不必也不该统一。
+
+  **升级注意（如果你装过 0.1.5）**：安装目录会从
+  `.obsidian/plugins/synchub/` 回到 `.obsidian/plugins/ob-sync/`，
+  请把 `data.json` 复制回去（否则会以默认设置启动），并删掉 `synchub/` 目录。
+
+  **访问令牌始终不受影响**：它们存在 `obsync-token-*` 这个密钥 id 下，
+  与插件 id 无关 —— 这一来一回都没有作废过凭据。
+
+[0.1.6]: https://github.com/Dyse-Sofqi/SyncHub/releases/tag/0.1.6
+
+---
+
 ## [0.1.5] — 2026-09-21
 
 ### 变更

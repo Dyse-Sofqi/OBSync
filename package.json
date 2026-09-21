@@ -1,12 +1,12 @@
 {
-  "name": "synchub",
-  "version": "0.1.5",
+  "name": "ob-sync",
+  "version": "0.1.6",
   "description": "Sync your vault with GitHub or Gitee, and install community plugins from both.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "pnpm check && pnpm lint:review && pnpm typecheck && node esbuild.config.mjs production",
-    "build:both": "cross-env OBSYNC_DEPLOY_DIR=\"F:/_Workspace/Plugin-Test/.obsidian/plugins/synchub;D:/_Workspace/learning-records/.obsidian/plugins/synchub\" pnpm build",
+    "build:both": "cross-env OBSYNC_DEPLOY_DIR=\"F:/_Workspace/Plugin-Test/.obsidian/plugins/ob-sync;D:/_Workspace/learning-records/.obsidian/plugins/ob-sync\" pnpm build",
     "typecheck": "tsc --noEmit --skipLibCheck",
     "check": "node scripts/checks.mjs",
     "lint": "eslint .",

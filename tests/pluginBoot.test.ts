@@ -22,7 +22,7 @@ import { createFakeApp, type FakeApp } from "./helpers/fakeApp";
  */
 
 const MANIFEST = {
-    id: "synchub",
+    id: "ob-sync",
     name: "SyncHub",
     version: "0.1.0",
     minAppVersion: "1.5.0",

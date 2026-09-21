@@ -25,7 +25,7 @@
 
 ## 一、项目是什么
 
-单个 Obsidian 插件（id `synchub`），把两个参考项目的能力合并并扩展：
+单个 Obsidian 插件（id `ob-sync`），把两个参考项目的能力合并并扩展：
 
 | 能力 | 复刻自 | 扩展点 |
 | --- | --- | --- |
@@ -38,8 +38,8 @@
 
 1. **仅桌面**。Git 同步只用系统 git（simple-git），不做 isomorphic-git。
 2. **分阶段交付，逐段验收**。
-3. 插件标识：显示名 **SyncHub**、id **`synchub`**（两者已统一）。
-   id 的历史是 `obsync` → `ob-sync` → `synchub`：第一次因市场重名，第二次为与显示名统一，
+3. 插件标识：显示名 **SyncHub**、id **`ob-sync`**（两者已统一）。
+   id 的历史是 `obsync` → `ob-sync` → `ob-sync`：第一次因市场重名，第二次为与显示名统一，
    详见第十节；唯一事实来源是 `selfUpdate.ts` 的 `SELF_PLUGIN_ID`。
 4. Gitee 插件发现 = 手动输入 + GitHub→Gitee 镜像自动发现。
 
@@ -225,7 +225,7 @@ commit 是本地历史、随时能 `git reset`，**push 才是「别人能看到
 > ⚠ 别改回 `require("./features/sync")`：Obsidian 桌面端能用，但测试环境是 ESM，
 > `require` 不存在，启动测试会全部失败。（试过，踩了。）
 
-- 部署目标默认 `F:/_Workspace/Plugin-Test/.obsidian/plugins/synchub`；环境变量
+- 部署目标默认 `F:/_Workspace/Plugin-Test/.obsidian/plugins/ob-sync`；环境变量
   `OBSYNC_DEPLOY_DIR` 可覆盖，而且**接受多个目录**（`;` 分隔）—— `pnpm build:both`
   就是「同时部署到测试库与真实库」那条命令。设空串跳过；某个目标写失败只警告，
   既不中断构建、也不影响另一个目标。**只复制三个产物，永远不碰 `data.json`。**
@@ -540,7 +540,7 @@ src/
 
 | 规则 | 为什么 |
 | --- | --- |
-| 远端 manifest 的 id 必须是 `synchub` | `SELF_REPO` 是写死的常量（manifest 没有 repo 字段），万一指错地方，按错的 id 解析目录会**覆盖别的插件** |
+| 远端 manifest 的 id 必须是 `ob-sync` | `SELF_REPO` 是写死的常量（manifest 没有 repo 字段），万一指错地方，按错的 id 解析目录会**覆盖别的插件** |
 | 不允许降级（远端比当前旧就中止） | 「更新」不该把用户降回旧版本 |
 | 允许**同版本重装** | 把一个坏掉的安装修回来是合理需求 |
 
@@ -854,7 +854,7 @@ gitee 镜像下载的选择**」。两件事在同一句话里：GitHub 资产�
 - **`.gitignore` 那条是回退，不是遗漏**：测试库那份旧 `.gitignore` 里明确有
   `.obsidian/plugins/gitee-sync-plus/data.json`（和 `workspace.json` 写在同一段注释下），
   而 `gitignoreTemplate` 只有前两条 —— 改插件 id 时漏搬了。现在补的是
-  `.obsidian/plugins/synchub/data.json`。
+  `.obsidian/plugins/ob-sync/data.json`。
   **刻意不写成 `*/data.json`**：那会波及用户库里其他插件的设置，不该替他决定。
 - **硬防护在 `Automatics.start()`，不在设置页**：`AutomaticsSettings` 新增
   `syncStrategy` 字段，为 `reset` 时一个定时器都不起。这是**同一个坑的第二次** ——
@@ -1643,7 +1643,7 @@ lint 只开这两条、其余显式关闭（`eslint.review.config.mjs`），因�
 
 | 字段 | 结果 |
 | --- | --- |
-| `id` = `synchub` | 通过 |
+| `id` = `ob-sync` | 通过 |
 | `name` = `OBSync` | **通过**（不含 `obsidian`） |
 | `description` | 命中 `plugin`（但见下，这不是问题） |
 
@@ -1684,42 +1684,57 @@ lint 只开这两条、其余显式关闭（`eslint.review.config.mjs`），因�
 | --- | --- | --- | --- |
 | 显示名（manifest `name` / 状态栏 / 命令名 / i18n / README / CHANGELOG） | `OBSync` | `SyncHub` | 改 |
 | 自我更新仓库坐标（`selfUpdate.ts` 的 `repo`、发布脚本的 `OWNER_REPO`、占位符 URL） | `OBSync` | `SyncHub` | 改（仓库同步改名） |
-| 插件 id（manifest `id`、安装目录） | `ob-sync` | `synchub` | **同日再改一次**，见下 |
+| 插件 id（manifest `id`、安装目录） | `ob-sync` | `ob-sync` | **改过一次又回退了**，见下 |
 | 内部前缀（`obsync-` CSS 类、`obsync-sync-view`、`obsync-token-`） | `obsync-` | `obsync-` | **一律不改** |
 
 显示名改名共 284 处、36 个文件。**没有用全局无脑替换**：脚本只替换大小写敏感的
 `OBSync`，小写 `obsync-` 前缀天然不受影响；且排除了构建产物与按日期归档的工作日志。
 
-### id 为什么又改了一次（`ob-sync` → `synchub`）
+### id 改过一次，又回退了（**这是本节最重要的一条**）
 
-显示名改完后用户要求"统一一下"。**这不是审核要求的** —— 上面那张表已经证明
-商标规则不管 id，`obsync-ptop` 那批就是活证据。改的理由是**趁便宜**：
+0.1.5 里把 id 从 `ob-sync` 改成了 `synchub`，想与显示名统一；**0.1.6 全部回退**。
 
-- 插件**还没进目录**（0.1.4 被打回），全世界的安装只有用户自己的两个库，
-  改 id 只需迁移这两处。等上架之后再改，代价就是所有用户的数据；
-- `synchub` 这个 id 在目录里**空闲**（已查：无同名、无 id 冲突）。
+**审核报的错**：
 
-**代价（已实际处理）**：Obsidian 按 id 找插件，安装目录从 `plugins/ob-sync/`
-变成 `plugins/synchub/`，而 `data.json`（设置 + 跟踪列表）**不会自动跟着走** ——
-不迁移就是静默丢配置。两个库的 `data.json` 已搬到新目录。
+> The plugin ID in (manifest.json) does not match the existing plugin ID
+> (`synchub` ≠ `ob-sync`)
 
-**令牌不受影响**：SecretStorage 的密钥 id 是 `obsync-token-*`，与插件 id 无关，
-所以已存令牌照旧可用。这正是内部前缀**刻意不改**的价值。
+**根因 —— 我当时的核查对象选错了**：
 
-**自我更新的一个后果**：旧安装（id `ob-sync`）跑自我更新时，它自己的
-`SELF_PLUGIN_ID` 是 `ob-sync`，而远端 manifest 的 id 已是 `synchub` ——
-守卫会**拒绝**这次更新（它的职责正是"远端 id 不是我就不写盘"）。
-所以跨 id 这一跳**必须手动重装**，不能靠自我更新；重装之后两边 id 又一致，
-后续自我更新恢复正常。
+我查的是 `community-plugins.json`（**已发布**目录），见 `ob-sync` 不在其中，
+就判断"插件还没进目录 → 现在改 id 最便宜"。但**审核系统记录插件用的是提交记录**，
+它跨多次打回一直保留 —— 这跟"是否已出现在已发布目录里"是两回事。
+0.1.4 那次提交已经把 `ob-sync` 登记进去了。
+
+| 我核对的 | 实际决定 id 的 |
+| --- | --- |
+| `community-plugins.json`（已发布目录）—— 查不到 | **审核系统的提交记录** —— 已有 `ob-sync` |
+
+教训：**"没进目录"不等于"没有既有身份"。** 提交记录是一个独立、且长期存在的状态，
+判断"某字段能不能改"时必须以它为准 —— 而它只能通过审核报错看到，
+**所以凡是与插件身份相关的字段（id），在被明确要求之前不要动**。
+
+**结论（写进 `MEMORY.md` 与 `selfUpdate.ts`）**：id 定在 `ob-sync`，
+**它与显示名 `SyncHub` 不一致是有意的** —— 审核登记决定 id，商标规则决定显示名，
+两者来源不同，不必也不该统一。
+
+**顺带说明**：id 里有小写 `ob` 不影响审核 —— 目录里 `obsync-ptop`、
+`obsync-webdav-gpg` 等一大批 id 含 `obsync` 照旧在架，商标规则只管显示名。
+
+**内部前缀始终没动**：`obsync-token-*` 与插件 id 无关，所以这一来一回
+**用户的访问令牌一次都没受影响**。
+
+**自我更新**：0.1.5 的安装（id `synchub`）无法靠"检查更新"跨回 `ob-sync`
+（守卫会拒绝 id 不匹配的远端），需要手动重装一次；0.1.6 之后 id 重新稳定。
 
 ### 顺手发现的两处（都不在审核清单里）
 
 1. **`scripts/gitee-release.mjs` 写死了仓库名** `sofqi/OBSync`。仓库一改名，
    `pnpm gitee:release` 就会打到旧路径上 —— 已同步改为 `sofqi/SyncHub`。
    另有两个发布脚本的 User-Agent 一并更新。
-2. **`MEMORY.md` 里的 id 是过期的**（写着 `obsync`，而 0.1.4 起是 `ob-sync`、
-   0.1.5 起是 `synchub`）。已修正，并把「名字的三层区分」写成长期约定。
-3. **`en` 的 `.gitignore` 模板比 `zh-cn` 少一条**（见下方"待办"）—— 未改。
+2. **`MEMORY.md` 里的 id 是过期的**（写着 `obsync`，而 0.1.4 起是 `ob-sync`）。
+   已修正，并把「名字的三层区分」写成长期约定。
+3. **`en` 的 `.gitignore` 模板比 `zh-cn` 少一条** —— 0.1.5 已补齐（见下方"待办"）。
 
 ### 已核实但**不是**问题的
 
@@ -1727,21 +1742,16 @@ lint 只开这两条、其余显式关闭（`eslint.review.config.mjs`），因�
 但目录里 **7884 个有 5362 个** description 含 "plugin"、**5348 个**含 "obsidian"，
 说明该规则实际并未执行。**不改**，免得为了消一个不存在的告警把文案改别扭。
 
-### 待办（需要人来定）
+### 待办
 
-- **版本号未动**：`manifest.json` / `package.json` / `versions.json` 仍是 `0.1.4`，
-  CHANGELOG 的新条目挂在「未发布」下。重新提交审核前需要决定是否升到 `0.1.5`
-  并按 `docs/RELEASE.md` 走一遍发版。
+- **版本号**：0.1.5 已发（含 id 改动），0.1.6 为 id 回退版。发布流程见 `docs/RELEASE.md`。
 - **仓库改名已完成**（GitHub / Gitee 上 `OBSync` → `SyncHub`，旧地址自动重定向，
   所以已装用户的自我更新不会断）。若你把设置页的「自身更新来源」手填成了
   `.../OBSync`，需要改成 `.../SyncHub`。
-- **`en` 的 `.gitignore` 模板比 `zh-cn` 少一条**（**真 bug，未改**）：`zh-cn` 的模板
-  里有 `.obsidian/plugins/synchub/data.json`（本插件自己的设置，按设备、不该同步），
-  **`en` 的模板里根本没有这一条**。i18n 的编译期检查只管**键结构**、不管字符串内容，
-  所以这条漂移一直没被发现。后果：英文用户的 `.gitignore` 不会排除插件自己的
-  `data.json`，于是设置会被同步 —— 正是该模板注释里警告的"两台设备互相覆盖设置"。
-  修法是一行（给 `en` 补上同一条），但它会改变英文用户初始化仓库时写入的文件内容，
-  属于 i18n 内容变更，留给人决定。
+- ~~**`en` 的 `.gitignore` 模板比 `zh-cn` 少一条**~~ —— **0.1.5 已修**：
+  给 `en` 补上了 `.obsidian/plugins/ob-sync/data.json` 这条排除项，中英模板现在一致。
+  （这条漂移能长期存在，是因为 i18n 的编译期检查只管**键结构**、不管字符串内容 ——
+  记在这里当提醒：**结构一致不等于内容一致**。）
 
 ## 十一、交接习惯（沿用 WorkBuddy 的做法）
 

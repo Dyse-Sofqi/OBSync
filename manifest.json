@@ -1,7 +1,7 @@
 {
-  "id": "synchub",
+  "id": "ob-sync",
   "name": "SyncHub",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "minAppVersion": "1.8.7",
   "description": "Sync your vault with GitHub or Gitee, and install community plugins from both.",
   "author": "Dyse-Sofqi",

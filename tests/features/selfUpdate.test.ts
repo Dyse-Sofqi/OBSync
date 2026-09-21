@@ -33,7 +33,7 @@ import { expectInstallerError } from "../helpers/expectInstallerError";
  *    这段代码的实例 —— 能成也是靠副作用成功，失败就停在「已禁用」。所以这里
  *    只写文件 + 记「待重启」。这条如果被谁改回 reload，本文件会红。
  * 2. **不把自己记进跟踪列表**（那张表是「用户装了什么」）。
- * 3. 两道守卫：远端 id 必须是 `synchub`（常量写错时会覆盖别的插件）、不允许降级。
+ * 3. 两道守卫：远端 id 必须是 `ob-sync`（常量写错时会覆盖别的插件）、不允许降级。
  * 4. 「待重启」标记与写盘同生共死：写失败回滚了就不能留下标记。
  */
 
@@ -87,14 +87,14 @@ function createService(fake: FakeApp): {
 }
 
 const OLD_MANIFEST = JSON.stringify({
-    id: "synchub",
+    id: "ob-sync",
     name: "SyncHub",
     version: "0.1.0",
     minAppVersion: "1.8.7",
 });
 
 function releaseJson(input: { version: string; id?: string; mainJs?: string }): string {
-    const id = input.id ?? "synchub";
+    const id = input.id ?? "ob-sync";
     const assets = [
         { name: "manifest.json", url: "https://dl.test/manifest.json" },
         { name: "main.js", url: "https://dl.test/main.js" },
@@ -148,7 +148,7 @@ function setupSelfRelease(input: { version: string; id?: string; mainJs?: string
 }
 
 function installedObsync(): Record<string, string> {
-    return seedPlugin("synchub", {
+    return seedPlugin("ob-sync", {
         "manifest.json": OLD_MANIFEST,
         "main.js": "// old main",
     });
@@ -158,19 +158,19 @@ describe("updateSelf（更新自己）", () => {
     it("写入新文件、记下待重启，且**不重载、不记入跟踪列表**", async () => {
         const fake = createFakeApp(installedObsync());
         const { service, settings } = createService(fake);
-        await fake.plugins.enablePluginAndSave("synchub"); // 运行中
+        await fake.plugins.enablePluginAndSave("ob-sync"); // 运行中
         setupSelfRelease({ version: "0.2.0" });
 
         const result = await service.updateSelf("0.1.0");
 
         expect(result).toEqual({ version: "0.2.0", replaced: true });
-        expect(readPluginFile(fake, "synchub", "main.js")).toBe("// main 0.2.0");
+        expect(readPluginFile(fake, "ob-sync", "main.js")).toBe("// main 0.2.0");
 
         // 磁盘上已是新版本，运行中的还是旧的 —— 标记是这段时间的唯一凭据
         expect(settings.installer.pendingRestartVersion).toBe("0.2.0");
 
         // **没有**被禁用/重载（`reloadPlugin` 会先 disable 再 enable）
-        expect(fake.plugins.enabledPlugins.has("synchub")).toBe(true);
+        expect(fake.plugins.enabledPlugins.has("ob-sync")).toBe(true);
 
         // 不把自己塞进跟踪列表
         expect(settings.installer.tracked).toEqual([]);
@@ -198,11 +198,11 @@ describe("updateSelf（更新自己）", () => {
 
         await service.updateSelf("0.1.0");
 
-        expect(readPluginFile(fake, "synchub", "main.js")).toBe("// same version, rebuilt");
+        expect(readPluginFile(fake, "ob-sync", "main.js")).toBe("// same version, rebuilt");
         expect(settings.installer.pendingRestartVersion).toBe("0.1.0");
     });
 
-    it("**远端 id 不是 synchub 就中止**（常量写错时不能覆盖别的插件）", async () => {
+    it("**远端 id 不是 ob-sync 就中止**（常量写错时不能覆盖别的插件）", async () => {
         const fake = createFakeApp(installedObsync());
         const { service, settings } = createService(fake);
         setupSelfRelease({ version: "0.2.0", id: "some-other-plugin" });
@@ -210,7 +210,7 @@ describe("updateSelf（更新自己）", () => {
         await expectInstallerError(() => service.updateSelf("0.1.0"), "selfIdMismatch");
 
         expect(fake.writes).toEqual([]);
-        expect(readPluginFile(fake, "synchub", "main.js")).toBe("// old main");
+        expect(readPluginFile(fake, "ob-sync", "main.js")).toBe("// old main");
         expect(settings.installer.pendingRestartVersion).toBe("");
     });
 
@@ -236,7 +236,7 @@ describe("updateSelf（更新自己）", () => {
 
         await expectInstallerError(() => service.updateSelf("0.1.0"), "writeFailedRolledBack");
 
-        expect(readPluginFile(fake, "synchub", "main.js")).toBe("// old main");
+        expect(readPluginFile(fake, "ob-sync", "main.js")).toBe("// old main");
         // 标记与写盘同生共死：标记在而磁盘是旧的，就成了假话
         expect(settings.installer.pendingRestartVersion).toBe("");
     });
