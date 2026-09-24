@@ -90,24 +90,61 @@ function notesFromChangelog(v) {
 const query = `access_token=${encodeURIComponent(token)}`;
 const body = notesFromChangelog(version);
 
-console.log(`在 gitee.com/${OWNER_REPO} 建 release ${version}`);
-console.log(`  发版说明取自 CHANGELOG.md 的 ${version} 段（${body.length} 字符）`);
+/**
+ * 幂等：同一个 tag 已经有 release 时**绝不**再 POST。
+ *
+ * Gitee 允许同一个 tag 上挂多份 release（不像 GitHub 会拒），所以「重跑一次脚本」
+ * 的后果是页面上出现两个 0.1.7 —— 而它看起来完全正常，只有下载页的列表能看出来。
+ * 命中时改为：把 body 对齐到 CHANGELOG（幂等本来就该顺带把说明更新到最新），
+ * 资产只补缺的那些（Gitee 没有 `--clobber`）。
+ */
+const existingList = await request("GET", `${API}/releases?per_page=100&${query}`);
+const existing = Array.isArray(existingList)
+    ? existingList.find((item) => item.tag_name === version)
+    : undefined;
 
-const release = await request("POST", `${API}/releases`, {
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-        access_token: token,
-        tag_name: version,
-        name: version,
-        target_commitish: "main",
-        prerelease: "false",
-        body,
-    }),
-});
-console.log(`✔ release 已建，id=${release.id}`);
+let release;
+if (existing) {
+    console.log(`gitee.com/${OWNER_REPO} 上 ${version} 的 release 已存在（id=${existing.id}），跳过创建`);
+    if ((existing.body ?? "") !== body) {
+        // Gitee 的 PATCH 会校验整个载荷：`tag_name` / `name` 也必须带上，否则 400。
+        await request("PATCH", `${API}/releases/${existing.id}`, {
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+                access_token: token,
+                tag_name: version,
+                name: version,
+                body,
+            }),
+        });
+        console.log(`  发版说明已对齐到 CHANGELOG（${body.length} 字符）`);
+    }
+    release = existing;
+} else {
+    console.log(`在 gitee.com/${OWNER_REPO} 建 release ${version}`);
+    console.log(`  发版说明取自 CHANGELOG.md 的 ${version} 段（${body.length} 字符）`);
+    release = await request("POST", `${API}/releases`, {
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+            access_token: token,
+            tag_name: version,
+            name: version,
+            target_commitish: "main",
+            prerelease: "false",
+            body,
+        }),
+    });
+    console.log(`✔ release 已建，id=${release.id}`);
+}
 
 // ⚠️ 附件必须逐个传：Gitee 没有批量参数，`files` 会被静默忽略。
+// 已有的跳过（重传没有覆盖语义，只会多出一份同名附件）。
+const alreadyAttached = new Set((release.assets ?? []).map((asset) => asset.name));
 for (const name of ASSETS) {
+    if (alreadyAttached.has(name)) {
+        console.log(`✔ 附件已存在，跳过：${name}`);
+        continue;
+    }
     if (!fs.existsSync(name)) {
         throw new Error(`本地缺少 ${name} —— 先跑 pnpm build 再发版。`);
     }
