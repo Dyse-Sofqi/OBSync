@@ -38,6 +38,7 @@ function createPlugin(fake: FakeApp): ObsyncPlugin & {
         ribbonIcons: number;
         ribbons: Array<{ icon: string; title: string; onClick: () => void }>;
         statusBarItems: number;
+        postProcessors: number;
     };
 } {
     // 真实签名是 (app, manifest)，stub 与之对齐。
@@ -82,8 +83,48 @@ describe("桌面端启动", () => {
 
         expect(plugin.installer).toBeDefined();
         expect(plugin.sync).toBeDefined();
+        // 图片同步是**第三个**模块，两个平台都装。
+        expect(plugin.images).toBeDefined();
         expect(plugin.secretStore).toBeDefined();
         expect(plugin.notifier).toBeDefined();
+    });
+
+    it("注册了图片同步的四条命令", async () => {
+        const plugin = createPlugin(fake);
+        await plugin.onload();
+
+        const ids = plugin.registered.commands.map((command) => command.id);
+        expect(ids).toContain("sync-images");
+        expect(ids).toContain("preview-image-sync");
+        expect(ids).toContain("edit-image");
+        expect(ids).toContain("copy-image-link");
+    });
+
+    /**
+     * 阅读视图的图片工具条挂在 Markdown 后处理器上。
+     *
+     * 这条断言看着琐碎，但它守的是一类**真机才炸**的错误：`onload` 里调了
+     * stub 没有的方法会直接 TypeError，而症状是「插件加载失败」——
+     * 与真正的原因（API 用错）隔得很远。
+     */
+    it("注册了 Markdown 后处理器（阅读视图的图片工具条）", async () => {
+        const plugin = createPlugin(fake);
+        await plugin.onload();
+
+        expect(plugin.registered.postProcessors).toBe(1);
+    });
+
+    /**
+     * 「删掉一张本地图片 → 问一句要不要连云端一起删」靠 `vault.on("delete")`。
+     *
+     * 这是删除的**唯一**入口：同步本身只复制、不删除。挂不上这个事件，
+     * 功能就整个不存在，而界面上看不出任何异常 —— 只是「删了图之后从来没人问」。
+     */
+    it("挂在 vault 的 delete 事件上（本地删除的唯一入口）", async () => {
+        const plugin = createPlugin(fake);
+        await plugin.onload();
+
+        expect(fake.vaultEvents.map((entry) => entry.event)).toContain("delete");
     });
 
     it("加载时清掉「待重启」标记（否则重启完还会看到「重启后生效」）", async () => {
@@ -114,9 +155,9 @@ describe("桌面端启动", () => {
         await plugin.onload();
 
         expect(plugin.registered.settingTabs).toBe(1);
-        // 两个图标：一个开同步面板，一个开安装器。原来只有一个，而它打开的是
+        // 三个图标：同步面板、安装器、图片管理。原来只有一个，而它打开的是
         // 安装器 —— 于是「同步面板在哪」在界面上无解。
-        expect(plugin.registered.ribbonIcons).toBe(2);
+        expect(plugin.registered.ribbonIcons).toBe(3);
         // 状态栏元素由主类创建后传给 sync 模块 —— 这条断言锁的就是当年踩的那个坑
         // （挂到 workspace 上而不是 Plugin 上）。
         expect(plugin.registered.statusBarItems).toBe(1);
@@ -127,7 +168,7 @@ describe("桌面端启动", () => {
         await plugin.onload();
 
         const ribbons = plugin.registered.ribbons;
-        expect(ribbons.map((ribbon) => ribbon.icon)).toEqual(["git-fork", "download"]);
+        expect(ribbons.map((ribbon) => ribbon.icon)).toEqual(["git-fork", "download", "images"]);
 
         // 点第一个（同步）→ 让 Obsidian 在右侧边栏打开那个视图
         ribbons[0]!.onClick();
@@ -144,7 +185,7 @@ describe("桌面端启动", () => {
         expect(fake.workspaceLeaves.revealed).toHaveLength(2);
     });
 
-    it("侧栏两个图标的悬停文案各自说清打开的是什么", async () => {
+    it("侧栏图标的悬停文案各自说清打开的是什么", async () => {
         const plugin = createPlugin(fake);
         await plugin.onload();
 
@@ -152,7 +193,9 @@ describe("桌面端启动", () => {
 
         expect(ribbons[0]!.title).toBe(plugin.t.plugin.ribbonSync);
         expect(ribbons[1]!.title).toBe(plugin.t.plugin.ribbonInstaller);
-        expect(ribbons[0]!.title).not.toBe(ribbons[1]!.title);
+        expect(ribbons[2]!.title).toBe(plugin.t.plugin.ribbonImages);
+        // 三个文案两两不同 —— 两个图标共用一句话时，用户分不出该点哪个。
+        expect(new Set(ribbons.map((ribbon) => ribbon.title)).size).toBe(3);
     });
 
     it("注册了仓库同步视图", async () => {
@@ -160,6 +203,51 @@ describe("桌面端启动", () => {
         await plugin.onload();
 
         expect(plugin.registered.views).toContain("obsync-sync-view");
+    });
+
+    /**
+     * 图片管理视图**桌面端也注册**（不是「只有桌面端」）。
+     *
+     * 它与同步视图的分屏条件正好相反：图片模块移动端也装，工厂函数解引用
+     * `this.images` 不会踩空。写成 `if (this.sync)` 那样的守卫会让手机上
+     * 的「打开图片管理」命令点下去什么也不发生。
+     */
+    it("注册了图片管理视图（主工作区标签页）", async () => {
+        const plugin = createPlugin(fake);
+        await plugin.onload();
+
+        expect(plugin.registered.views).toContain("obsync-image-view");
+    });
+
+    /**
+     * 图片图标真的去开**主工作区**的标签页，而不是又弹一个模态窗。
+     *
+     * 2026-09-23 从弹窗改成标签页：整理图片时要一边看着笔记一边决定哪张能删。
+     * 这条断言守的是「走的是 getLeaf 这条路」—— 走成右侧边栏（getRightLeaf）
+     * 或走回弹窗，都表现为「打开了，但不在该在的地方」。
+     */
+    it("侧栏的图片图标打开主工作区的图片管理标签页", async () => {
+        const plugin = createPlugin(fake);
+        await plugin.onload();
+
+        const ribbons = plugin.registered.ribbons;
+        const images = ribbons[2]!;
+        expect(images.icon).toBe("images");
+
+        images.onClick();
+        await Promise.resolve();
+
+        expect(fake.workspaceLeaves.viewStates.map((state) => state.type)).toContain(
+            "obsync-image-view"
+        );
+        expect(fake.workspaceLeaves.revealed).toHaveLength(1);
+
+        // 再点一次不该开第二个（已经开着就把它显示出来）——
+        // 两个标签页扫的是同一批图，而每扫一遍要好几秒。
+        images.onClick();
+        await Promise.resolve();
+        expect(fake.workspaceLeaves.viewStates).toHaveLength(1);
+        expect(fake.workspaceLeaves.revealed).toHaveLength(2);
     });
 
     it("所有命令名都带插件名前缀（否则命令面板里搜不到）", async () => {
@@ -266,6 +354,9 @@ describe("移动端启动", () => {
         await plugin.onload();
 
         expect(plugin.registered.views).not.toContain("obsync-sync-view");
+        // 但图片管理视图**要**注册：图片模块移动端也装，而这是它在手机上
+        // 唯一的图形入口（命令面板在手机上很难用）。
+        expect(plugin.registered.views).toContain("obsync-image-view");
     });
 
     it("不注册同步命令，但保留安装器命令", async () => {
@@ -282,6 +373,32 @@ describe("移动端启动", () => {
         await plugin.onload();
 
         expect(plugin.registered.statusBarItems).toBe(0);
+    });
+
+    /**
+     * 图片同步模块**移动端也装** —— 与笔记同步（依赖系统 git，只装桌面端）相反。
+     *
+     * 它走的是 Obsidian 的 `requestUrl` + vault 文件读写，两者在移动端都有，
+     * 所以「在手机上看笔记时图片能显示、裁剪压缩也能用」是成立的。
+     * 这条断言与 `scripts/checks.mjs` 的「移动端安全」是两回事：那个查静态
+     * 导入图有没有碰到 Node 依赖，这个查装配有没有真的把它装上。
+     */
+    it("装配图片同步模块（移动端也能裁剪 / 压缩图片）", async () => {
+        const plugin = createPlugin(fake);
+        await plugin.onload();
+
+        expect(plugin.images).toBeDefined();
+        expect(plugin.registered.postProcessors).toBe(1);
+    });
+
+    it("图片同步的四条命令在移动端也注册", async () => {
+        const plugin = createPlugin(fake);
+        await plugin.onload();
+
+        const ids = plugin.registered.commands.map((command) => command.id);
+        for (const id of ["sync-images", "preview-image-sync", "edit-image", "copy-image-link"]) {
+            expect(ids, id).toContain(id);
+        }
     });
 
     it("onunload 不抛错（sync 为 undefined）", async () => {

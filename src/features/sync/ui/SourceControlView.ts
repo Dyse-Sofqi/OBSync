@@ -1,4 +1,4 @@
-import { ItemView, Setting, WorkspaceLeaf } from "obsidian";
+import { ItemView, setIcon, Setting, WorkspaceLeaf } from "obsidian";
 import type { LocaleStrings } from "../../../core/i18n";
 import { redactUrl } from "../../../host/redact";
 import { changeRows, type ChangeRow } from "../changeRows";
@@ -6,6 +6,7 @@ import { formatBytes } from "../repoSize";
 import { isFullyInSync } from "../syncState";
 import type { SyncService } from "../syncService";
 import type { SimpleGitManager } from "../simpleGitManager";
+import { DiffModal } from "./DiffModal";
 import type { CommitInfo, FileChangeStatus, RepoSize, RepoStatus } from "../types";
 
 /**
@@ -32,8 +33,14 @@ import type { CommitInfo, FileChangeStatus, RepoSize, RepoStatus } from "../type
  * （仓库大小 / 待提交改动）也从两行改成并排两栏。见 `renderToolbar` 与 `renderRepo`。
  *
  * 仍然**刻意不做**的（PLAN.md 的「明确不做」清单）：树形目录、hunk 级暂存、
- * blame、diff 视图。这些是 obsidian-git 那个 3k 行可选增强的部分，
- * 需要的不只是界面 —— diff 视图意味着要自己做一套编辑器内渲染。
+ * blame。这些是 obsidian-git 那个 3k 行可选增强的部分。
+ *
+ * ## 差异看在这里，但渲染在别处（2026-09-24）
+ *
+ * 面板每行（含冲突行）与每条提交都给了差异入口，但**内容**是弹窗
+ * （`DiffModal`）画的：这个面板窄、常驻、要一眼扫完「哪些文件变了」，
+ * 而 diff 行很长、要看行号、看完就关 —— 两件事的形态正好相反。
+ * 硬塞进来只会让两边都难用。
  *
  * ## 状态是活的
  *
@@ -411,10 +418,13 @@ export class SourceControlView extends ItemView {
     }
 
     /**
-     * 一行文件：状态位 + 可点开的文件名 + 「在远端打开」+「暂存 / 取消暂存」。
+     * 一行文件：状态位 + 可点开的文件名 + 「查看差异」+「在远端打开」+「暂存 / 取消暂存」。
      *
      * 用 `Setting` 而不是裸 DOM：控件由 Obsidian 渲染，主题、键盘、无障碍
      * 都不用自己管；测试里也能直接驱动这些控件（`createdSettings` 那套）。
+     *
+     * 「查看差异」排在最前：它是「这个文件变了」之后最自然的下一步，
+     * 也是这一行上唯一能回答「变了什么」的按钮 —— 其余三个都是「打开 / 挪一格」。
      */
     private renderFileRow(list: HTMLElement, spec: FileRowSpec): void {
         const t = this.deps.getT();
@@ -431,6 +441,15 @@ export class SourceControlView extends ItemView {
         const link = row.nameEl.createSpan({ text: spec.path, cls: "obsync-change-path" });
         link.setAttribute("title", t.sync.actOpenFile);
         link.addEventListener("click", () => void this.openFile(spec.path));
+
+        // 冲突行也给差异入口：那里正是最需要看清内容的地方（只读，不会替用户
+        // 做任何决定 —— 暂存开关仍然不给）。
+        row.addExtraButton((button) =>
+            button
+                .setIcon("file-diff")
+                .setTooltip(t.sync.actDiff)
+                .onClick(() => this.openFileDiff(spec.path))
+        );
 
         row.addExtraButton((button) =>
             button
@@ -476,9 +495,18 @@ export class SourceControlView extends ItemView {
         for (const commit of commits) {
             const row = list.createDiv({ cls: "obsync-commit" });
 
-            const hash = row.createSpan({ text: commit.shortHash, cls: "obsync-commit-hash" });
+            // hash 与「看差异」同一行：提交行是三段堆叠的（hash / 信息 / 作者），
+            // 把差异按钮单独放会再占一行 —— 侧边栏里那一行太贵了。
+            const head = row.createDiv({ cls: "obsync-commit-head" });
+
+            const hash = head.createSpan({ text: commit.shortHash, cls: "obsync-commit-hash" });
             hash.setAttribute("title", t.sync.commitOnRemote);
             hash.addEventListener("click", () => this.deps.onOpenCommitOnRemote(commit.hash));
+
+            const diff = head.createSpan({ cls: "obsync-commit-diff" });
+            setIcon(diff, "file-diff");
+            diff.setAttribute("title", t.sync.actDiffCommit);
+            diff.addEventListener("click", () => this.openCommitDiff(commit));
 
             // 提交信息只取第一行：`git log` 的 message 可能是多行的
             // （合并提交、用户写了正文），面板里塞不下。
@@ -491,6 +519,40 @@ export class SourceControlView extends ItemView {
                 cls: "obsync-commit-meta",
             });
         }
+    }
+
+    // ── 差异 ──────────────────────────────────────────────────────────────
+
+    /**
+     * 打开某个文件的差异。
+     *
+     * 两节都取（工作区 + 已暂存）—— 同一个文件完全可能两边都有改动，
+     * 只给一边等于把另一半藏起来（见 `FileDiffSet` 的说明）。
+     */
+    private openFileDiff(path: string): void {
+        new DiffModal(this.app, {
+            target: path,
+            getT: this.deps.getT,
+            load: async () => {
+                const diff = await this.deps.service.fileDiff(path);
+                return [
+                    { kind: "working", files: [diff.unstaged] },
+                    { kind: "staged", files: [diff.staged] },
+                ];
+            },
+        }).open();
+    }
+
+    /** 打开某条提交引入的改动。 */
+    private openCommitDiff(commit: CommitInfo): void {
+        new DiffModal(this.app, {
+            // 只写 hash 认不出是哪一条 —— 把信息第一行一起放上（与列表里一致）。
+            target: `${commit.shortHash}  ${commit.message.split("\n")[0] ?? ""}`.trim(),
+            getT: this.deps.getT,
+            load: async () => [
+                { kind: "commit", files: await this.deps.service.commitDiff(commit.hash) },
+            ],
+        }).open();
     }
 
     // ── 动作与容错 ────────────────────────────────────────────────────────

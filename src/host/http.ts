@@ -43,7 +43,9 @@ export function setHttpDebugLogger(logger: ((message: string) => void) | undefin
 }
 
 function sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+    // `window.` 前缀不是装饰：审核的 `prefer-window-timers` 要求用 window 上的定时器，
+    // 否则插件在**弹出窗口**（popout window）里行为不一致。
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 /**
@@ -57,15 +59,18 @@ function isRetryableStatus(status: number): boolean {
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number, url: string): Promise<T> {
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    // `window.setTimeout` 返回 number（Node 的返回 Timeout 对象）—— 这里必须
+    // 用 window 上的那一份，插件在 popout window 里才不会错乱（审核规则
+    // `prefer-window-timers`）。所以类型也跟着写 number。
+    let timer: number | undefined;
     const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(
+        timer = window.setTimeout(
             () => reject(new NetworkError(`Request to ${url} timed out after ${ms}ms.`)),
             ms
         );
     });
     return Promise.race([promise, timeout]).finally(() => {
-        if (timer !== undefined) clearTimeout(timer);
+        if (timer !== undefined) window.clearTimeout(timer);
     }) as Promise<T>;
 }
 

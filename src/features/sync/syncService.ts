@@ -4,6 +4,12 @@ import type { LocaleStrings } from "../../core/i18n";
 import type { Notifier } from "../../core/notice";
 import { renderCommitMessage } from "./commitMessage";
 import { changeRows } from "./changeRows";
+import {
+    buildAddedFileDiff,
+    MAX_UNTRACKED_DIFF_BYTES,
+    parseUnifiedDiff,
+    type FileDiff,
+} from "./diff";
 import { formatBytes, sumFileBytes } from "./repoSize";
 import { isFullyInSync } from "./syncState";
 import type { GitManager } from "./gitManager";
@@ -49,6 +55,22 @@ export interface SyncHost {
     getStrategy(): SyncStrategy;
     /** 冲突指南文件名（已本地化），空串表示不写指南。 */
     getConflictGuideName(): string;
+}
+
+/**
+ * 一个文件的差异，两侧分开。
+ *
+ * 为什么不合成一份：同一个文件完全可能**既有已暂存又有未暂存的改动**
+ * （`git status` 里的 `MM`），而这两份内容回答的是不同的问题 ——
+ * 「我接下来要提交什么」与「我还没放进这次提交的是什么」。
+ * 合成一份就必须挑一边，那等于把另一半藏起来。
+ */
+export interface FileDiffSet {
+    path: string;
+    /** 工作区 ↔ 索引：还没暂存的内容。 */
+    unstaged: FileDiff;
+    /** 索引 ↔ HEAD：即将被提交的内容。 */
+    staged: FileDiff;
 }
 
 export class SyncService {
@@ -421,13 +443,25 @@ export class SyncService {
         });
     }
 
+    /**
+     * `.gitignore` 模板，已按**本库的配置目录名**展开。
+     *
+     * 走 `vault.configDir` 而不是写死 `.obsidian`：配置目录可以改名，写死的话
+     * 那些排除规则一条都匹配不上 —— 表现是「明明建了 .gitignore，
+     * workspace.json 还是被同步出去了」，而用户根本看不出为什么。
+     * 审核的 `hardcoded-config-path` 报的也是这件事。
+     */
+    private gitignoreTemplate(): string {
+        return this.deps.getT().sync.gitignoreTemplate(this.deps.app.vault.configDir);
+    }
+
     private async ensureGitignore(): Promise<boolean> {
         const vault: Vault = this.deps.app.vault;
         const path = normalizePath(".gitignore");
 
         try {
             if (await vault.adapter.exists(path)) return false;
-            await vault.adapter.write(path, this.deps.getT().sync.gitignoreTemplate);
+            await vault.adapter.write(path, this.gitignoreTemplate());
             return true;
         } catch (err) {
             // 建不了 .gitignore 不该让初始化失败 —— 只是少了一层保护。
@@ -441,24 +475,149 @@ export class SyncService {
      *
      * 复用初始化时的那份模板，所以用户看到的是一个**有注释解释为什么**的文件，
      * 而不是空文件 —— 空文件没法教人该忽略什么。
+     *
+     * @returns 是否真的在编辑器里打开了。
+     *
+     * ## 为什么要返回这个布尔量（而不是默默返回 void）
+     *
+     * `getAbstractFileByPath` 查的是 **Obsidian 的库索引**，而以点开头的文件
+     * 不一定在索引里 —— 那时 `openFile` 根本不会被调用，界面上的表现是
+     * **点了一个按钮什么也没发生**（这是最容易被当成「插件坏了」的一种失败）。
+     * 调用方据此给一句说明，并指向设置页里那个能直接改的代码框。
+     *
+     * 注意它仍然会**先建文件**：建了没打开，用户拿系统编辑器也能立刻改到。
      */
-    async openGitignore(): Promise<void> {
+    async openGitignore(): Promise<boolean> {
         const vault: Vault = this.deps.app.vault;
         const path = normalizePath(".gitignore");
 
         if (!(await vault.adapter.exists(path))) {
-            await vault.adapter.write(path, this.deps.getT().sync.gitignoreTemplate);
+            await vault.adapter.write(path, this.gitignoreTemplate());
         }
 
         const file = vault.getAbstractFileByPath(path);
-        if (file instanceof TFile) {
-            await this.deps.app.workspace.getLeaf(false).openFile(file);
+        if (!(file instanceof TFile)) return false;
+
+        await this.deps.app.workspace.getLeaf(false).openFile(file);
+        return true;
+    }
+
+    /**
+     * 读 `.gitignore` 的原文；**不存在时返回 undefined**。
+     *
+     * 刻意不在这里自动创建（`openGitignore` 会）：设置页只是被打开一下，
+     * 不该因此往用户的库里多出一个文件。「还没建」是设置页要显示的状态之一，
+     * 不是需要被悄悄修掉的问题。
+     */
+    async readGitignore(): Promise<string | undefined> {
+        const path = normalizePath(".gitignore");
+        const adapter = this.deps.app.vault.adapter;
+        if (!(await adapter.exists(path))) return undefined;
+        return await adapter.read(path);
+    }
+
+    /**
+     * 写 `.gitignore`（不存在则创建）。
+     *
+     * 走同步队列：`commitAll` 的 `git add -A` 与这里同时发生的话，
+     * 用户正在敲的那份半成品会被卷进一次提交（内容不完整，但记录是完整的）。
+     * 排队几百毫秒换掉这个可能性，值得。
+     *
+     * 写完刷新状态 —— `.gitignore` 本身就是「哪些文件该出现在改动列表里」的
+     * 依据，改完之后面板上的列表**应该**跟着变（否则用户会以为没生效）。
+     */
+    async writeGitignore(content: string): Promise<void> {
+        await this.enqueue(async () => {
+            await this.deps.app.vault.adapter.write(normalizePath(".gitignore"), content);
+            await this.refresh();
+        });
+    }
+
+    // ── 差异（仓库同步面板 / 命令面板） ──────────────────────────────────
+
+    /**
+     * 一个文件的差异：工作区与已暂存两侧各一份。
+     *
+     * ## 未跟踪文件为什么要兜底
+     *
+     * `git diff` 对**未跟踪**文件什么都不输出 —— 而库里新增的笔记恰恰是最想看
+     * 一眼的那一类。所以两侧都为空、且这个路径确实在未跟踪列表里时，把文件内容
+     * 读出来当成「全部新增」。
+     *
+     * 「确实在未跟踪列表里」这一步不能省：一个**干净**的已跟踪文件两侧也全为空，
+     * 把它读出来当成「全部新增」就是在编造一个不存在的改动。
+     */
+    async fileDiff(path: string): Promise<FileDiffSet> {
+        return this.enqueue(async () => {
+            const [unstagedRaw, stagedRaw] = await Promise.all([
+                this.git.diffFile(path),
+                this.git.diffFile(path, { staged: true }),
+            ]);
+
+            let unstaged = firstFileDiff(parseUnifiedDiff(unstagedRaw), path);
+            const staged = firstFileDiff(parseUnifiedDiff(stagedRaw), path);
+
+            if (unstaged.kind === "empty" && staged.kind === "empty") {
+                const added = await this.addedFileDiff(path);
+                if (added) unstaged = added;
+            }
+
+            return { path, unstaged, staged };
+        });
+    }
+
+    /**
+     * 某条提交引入的改动（可能跨多个文件）。
+     *
+     * 合并提交也能给出内容 —— 实现里带了 `--first-parent`（见
+     * `SimpleGitManager.commitPatch` 的说明）。
+     */
+    async commitDiff(hash: string): Promise<FileDiff[]> {
+        return this.enqueue(async () =>
+            parseUnifiedDiff(await this.git.commitPatch(hash))
+        );
+    }
+
+    /** 未跟踪文件 → 「全部新增」；读不到、太大、或它其实是已跟踪的 → undefined。 */
+    private async addedFileDiff(path: string): Promise<FileDiff | undefined> {
+        try {
+            const status = await this.git.status();
+            if (!status.untracked.some((change) => change.path === path)) return undefined;
+        } catch (err) {
+            // 不是仓库时连「未跟踪」都无从谈起。
+            logger.debug("could not read status for diff", err);
+            return undefined;
+        }
+
+        const normalized = normalizePath(path);
+        try {
+            const stats = await this.deps.app.vault.adapter.stat(normalized);
+            if (!stats || stats.type !== "file") return undefined;
+
+            // 库里放一个几十 MB 的日志是常事 —— 读进来会把界面卡住。
+            if (stats.size > MAX_UNTRACKED_DIFF_BYTES) {
+                return {
+                    path,
+                    kind: "too-large",
+                    hunks: [],
+                    additions: 0,
+                    deletions: 0,
+                    truncated: false,
+                };
+            }
+
+            return buildAddedFileDiff(path, await this.deps.app.vault.adapter.read(normalized));
+        } catch (err) {
+            // 读不到就当没有差异 —— 差异视图读不出内容不该是个错误弹窗。
+            logger.debug("could not read untracked file for diff", err);
+            return undefined;
         }
     }
 
     /** 只刷新状态（不打扰任何 git 写操作）。 */
     async refresh(): Promise<RepoStatus | undefined> {
         let status: RepoStatus | undefined;
+
         try {
             status = await this.git.status();
         } catch (err) {
@@ -681,4 +840,24 @@ export class SyncService {
             logger.error("failed to write conflict guide", err);
         }
     }
+}
+
+/**
+ * 取单文件差异里的那一段；git 什么都没给时返回一份「没有差异」。
+ *
+ * `git diff -- <path>` 通常只回一段，但传进来的是目录时会有多段 ——
+ * 那时取第一段，不假装它代表了全部（面板与命令永远只传文件路径，
+ * 这一条是防御）。
+ */
+function firstFileDiff(files: FileDiff[], path: string): FileDiff {
+    return (
+        files[0] ?? {
+            path,
+            kind: "empty",
+            hunks: [],
+            additions: 0,
+            deletions: 0,
+            truncated: false,
+        }
+    );
 }

@@ -107,7 +107,11 @@ export class StatusBar {
             }
 
             if (!this.status) {
-                this.item.setText("SyncHub");
+                // 空状态（还不是仓库 / 状态读不出来）显示**面板名**，而不是品牌名：
+                // 一是它本地化（这里原本写死 "SyncHub"，英文界面下也照旧），
+                // 二是审核的 `ui/sentence-case` 会把裸 camelCase 品牌名报成
+                // 「应为 'Synchub'」，而 `obsidianmd/*` 规则**禁止**用 disable 注释压掉。
+                this.item.setText(t.sync.viewTitle);
                 return;
             }
 

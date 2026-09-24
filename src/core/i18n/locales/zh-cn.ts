@@ -27,6 +27,7 @@ export const zhCN = {
          */
         ribbonSync: "SyncHub：打开仓库同步视图",
         ribbonInstaller: "SyncHub：安装社区插件",
+        ribbonImages: "SyncHub：打开图片管理",
     },
 
     common: {
@@ -84,6 +85,7 @@ export const zhCN = {
             tracked: "插件与主题",
             installer: "插件安装器",
             sync: "仓库同步",
+            images: "图片同步",
             general: "通用",
         },
 
@@ -215,9 +217,164 @@ export const zhCN = {
             strategyMerge: "合并（保留双方历史）",
             strategyRebase: "变基（历史线性）",
             strategyReset: "重置（以远端为准，丢弃本地提交）",
-    
-        gitPath: "git 可执行文件路径",
+            gitPath: "git 可执行文件路径",
             gitPathDesc: "留空使用系统 PATH 中的 git。Windows 上 git 不在 PATH 时才需要填写。",
+
+            /**
+             * `.gitignore` 一节。
+             *
+             * 为什么把它放在设置页而不是只留一条「打开文件」的命令：`.gitignore`
+             * 是**同步行为的一部分**（它决定哪些文件根本不会进版本控制），
+             * 而命令面板只有已经知道有这个功能的人才找得到。更重要的是，
+             * 在这里能**看见当前内容**——`workspace.json` 是不是被排除了，
+             * 是用户配好之后最想确认的一件事。
+             */
+            gitignoreHeading: "忽略规则（.gitignore）",
+            gitignoreDesc:
+                "一行一条规则，`#` 开头是注释。这里的改动**直接写进库根目录的 .gitignore**，" +
+                "不需要另开编辑器 —— 想用 Obsidian 的编辑器改，点下面的「在编辑器中打开」。",
+            gitignoreMissing: "尚未创建",
+            gitignoreDirty: "有未保存的修改",
+            gitignoreSaved: "已保存",
+            gitignoreSave: "保存",
+            gitignoreSaving: "正在保存…",
+            gitignoreRestore: "填入默认内容",
+            gitignoreOpen: "在编辑器中打开",
+            gitignoreSavedNotice: "已保存 .gitignore。",
+            /**
+             * 保存失败要说清「磁盘上还是旧内容」——
+             * 用户以为自己改了，而 git 那边一点没变。
+             */
+            gitignoreSaveFailed: "保存 .gitignore 失败，磁盘上仍是原来的内容。",
+        },
+
+        /**
+         * 「图片同步」页（R2 双副本）。
+         *
+         * 这一页的注意事项比「仓库同步」页更要紧：那页的坑是「数据可能丢」，
+         * 这页的坑是「文件可能**被删掉**」。所以三条注意事项必须留在最上方。
+         */
+        images: {
+            heading: "图片同步",
+            notesHeading: "注意事项",
+            notes: [
+                "同步只复制、从不删除：每一轮把两边缺的补上（云端多了就下载、本地多了就上传），" +
+                    "一个文件都不会删。删除只由你主动发起 —— 见下面这条。",
+                "在本机删掉一张受管图片时，插件会问一句「云端那份也删吗」。删掉不可逆" +
+                    "（R2 没有回收站）；选「保留」会记一笔，下一轮同步不会把它下载回来。" +
+                    "这个询问可以在「冲突与删除」一节里改成「永远同步云端」或「永不同步云端」。",
+                "受管文件夹里的图片通常同时也在 git 仓库里，两条链路各管各的：git 管版本历史，" +
+                    "R2 管「图片不占仓库体积、且能被外链引用」。SyncHub 不会替你改 .gitignore。",
+            ],
+            enabled: "启用图片同步",
+            enabledDesc:
+                "允许 SyncHub 在启动时与后台自动同步图片。关掉后自动同步全部停止；" +
+                "这一页里的「立即同步」仍然可用（那是你主动发起的）。",
+            folders: "受管的图片文件夹",
+            foldersDesc:
+                "一行一个，填库内的相对路径（例如 attachments）。只处理这些文件夹里的图片，" +
+                "删除也只发生在它们里面 —— 这是插件能碰哪些文件的唯一边界。填 . 表示整个库，" +
+                "**默认即仓库根目录（整个库）**：可以用下面的「浏览…」从库里挑，「恢复默认」一键回到它。",
+            foldersPlaceholder: "attachments\nassets/images",
+            foldersEmpty:
+                "一个文件夹都没指定，所以同步不会执行。填一个（例如 attachments）、" +
+                "用「浏览…」从库里挑，或按「恢复默认」回到仓库根目录，再点「立即同步」。",
+            foldersBrowse: "浏览…",
+            foldersReset: "恢复默认",
+            folderPickerPlaceholder: "搜索文件夹…",
+            folderPickerRoot: "仓库根目录（整个库）",
+            folderPickerIncluded: "已在受管范围",
+
+            connectionHeading: "Cloudflare R2 连接",
+            accountId: "R2 账号 ID",
+            accountIdDesc:
+                "Cloudflare 控制台 R2 概览页上的账号 ID。填 ID 即可（会自动补上 .r2.cloudflarestorage.com），" +
+                "也可以直接填完整的存储端点地址。",
+            accountIdPlaceholder: "例如 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
+            bucket: "存储桶名称",
+            bucketDesc:
+                "图片存进哪个桶。前缀之外的对象不会被碰，但用一个**专用桶**最省心。",
+            accessKeyId: "Access Key ID",
+            accessKeyIdDesc:
+                "在 R2 的「管理 API 令牌」里创建，权限至少要有「对象读与写」。这个值不是秘密，" +
+                "会随配置一起同步到别的设备。",
+            secretKey: "Secret Access Key",
+            secretKeyDesc:
+                "创建令牌时**只显示一次**的那一串。它只保存在本机（系统密钥库），" +
+                "不会写进 data.json，也不会随仓库同步。",
+            secretPlaceholder: "粘贴密钥…",
+            secretSave: "保存密钥",
+            secretClear: "清除密钥",
+            secretSaved: "R2 密钥已保存",
+            secretCleared: "R2 密钥已清除",
+            secretConfigured: "已配置",
+            secretNotConfigured: "未配置",
+            prefix: "云端前缀",
+            prefixDesc:
+                "对象键的前缀（例如 images）。留空表示直接放在桶根。它只影响「放在哪儿」，" +
+                "改它不会让同步状态失效。",
+            publicBaseUrl: "公网访问地址",
+            publicBaseUrlDesc:
+                "自定义域名或 r2.dev 域名，用来生成图片的外链。留空则「复制云端链接」不可用 —— " +
+                "存储端点每次读取都要签名，粘到笔记里必然打不开，所以这里不猜。",
+
+            conflictHeading: "冲突与删除",
+            conflictPolicy: "两边都被修改时",
+            conflictPolicyDesc:
+                "同一个文件在本地和云端都变了。图片没法自动合并，只能选一边作为结果。",
+            conflictNewer: "谁新听谁的（比较修改时间）",
+            conflictLocal: "以本地为准",
+            conflictRemote: "以云端为准",
+            deleteRemotePolicy: "删除本地图片时，询问是否同时删除云端备份",
+            /**
+             * 三个选项各自的后果都要说清 —— 这是一个下拉，用户看的是当前值，
+             * 另外两个值会发生什么他并不知道。其中「永不同步云端」那一半尤其
+             * 要写：不写的话用户会发现删掉的图下一轮又回来了（镜像逻辑会把它
+             * 从云端补回本地），而那看起来像 bug。
+             */
+            deleteRemotePolicyDesc:
+                "在库里删掉一张图片、而云端还有它的备份时怎么办：「询问用户」弹一次窗；" +
+                "「永远同步云端」直接连云端一起删（R2 没有回收站，删掉不可逆）；" +
+                "「永不同步云端」则云端永远不动 —— 但那一份会被下一次同步**下载回本地**" +
+                "（镜像是双向补齐的）。",
+            deleteRemoteAsk: "询问用户",
+            deleteRemoteAlways: "永远同步云端",
+            deleteRemoteNever: "永不同步云端",
+            autoSync: "自动同步间隔（分钟）",
+            autoSyncDesc:
+                "设为 0 表示关闭（默认）。到点执行的是一整轮比对：把两边缺的补上（上传与下载）。" +
+                "同步**不会删除**任何文件 —— 删除只在你删本地图片时问过你之后才发生。",
+
+            compressHeading: "裁剪与压缩的默认值",
+            compressQuality: "默认质量",
+            compressQualityDesc:
+                "有损格式（JPEG / WebP）的默认质量，10–100。PNG 是无损的，用不到它。",
+            compressMaxEdge: "默认最长边（像素）",
+            compressMaxEdgeDesc:
+                "裁剪压缩弹窗里默认的缩放上限。0 表示不缩放。只缩不放 —— 放大小图只会更模糊、更大。",
+            compressFormat: "默认输出格式",
+            compressFormatDesc:
+                "「保持原样」不等于「不压缩」：原格式是 JPEG 时照样按质量重编码，只是不换容器。",
+
+            actionsHeading: "操作",
+            test: "测试连接",
+            testing: "正在测试…",
+            testOk: (bucket: string) => `连接正常，可以访问存储桶 ${bucket}。`,
+            testFailed: "连接测试失败",
+            preview: "预览变更",
+            previewing: "正在比对…",
+            syncNow: "立即同步",
+            syncing: "正在同步…",
+            /**
+             * 图片管理面板的入口。
+             *
+             * 放在设置页是因为它是**发现性**的落点：命令面板与侧栏图标在
+             * 「我知道有这个东西」之后才有用，而设置页是用户排查时的必经之路。
+             */
+            openManager: "打开图片管理",
+            openManagerDesc:
+                "按「本地 / 云端 / 已链接」三种状态列出受管文件夹里的所有图片，" +
+                "可以筛选出失联图片、待上传的、只留在云端的，并批量同步、压缩、重命名或删除。",
         },
     },
 
@@ -653,6 +810,7 @@ export const zhCN = {
         cmdEditRemote: "SyncHub：编辑远端地址",
         cmdOpenFileOnRemote: "SyncHub：在浏览器中打开当前文件",
         cmdOpenFileHistoryOnRemote: "SyncHub：在浏览器中查看当前文件的历史",
+        cmdOpenDiff: "SyncHub：查看当前文件的差异",
 
         // 文件右键菜单
         menuOpenOnRemote: "在远端打开",
@@ -695,6 +853,7 @@ export const zhCN = {
         actUnstageAll: "全部取消暂存",
         actOpenFile: "打开此文件",
         actOpenFileOnRemote: "在远端打开此文件",
+        actDiff: "查看差异",
         actAbortMerge: "放弃本次合并",
         sectionStaged: (count: number) => `已暂存的更改（${count}）`,
         sectionChanges: (count: number) => `更改（${count}）`,
@@ -703,6 +862,7 @@ export const zhCN = {
         historyEmpty: "还没有提交。",
         historyFailed: "无法读取提交历史。",
         commitOnRemote: "在远端查看此提交",
+        actDiffCommit: "查看此提交的改动",
         remoteLabel: "远端",
         detachedHeadLabel: "游离 HEAD（当前不在任何分支上）",
         aheadOf: (count: number) => `领先远端 ${count} 个提交`,
@@ -711,6 +871,36 @@ export const zhCN = {
         noUpstreamHint: "该分支还没有跟踪远端分支，推送时会自动建立。",
         conflictHint:
             "这些文件在本地和远端都被修改过，git 无法自动决定保留哪一边。解决后提交即可；也可以放弃本次合并。",
+
+        /**
+         * ── 差异视图（2026-09-24）
+         *
+         * 弹窗里那几行说明。这里的 `section` 是**按下标取**的
+         * （`t.sync.diff.section[kind]`），与 `diagnoseCheck[check.id]` 同一套写法。
+         */
+        diff: {
+            title: "差异",
+            section: {
+                /** 工作区 ↔ 索引：还没暂存的内容。 */
+                working: "工作区改动（未暂存）",
+                /** 索引 ↔ HEAD：即将被提交的内容。 */
+                staged: "已暂存改动",
+                /** `git show`：一条提交引入的改动。 */
+                commit: "本次提交的改动",
+            },
+            loading: "正在读取差异…",
+            loadFailed: "读取差异失败。",
+            noChanges: "没有可显示的差异。",
+            /** 二进制没有可读的行 —— 说成「没有差异」是错的，那是个**有**改动的文件。 */
+            binary: "二进制文件，不显示内容差异。",
+            renamed: "内容没有改动，只是改了名字。",
+            /** 未跟踪文件超过上限时不再读进内存（几十 MB 的文件会把界面卡住）。 */
+            tooLarge: "文件太大，未显示内容差异。",
+            truncated: "内容过多，只显示了前面一部分。",
+            noNewline: "（此文件末尾没有换行）",
+            stats: (additions: number, deletions: number) =>
+                `+${additions} −${deletions}`,
+        },
 
         editRemoteTitle: "编辑远端地址",
         editRemoteLabel: "远端仓库地址",
@@ -730,30 +920,46 @@ export const zhCN = {
         gitignoreCreated: "已创建 .gitignore（排除了 Obsidian 的工作区状态文件，避免多设备冲突）。",
         cmdEditGitignore: "SyncHub：编辑 .gitignore",
         /**
+         * 「在编辑器里打开 .gitignore」没成时说的一句话。
+         *
+         * **不猜原因**：`getAbstractFileByPath` 查的是 Obsidian 的库索引，而以点
+         * 开头的文件在有些环境里不在索引里 —— 但那不是我们能在这一层确认的事。
+         * 所以说清「没打开」，并给出两条**确实能用**的路。
+         */
+        gitignoreOpenFailed:
+            "没能在 Obsidian 的编辑器里打开 .gitignore。可以到「仓库同步」设置页用那个" +
+            "代码框直接改，或用系统编辑器打开库根目录下的 .gitignore。",
+        /**
          * 初始化仓库时写入的 .gitignore 内容（整段放在 locale 里，
          * 而不是在代码里拼 —— 它含面向用户的说明文字）。
+         *
+         * 参数是**库的配置目录名**（`vault.configDir`），不是一个写死的
+         * `.obsidian`：用户可以改它，而写死的话那些排除规则会一条都不匹配 ——
+         * 表现是「明明建了 .gitignore，workspace.json 还是被同步出去了」。
+         * 审核的 `hardcoded-config-path` 报的也是这件事。
          */
-        gitignoreTemplate: [
-            "# 由 SyncHub 创建。",
-            "",
-            "# Obsidian 的工作区布局（面板、标签、光标位置）。每台设备各自维护，",
-            "# 同步它只会制造冲突 —— 这是 Obsidian 多设备同步最常见的坑。",
-            ".obsidian/workspace.json",
-            ".obsidian/workspace-mobile.json",
-            "",
-            "# 本插件自己的设置（同步间隔、拉取策略…）。这些是**按设备**的，",
-            "# 同步它只会让两台设备互相覆盖设置。",
-            ".obsidian/plugins/ob-sync/data.json",
-            "",
-            "# Obsidian 的回收站",
-            ".trash/",
-            "",
-            "# 系统垃圾文件",
-            ".DS_Store",
-            "Thumbs.db",
-            "",
-            "# 想忽略别的文件，直接加到下面即可。",
-        ].join("\n"),
+        gitignoreTemplate: (configDir: string) =>
+            [
+                "# 由 SyncHub 创建。",
+                "",
+                "# Obsidian 的工作区布局（面板、标签、光标位置）。每台设备各自维护，",
+                "# 同步它只会制造冲突 —— 这是 Obsidian 多设备同步最常见的坑。",
+                `${configDir}/workspace.json`,
+                `${configDir}/workspace-mobile.json`,
+                "",
+                "# 本插件自己的设置（同步间隔、拉取策略…）。这些是**按设备**的，",
+                "# 同步它只会让两台设备互相覆盖设置。",
+                `${configDir}/plugins/ob-sync/data.json`,
+                "",
+                "# Obsidian 的回收站",
+                ".trash/",
+                "",
+                "# 系统垃圾文件",
+                ".DS_Store",
+                "Thumbs.db",
+                "",
+                "# 想忽略别的文件，直接加到下面即可。",
+            ].join("\n"),
 
         repoInited: "git 仓库已初始化。",
         mergeAborted: "已放弃当前合并，仓库回到拉取前的状态。",
@@ -803,6 +1009,345 @@ export const zhCN = {
         conflictGuideAbort:
             "如果想放弃本次合并、回到拉取之前的状态，执行命令「SyncHub：放弃当前合并」。",
         conflictGuideFooter: (time: string) => `此文件由 SyncHub 于 ${time} 自动生成，处理后可删除。`,
+    },
+
+    /**
+     * 图片同步 / R2 / 图片编辑。
+     *
+     * 与 `installer` / `sync` 同构：错误文案集中在这里，由
+     * `features/images/errors.ts` 的 `describeImageSyncError` 按类型码取。
+     */
+    images: {
+        /** 输出格式的下拉项。设置页与编辑弹窗**共用一份** —— 两处措辞不一致会让人以为是两个不同的东西。 */
+        formatOption: {
+            keep: "保持原样",
+            jpeg: "JPEG",
+            webp: "WebP",
+            png: "PNG",
+        },
+
+        cmdSync: "SyncHub：同步图片到云端",
+        cmdPreview: "SyncHub：预览图片同步的变更",
+        cmdEdit: "SyncHub：裁剪 / 压缩当前图片",
+        cmdCopyLink: "SyncHub：复制当前图片的云端链接",
+        cmdManage: "SyncHub：打开图片管理",
+
+        toolbar: {
+            crop: "裁剪 / 压缩",
+            copyLink: "复制云端链接",
+        },
+
+        notice: {
+            syncDone: (uploaded: number, downloaded: number) =>
+                `图片同步完成：上传 ${uploaded}，下载 ${downloaded}。`,
+            syncNothing: "图片同步完成：本地与云端已经一致，没有需要处理的内容。",
+            syncFailed: "图片同步失败",
+            syncFailedMany: (count: number) => `有 ${count} 个文件处理失败`,
+            previewFailed: "预览图片同步变更失败",
+            linkCopied: (url: string) => `云端链接已复制：${url}`,
+            noPublicBase:
+                "还没有配置公网访问地址，无法生成链接。请在「图片同步」设置里填一个自定义域名或 r2.dev 域名。",
+            notInScope: "这张图片不在受管的图片文件夹里，SyncHub 不会同步它。",
+            notConfigured:
+                "图片同步还没配置好。请先在「图片同步」设置页填写 R2 信息与受管的图片文件夹。",
+            editorOpenFailed: "打开图片编辑器失败",
+            singleUploadFailed: "把这张图上传到云端失败（不影响本地保存）",
+            deleteBackupFailed: "删除云端备份失败",
+            deleteBackupFailedMany: (count: number) => `有 ${count} 个云端备份没能删除。`,
+            remoteDeleted: (count: number) => `已删除 ${count} 个云端备份。`,
+            remoteKept: (count: number) =>
+                `已保留 ${count} 个云端备份（本地不再保留副本，也不会再同步回来）。`,
+            renameFailed: "把云端那一份搬到新名字下失败",
+            deleteOutOfScope: "不在受管的图片文件夹里，SyncHub 不会动它",
+        },
+
+        /**
+         * 本地删除图片时的确认弹窗。
+         *
+         * 标题要带数量：一次删十张图时弹的是一个窗，用户得知道自己在回答什么。
+         */
+        deleteRemote: {
+            title: (count: number) =>
+                count === 1
+                    ? "要从云端也删除这张图片吗？"
+                    : `要从云端也删除这 ${count} 张图片吗？`,
+            desc:
+                "这些图片在云端还有一份备份。本地这一份已经删掉了 —— 云端那一份要怎么处理？",
+            more: (count: number) => `另有 ${count} 个未列出。`,
+            warningHeading: "云端删除不可撤销",
+            /**
+             * 必须写清「为什么这里没有后悔药」：本地那次删除多半还躺在 Obsidian
+             * 的回收站里，而 R2 没有回收站。不写出来，用户会按「本地删除」的经验
+             * 去点这个按钮。
+             */
+            warning:
+                "本地那份大概率还能从库的回收站找回来，但云端**没有回收站** —— " +
+                "删掉就真的没有了（除非你在别处还有副本）。选「保留云端备份」则云端那一份" +
+                "会留着，只是不再同步回本地。",
+            keep: "保留云端备份",
+            delete: "同时删除云端备份",
+        },
+
+        plan: {
+            heading: "变更预览",
+            empty: "本地与云端已经一致，没有需要处理的内容。",
+            counts: (upload: number, download: number, conflicts: number, skipped: number) =>
+                `将上传 ${upload}，下载 ${download}，冲突 ${conflicts}，跳过 ${skipped}。`,
+            /**
+             * 列举被截断时的说明。
+             *
+             * 现在它只影响「结果完不完整」：删除已经不在计划里了，所以没有
+             * 「不敢删」这回事了。但截断仍然要说出来 —— 否则「明明云端有这一份，
+             * 为什么又传了一次」会让人以为是重复上传的 bug。
+             */
+            truncated:
+                "云端对象数量超过了一次列举的上限，这一轮看到的结果可能不完整：" +
+                "没被列到的图片会被当成「云端缺这一份」而重传一次。重传是安全的，只是白传。",
+            more: (count: number) => `另有 ${count} 项未列出。`,
+            action: {
+                upload: "上传",
+                download: "下载",
+                conflict: "冲突",
+                skip: "跳过",
+            },
+            reason: {
+                "local-new": "本地新增",
+                "local-changed": "本地有改动",
+                "remote-new": "云端新增",
+                "remote-changed": "云端有改动",
+                "local-deleted": "本地已删除（云端保留）",
+                conflict: "两边都改过",
+                "in-sync": "一致",
+            },
+        },
+
+        editor: {
+            title: (name: string) => `裁剪 / 压缩：${name}`,
+            /**
+             * svg 与 gif 的拒绝理由必须写出来。
+             *
+             * 只说「不支持这个格式」的话，用户会去试别的操作，或者以为插件坏了 ——
+             * 而真实原因是**画布会毁掉这两种格式**（矢量被栅格化、动图只剩第一帧）。
+             */
+            unsupported:
+                "这个格式不能用画布重新编码：SVG 会被栅格化成位图，GIF 只会保留第一帧。" +
+                "请先转成 PNG / JPEG / WebP 再编辑。",
+            readFailed: "读取这张图片失败。",
+            decodeFailed: "无法解码这张图片，它可能已损坏，或这个格式在当前平台不受支持。",
+            format: "输出格式",
+            formatDesc: "换格式对体积的影响往往比调质量更大。WebP 一般比 JPEG 小四分之一左右，且支持透明。",
+            quality: "质量",
+            qualityDesc: "只对有损格式有效（JPEG / WebP）。PNG 是无损的，这一项对它不起作用。",
+            maxEdge: "最长边（像素）",
+            maxEdgeDesc: "0 表示不缩放。只缩不放 —— 放大小图只会更模糊、更大。",
+            ratio: "锁定比例",
+            ratioDesc: "拖动选框时保持比例。",
+            ratioFree: "自由",
+            ratioOriginal: "原图比例",
+            ratioSquare: "1:1",
+            overwrite: "覆盖原图",
+            overwriteDesc:
+                "关掉则另存为新文件（同目录，文件名加 -edited 后缀），原图保持不变。" +
+                "覆盖是多数人的意图 —— 笔记里的链接指着原文件，另存会让链接指向旧图。",
+            targetOverwrite: (path: string) => `将写回：${path}`,
+            targetNew: (path: string) => `将新建：${path}`,
+            reset: "重置选框",
+            cancel: "取消",
+            save: "保存",
+            saving: "正在保存…",
+            /**
+             * 输出信息。字节数是**真的编码一遍**量出来的，不是估算 ——
+             * 用公式估的 jpeg 体积能差两三倍，那等于编数字。
+             */
+            summary: (width: number, height: number, size: string, extension: string) =>
+                `输出：${width} × ${height} · ${size} · .${extension}`,
+            saveFailed: "保存图片失败",
+            /**
+             * 保存成功。
+             *
+             * 要说清「存到哪儿了」：另存模式下文件不叫原名，而用户下一步
+             * 往往就是去笔记里改链接 —— 不给路径的话他得自己去找。
+             */
+            saved: (path: string) => `已保存 ${path}`,
+        },
+
+        /**
+         * 图片管理面板。
+         *
+         * ## 这一页的文案原则：把「后果」写在按钮附近，而不是藏在文档里
+         *
+         * 这里的每个按钮都会**改文件**（删除、重命名、覆盖）。而重命名会连带
+         * 改掉笔记里的链接、删除会留下墓碑（下次同步不再把图补回来）—— 这些
+         * 都不是按钮文字能表达的。所以确认框里必须逐条说清。
+         */
+        manager: {
+            title: "图片管理",
+
+            scanning: "正在扫描库里的图片与引用…",
+            scanningOf: (done: number, total: number) => `正在扫描引用… ${done}/${total}`,
+            scanFailed: "扫描图片与引用失败",
+            loading: "正在扫描…",
+
+            /** 六个统计数字。标签要短 —— 它们并排显示在一行里。 */
+            statLocal: "本地",
+            statRemote: "云端",
+            statLinked: "已链接",
+            statOrphan: "失联",
+            statTotal: "合计",
+            statLocalBytes: "本地体积",
+
+            /**
+             * 云端列举失败时必须显式说明。
+             *
+             * 不说的话，列表里「云端」这一列全是空的，用户会读成「云端一张都没有」，
+             * 进而放心地把本地全删了 —— 而真相是**根本没读到云端**。
+             */
+            remoteFailed: (message: string) => `没能读取云端列表：${message}。列表里「云端」这一列不可信。`,
+            notConfigured: "图片同步还没配置好，所以只能看到本地与引用情况。",
+            truncated: "云端对象超过了一次列举的上限，这一轮看到的结果可能不完整。",
+
+            filterLocal: "本地",
+            filterRemote: "云端",
+            filterLinked: "已链接",
+            filterState: {
+                any: "任意",
+                yes: "有",
+                no: "无",
+            },
+            minSize: "最小体积",
+            minSizeUnit: "KB",
+            sort: "排序",
+            sortOption: {
+                path: "按路径",
+                "size-desc": "体积大 → 小",
+                "size-asc": "体积小 → 大",
+            },
+            search: "搜索",
+            searchPlaceholder: "路径包含…",
+
+            presetOrphans: "失联图片",
+            presetPendingUpload: "待上传",
+            presetRemoteOnly: "仅云端",
+            presetLarge: "大图",
+            presetReset: "重置筛选",
+
+            selectAll: "全选",
+            clearSelection: "清空选择",
+            selectedCount: (count: number) => `已选 ${count}`,
+            shown: (visible: number, total: number) => `显示 ${visible} / ${total}`,
+            empty: "这个库里没有受管文件夹中的图片。",
+            emptyFiltered: "没有符合当前筛选条件的图片。",
+            capped: (hidden: number) => `另有 ${hidden} 项未显示 —— 请用筛选缩小范围。`,
+
+            columnPath: "路径",
+            columnSize: "体积",
+            columnState: "状态",
+            badgeLocal: "本地",
+            badgeRemote: "云端",
+            badgeLinked: (count: number) => `已链接 ×${count}`,
+            badgeOrphan: "无人引用",
+
+            actionSync: "同步选中",
+            actionCompress: "压缩并同步",
+            actionRename: "重命名…",
+            actionDeleteLocal: "删除本地",
+            actionDeleteBoth: "删除本地 + 云端",
+            noSelection: "先在上面的列表里勾选要处理的图片。",
+            compressHint: (params: string) =>
+                `压缩参数取自设置页（质量 / 最长边 = ${params}），**保持原格式**，且只在变小的时候才写回。`,
+
+            syncing: "正在同步选中的图片…",
+            syncDone: (uploaded: number, downloaded: number, failed: number) =>
+                failed > 0
+                    ? `选中同步完成：上传 ${uploaded}，下载 ${downloaded}，失败 ${failed}。`
+                    : `选中同步完成：上传 ${uploaded}，下载 ${downloaded}。`,
+            syncFailed: "同步选中的图片失败",
+            syncFailedMany: (count: number) => `有 ${count} 张没能同步。`,
+
+            compressing: "正在压缩…",
+            compressingOf: (done: number, total: number) => `正在压缩… ${done}/${total}`,
+            compressNothing: (skipped: number) =>
+                `没有图片被压缩 —— ${skipped} 张要么不支持重编码（SVG / GIF），要么压完反而更大。`,
+            compressDone: (count: number, saved: string, skipped: number) =>
+                `已压缩 ${count} 张，省下 ${saved}${skipped > 0 ? `（另有 ${skipped} 张跳过）` : ""}。`,
+            compressFailed: (count: number, sample: string) =>
+                `有 ${count} 张压缩失败，例如 ${sample}。`,
+
+            renaming: "正在重命名…",
+            renameTitle: (count: number) => `重命名 ${count} 张图片`,
+            renameDesc: (placeholders: string) =>
+                `用模板拼新文件名，可用占位符：${placeholders}。目录不变 —— 笔记里的链接由 Obsidian 跟着更新。`,
+            renameTemplate: "文件名模板",
+            renameStart: "起始序号",
+            renamePreviewCount: (renameable: number, total: number) =>
+                `将重命名 ${renameable} 张（共选中 ${total} 张）。`,
+            renameProblem: {
+                unchanged: "名字没变，跳过",
+                invalid: "名字不合法，跳过",
+                taken: "目标已存在，跳过",
+                extChanged: "改了扩展名，跳过",
+            },
+            renameConfirm: (count: number) => `重命名 ${count} 张`,
+            renameCancel: "取消",
+            renameDone: (renamed: number, planned: number) => `已重命名 ${renamed} / ${planned} 张。`,
+            renameFailedMany: (count: number, sample: string) =>
+                `有 ${count} 张没能重命名，例如 ${sample}。`,
+            renameMissing: "文件已经不在库里了",
+
+            deleting: "正在删除…",
+            deleteDone: (local: number, remote: number, failed: number) =>
+                failed > 0
+                    ? `已删除本地 ${local} 张、云端 ${remote} 份，失败 ${failed} 张。`
+                    : `已删除本地 ${local} 张、云端 ${remote} 份。`,
+            deleteFailed: "批量删除失败",
+            deleteFailedMany: (count: number, sample: string) =>
+                `有 ${count} 张没能删除，例如 ${sample}。`,
+
+            confirmLocalTitle: (count: number) => `只删除本地的 ${count} 张图片？`,
+            confirmLocalDesc:
+                "本地这一份会被移入回收站（按你在「设置 → 文件与链接 → 删除文件」里选的方式）。" +
+                "云端那一份保留 —— 但**不会再同步回这台设备**：SyncHub 会记下「你已经删过它」，" +
+                "否则下一轮同步会把它们下载回来。",
+            confirmLocalOk: (count: number) => `删除本地 ${count} 张`,
+
+            confirmBothTitle: (count: number) => `删除本地与云端的 ${count} 张图片？`,
+            confirmBothDesc:
+                "本地这一份进回收站，云端那一份被真的删除。这一步之后，两边都不再有它们。",
+            confirmBothWarningHeading: "云端删除不可撤销",
+            confirmBothWarning:
+                "本地那份大概率还能从回收站找回来，但云端**没有回收站** —— 删掉就真的没有了" +
+                "（除非你在别处还有副本）。另外，如果你在笔记里引用过它们，那些链接会变成断链。",
+            confirmBothOk: (count: number) => `删除 ${count} 张（含云端）`,
+            confirmCancel: "取消",
+        },
+
+        errors: {
+            notConfigured: (missing: string) =>
+                `图片同步还没配置好，缺少：${missing}。请在「图片同步」设置页补全。`,
+            noFolders:
+                "还没有指定受管的图片文件夹。请在「图片同步」设置页填写一个（例如 attachments）。",
+            authFailed:
+                "R2 拒绝了这次请求：Access Key ID 或 Secret Access Key 不正确，" +
+                "或者这个令牌没有访问该桶的权限。",
+            bucketNotFound: (bucket: string) =>
+                `找不到存储桶 ${bucket}。请核对桶名，以及令牌是否授权了这个桶。`,
+            listFailed: (status: number, detail: string) =>
+                `列举云端对象失败（HTTP ${status}）：${detail}`,
+            uploadFailed: (path: string, status: number, detail: string) =>
+                `上传 ${path} 失败（HTTP ${status}）：${detail}`,
+            downloadFailed: (path: string, status: number, detail: string) =>
+                `下载 ${path} 失败（HTTP ${status}）：${detail}`,
+            deleteFailed: (path: string, status: number, detail: string) =>
+                `删除云端的 ${path} 失败（HTTP ${status}）：${detail}`,
+            network: (detail: string) =>
+                `连接 R2 失败：${detail}。请检查网络（或代理）后重试。`,
+            localReadFailed: (path: string, detail: string) =>
+                `读取本地文件 ${path} 失败：${detail}`,
+            localWriteFailed: (path: string, detail: string) =>
+                `写入本地文件 ${path} 失败：${detail}`,
+            decodeFailed: (path: string) =>
+                `无法解码 ${path}，它可能已损坏，或这个格式在当前平台不受支持。`,
+        },
     },
 };
 

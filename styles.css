@@ -134,26 +134,30 @@
  * 但也不用 `mod-warning` 的橙色：那是「现在就出错了」，而这里是「别这么配」，
  * 喊太响会让人以为插件已经出问题。左侧竖线足够把它和普通描述区分开。
  */
-.obsync-settings .obsync-sync-notes {
+.obsync-settings .obsync-sync-notes,
+.obsync-settings .obsync-image-notes {
     margin: 0.5em 0 1em;
     padding: 0.5em 0 0.5em 0.9em;
     border-left: 3px solid var(--background-modifier-border);
 }
 
-.obsync-settings .obsync-sync-notes-heading {
+.obsync-settings .obsync-sync-notes-heading,
+.obsync-settings .obsync-image-notes-heading {
     font-size: var(--font-ui-small, 0.9em);
     font-weight: 600;
     color: var(--text-normal);
     margin-bottom: 0.35em;
 }
 
-.obsync-settings .obsync-sync-notes ul {
+.obsync-settings .obsync-sync-notes ul,
+.obsync-settings .obsync-image-notes ul {
     margin: 0;
     padding-left: 1.1em;
     list-style: disc outside;
 }
 
-.obsync-settings .obsync-sync-notes li {
+.obsync-settings .obsync-sync-notes li,
+.obsync-settings .obsync-image-notes li {
     font-size: var(--font-ui-smaller, 0.85em);
     color: var(--text-normal);
     line-height: 1.5;
@@ -337,6 +341,24 @@
     align-self: flex-start;
 }
 
+/* hash 与「看差异」并排一行：提交行本身是三段堆叠的，
+   差异按钮单独放会再占掉侧边栏的一行。 */
+.obsync-commit-head {
+    display: flex;
+    align-items: center;
+    gap: 0.4em;
+}
+
+.obsync-commit-diff {
+    display: inline-flex;
+    cursor: pointer;
+    color: var(--text-muted);
+}
+
+.obsync-commit-diff:hover {
+    color: var(--text-accent);
+}
+
 .obsync-commit-message {
     line-height: 1.4;
     overflow-wrap: anywhere;
@@ -345,6 +367,126 @@
 .obsync-commit-meta {
     font-size: var(--font-ui-smaller, 0.85em);
     opacity: 0.6;
+}
+
+/* ── 差异视图（弹窗） ──────────────────────────────────────────────────────
+   diff 的行很长，而弹窗的默认宽度是按「一两个设置项」定的 —— 不撑开就只能
+   横向滚动，那等于看不了。宽度用 `min()` 收口：屏幕小的时候仍然留出边距。
+
+   配色只用**低透明度的色块**，不动文字颜色：深浅色主题下 `--text-normal`
+   都是可读的，而自己挑一个绿/红去写文字，在某个主题上必然有一边读不清。
+   色块叠在主题背景上，两种模式都成立。 */
+
+.obsync-diff-modal {
+    width: min(1080px, 92vw);
+}
+
+.obsync-diff-target {
+    font-family: var(--font-monospace);
+    font-size: var(--font-ui-smaller, 0.85em);
+    color: var(--text-muted);
+    margin-bottom: 0.6em;
+    overflow-wrap: anywhere;
+}
+
+.obsync-diff-body {
+    max-height: 68vh;
+    overflow: auto;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-s, 4px);
+}
+
+.obsync-diff-section + .obsync-diff-section {
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+/* 段落标题吸顶：长 diff 往下滚的时候，用户还得知道自己在看哪一节
+   （「工作区」还是「已暂存」—— 这两节的内容不一样）。 */
+.obsync-diff-section-heading {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 0.35em 0.6em;
+    background: var(--background-secondary);
+    font-size: var(--font-ui-smaller, 0.85em);
+    font-weight: 600;
+}
+
+.obsync-diff-file {
+    padding-bottom: 0.4em;
+}
+
+.obsync-diff-file-heading {
+    display: flex;
+    gap: 0.6em;
+    padding: 0.3em 0.6em;
+    font-family: var(--font-monospace);
+    font-size: var(--font-ui-smaller, 0.85em);
+    overflow-wrap: anywhere;
+}
+
+.obsync-diff-stats {
+    margin-left: auto;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.obsync-diff-hunk {
+    border-top: 1px solid var(--background-modifier-border-focus, var(--background-modifier-border));
+}
+
+.obsync-diff-hunk-header {
+    padding: 0.15em 0.6em;
+    color: var(--text-faint);
+    font-family: var(--font-monospace);
+    font-size: var(--font-ui-smaller, 0.85em);
+}
+
+.obsync-diff-line {
+    display: flex;
+    font-family: var(--font-monospace);
+    font-size: var(--font-ui-smaller, 0.85em);
+    line-height: 1.5;
+    /* 不换行：diff 里「一行」是一个有意义的概念（行号指着它），
+       折行会让行号与内容对不上。横向滚动交给 .obsync-diff-body。 */
+    white-space: pre;
+}
+
+.obsync-diff-line-add {
+    background-color: rgba(76, 175, 80, 0.14);
+}
+
+.obsync-diff-line-del {
+    background-color: rgba(224, 82, 82, 0.14);
+}
+
+/* `\ No newline at end of file` 那一行：它是说明，不是内容 */
+.obsync-diff-line-note {
+    padding: 0.15em 0.6em;
+    color: var(--text-faint);
+    font-family: var(--font-monospace);
+    font-size: var(--font-ui-smaller, 0.85em);
+}
+
+.obsync-diff-lineno {
+    flex: 0 0 auto;
+    min-width: 3.2em;
+    padding-right: 0.5em;
+    text-align: right;
+    color: var(--text-faint);
+    /* 行号不该被一起复制走（复制一段 diff 出去时它是噪音） */
+    user-select: none;
+}
+
+.obsync-diff-text {
+    flex: 1 0 auto;
+    padding-right: 0.6em;
+}
+
+.obsync-diff-message {
+    margin: 0.4em 0;
+    padding: 0 0.6em;
+    color: var(--text-muted);
 }
 
 /* ── 提示列表（社区插件浏览 / 版本选择） ──────────────────────────────────
@@ -437,6 +579,61 @@
 .obsync-settings .obsync-section-header .setting-item-control {
     flex-shrink: 0;
     gap: 0.5em;
+}
+
+/* ── 设置页：`.gitignore` 代码框 ───────────────────────────────────────────
+   **块级元素直接挂在页面上**，不是某个 `Setting` 的控件 —— 放进
+   `.setting-item-control` 只会拿到右侧那几百像素宽，而 12 行的规则清单
+   挤在里面根本没法读（用户的反馈：「只占了右侧有限空间，太丑了」）。
+
+   外观是显式给的：裸 `textarea` 不保证有 Obsidian 的输入框样式
+   （那些规则挂在 `.setting-item-control` 下），所以颜色/边框/圆角自己写，
+   只用主题变量 —— 深浅色模式下都与原生输入框一致。
+
+   等宽字体是刻意的：规则里最容易看错的是路径分隔与通配符（`!` 取反、
+   `**/` 递归），等宽下对齐得整齐一些。
+   用 `--font-ui-smaller` 而不是正文字号：一屏要能看下十几条规则，
+   而这不是要读的段落，是要核对的清单。 */
+
+.obsync-settings .obsync-gitignore {
+    /* 全宽的**唯一**来源。刻意不写内联样式：社区审核的
+       `obsidianmd/no-static-styles-assignment` 禁止直接写样式，而
+       `setCssProps({ width })` 同样会被判违规（那条规则只放行 `--*` 自定义属性）。
+       代价是宽度依赖样式表被重新读入 —— 所以插件目录里放了 `.hotreload` 标记，
+       Hot Reload 才会在 styles.css 变化时重载插件。 */
+    width: 100%;
+    /* `width: 100%` 再加内边距与边框，在 content-box 下会比容器宽出
+       `2 × (padding + border)` —— 设置页会因此多出一条横向滚动条。 */
+    box-sizing: border-box;
+    min-height: 12em;
+    margin: 0.5em 0 0.75em;
+    padding: 0.5em 0.6em;
+    font-family: var(--font-monospace);
+    font-size: var(--font-ui-smaller, 0.85em);
+    line-height: 1.5;
+    color: var(--text-normal);
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-s, 4px);
+    /* 规则不折行：折了之后一条规则看起来像两条 */
+    white-space: pre;
+    overflow-wrap: normal;
+    resize: vertical;
+}
+
+.obsync-settings .obsync-gitignore:focus {
+    border-color: var(--interactive-accent, #7f6df2);
+}
+
+/* 三个操作按钮贴左，不跟在 Obsidian 的默认行为后面推到最右 ——
+   代码框是全宽的，而这一行没有名称/描述，按钮推到最右会离框太远，
+   看不出它们是给上面那个框用的。 */
+.obsync-settings .obsync-gitignore-actions {
+    justify-content: flex-start;
+}
+
+.obsync-settings .obsync-gitignore-actions .setting-item-control {
+    flex: 0 0 auto;
 }
 
 /* ── 设置页：跟踪列表 ────────────────────────────────────────────────────── */
@@ -658,4 +855,423 @@ body.obsync-status-bar-full-width .status-bar:has(.obsync-status-bar-item) {
     color: var(--text-warning, #b98a00);
     font-size: var(--font-ui-smaller, 0.85em);
     line-height: 1.5;
+}
+
+/* ── 笔记内的图片工具条 ────────────────────────────────────────────────────
+ *
+ * 阅读视图里每张库内图片外面包一层 `.obsync-image-wrap`。包一层的理由是
+ * 需要一个**自己可控的定位上下文** —— 图片可能被 `<a>` 包着、也可能受
+ * 段落样式影响，直接绝对定位到 img 上会在某些主题里跑位。
+ *
+ * 工具条默认 `opacity: 0` 而不是 `display: none`：后者在 `:hover` 时才参与布局，
+ * 图片会因此跳一下。用透明度隐藏则位置一直是稳的。
+ */
+.obsync-image-wrap {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+}
+
+.obsync-image-wrap .obsync-image-tools {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    display: flex;
+    gap: 4px;
+    padding: 3px;
+    border-radius: var(--radius-s, 4px);
+    /* 半透明底：图片可能很花，纯透明的话图标会看不见。 */
+    background: var(--background-primary);
+    box-shadow: var(--shadow-s, 0 2px 8px rgba(0, 0, 0, 0.15));
+    opacity: 0;
+    transition: opacity 120ms ease-in-out;
+    /* 图片上不该有文字光标，也不该被拖拽选中。 */
+    user-select: none;
+}
+
+.obsync-image-wrap:hover .obsync-image-tools,
+.obsync-image-wrap:focus-within .obsync-image-tools {
+    opacity: 1;
+}
+
+/* ── 裁剪 / 压缩弹窗 ──────────────────────────────────────────────────────
+ *
+ * 舞台是定位上下文：图片按容器宽度自适应，选框用**显示像素**绝对定位在它上面。
+ * 源图坐标与显示坐标之间的换算在 `ImageEditorModal.measure()` 里（scale）。
+ */
+.obsync-crop-stage {
+    position: relative;
+    display: block;
+    margin: 0 auto 1em;
+    /* 限高，否则一张 4000px 高的竖图会把弹窗撑到屏幕外，控件全看不见。 */
+    max-height: 55vh;
+    overflow: hidden;
+    text-align: center;
+    background: var(--background-secondary);
+    border-radius: var(--radius-s, 4px);
+}
+
+.obsync-crop-image {
+    display: block;
+    max-width: 100%;
+    max-height: 55vh;
+    margin: 0 auto;
+    /* 关掉浏览器自带的图片拖拽：拖选框时会把整张图拖走。 */
+    -webkit-user-drag: none;
+    user-select: none;
+}
+
+.obsync-crop-box {
+    position: absolute;
+    /* 选框外的区域压暗，一眼看出「裁掉的是哪部分」。 */
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+    border: 1px solid var(--text-on-accent, #fff);
+    cursor: move;
+    box-sizing: border-box;
+}
+
+.obsync-crop-handle {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background: var(--text-on-accent, #fff);
+    border: 1px solid rgba(0, 0, 0, 0.4);
+    border-radius: 2px;
+}
+
+/* 四个角各自贴到选框的对应角上，并且**往外挪半格** ——
+   压在框内的话，拖到边缘时手会盖住选框本身。 */
+.obsync-crop-handle-nw {
+    top: -6px;
+    left: -6px;
+    cursor: nwse-resize;
+}
+
+.obsync-crop-handle-ne {
+    top: -6px;
+    right: -6px;
+    cursor: nesw-resize;
+}
+
+.obsync-crop-handle-sw {
+    bottom: -6px;
+    left: -6px;
+    cursor: nesw-resize;
+}
+
+.obsync-crop-handle-se {
+    bottom: -6px;
+    right: -6px;
+    cursor: nwse-resize;
+}
+
+/* 输出尺寸与体积。用等宽数字，拖动时数字变化不会让整行左右抖。 */
+.obsync-image-summary {
+    margin: 0 0 0.5em;
+    font-size: var(--font-ui-small, 0.9em);
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── 图片管理面板 ────────────────────────────────────────────────────────
+ *
+ * 面板里信息密度最高的是那张表：路径可能很长、状态有三个、还要放缩略图。
+ * 所以布局的取舍是「路径占满剩余宽度并可省略，其余列按内容收窄」——
+ * 反过来（路径固定宽）会让长路径换行，几行之后表格就没法看了。
+ *
+ * 2026-09-23：从弹窗变成主工作区标签页。弹窗那份内边距是 modal 容器给的，
+ * 标签页的 contentEl 没有，所以 `.obsync-image-manager` 自己补上。
+ */
+
+.obsync-image-manager {
+    /* 表格自身滚动，而不是整页滚动：筛选区与操作按钮必须**一直可见**，
+       否则勾完一张图要滚到底才能点「删除」。 */
+    display: flex;
+    flex-direction: column;
+    /* 高满整个叶子，表格区才有「剩余空间」可吃。`.view-content` 的高度是
+       确定的（Obsidian: `height: calc(100% - var(--header-height))`），
+       所以这里的 100% 真的解析得出来。内边距也自己补 —— 弹窗那份是
+       modal 容器给的，标签页的 contentEl 没有。 */
+    height: 100%;
+    padding: 0.75em;
+    box-sizing: border-box;
+}
+
+/* ── 统计 ── */
+
+.obsync-image-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4em;
+    margin: 0 0 0.6em;
+}
+
+.obsync-image-stat {
+    flex: 1 1 4.5em;
+    padding: 0.4em 0.5em;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-s, 4px);
+    text-align: center;
+    background: var(--background-secondary);
+}
+
+.obsync-image-stat-value {
+    font-size: var(--font-ui-medium, 1em);
+    font-weight: 600;
+    /* 等宽数字：数字变化时整行不会左右抖。 */
+    font-variant-numeric: tabular-nums;
+    color: var(--text-normal);
+}
+
+.obsync-image-stat-label {
+    font-size: var(--font-ui-smaller, 0.8em);
+    color: var(--text-muted);
+}
+
+/* ── 必须被看见的说明 ── */
+
+.obsync-image-note:empty {
+    display: none;
+}
+
+/* 「云端列表没读到」「结果被截断」——**用正文色而不是灰字**。
+   灰字正是「扫过去看不见」的原因，而这几种情况下界面上显示的状态是错的，
+   用户据此做的删除是不可撤销的。左侧竖线与设置页的注意事项同源。 */
+.obsync-image-note-warn {
+    margin: 0.4em 0;
+    padding: 0.4em 0 0.4em 0.8em;
+    border-left: 3px solid var(--text-warning, var(--color-orange, #d68b00));
+    font-size: var(--font-ui-small, 0.9em);
+    color: var(--text-normal);
+    line-height: 1.5;
+}
+
+/* ── 筛选 ── */
+
+.obsync-image-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6em;
+    padding: 0.5em 0;
+    border-top: 1px solid var(--background-modifier-border);
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.obsync-image-filter {
+    display: flex;
+    align-items: center;
+    gap: 0.3em;
+    font-size: var(--font-ui-small, 0.9em);
+    color: var(--text-muted);
+}
+
+.obsync-image-filter input[type="number"] {
+    width: 5em;
+}
+
+.obsync-image-filter input[type="search"] {
+    width: 10em;
+}
+
+.obsync-image-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3em;
+    margin-left: auto;
+}
+
+/* ── 选择条 ── */
+
+.obsync-image-selectbar {
+    display: flex;
+    align-items: center;
+    gap: 0.6em;
+    padding: 0.4em 0;
+}
+
+.obsync-image-count {
+    font-size: var(--font-ui-smaller, 0.8em);
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── 表格 ── */
+
+.obsync-image-table-wrap {
+    /* 吃满筛选区与操作区之外的全部高度，内容超长时**自己滚** —— 页面自适应。
+       弹窗时代那个 `max-height: 45vh` 上限去掉了：它会让标签页的下半部
+       空一大块，而操作按钮被顶到屏幕中间。 */
+    flex: 1 1 auto;
+    /* 0 而不是某个下限：叶子很矮时（窄分栏、手机）让表格继续缩，也不把
+       操作栏挤出可见区 —— 表格变小还能滚，按钮看不见就按不了了。 */
+    min-height: 0;
+    overflow: auto;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-s, 4px);
+}
+
+.obsync-image-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-ui-smaller, 0.85em);
+}
+
+.obsync-image-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--background-secondary);
+    text-align: left;
+    padding: 0.35em 0.5em;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.obsync-image-table td {
+    padding: 0.25em 0.5em;
+    border-top: 1px solid var(--background-modifier-border);
+    vertical-align: middle;
+}
+
+.obsync-image-row {
+    cursor: pointer;
+}
+
+.obsync-image-row:hover {
+    background: var(--background-modifier-hover);
+}
+
+/* 选中行要高亮：列表很长，滚动之后必须一眼看出哪些是勾上的。 */
+.obsync-image-row-selected {
+    background: var(--background-modifier-active-hover, var(--background-modifier-hover));
+}
+
+.obsync-image-cell-check {
+    width: 2em;
+    text-align: center;
+}
+
+.obsync-image-cell-thumb {
+    width: 3em;
+}
+
+/* 缩略图的尺寸**必须同时在 HTML 属性上写一份**（见 ImageManagerView 的
+   renderRow）：Obsidian 的 `.workspace-leaf-content img:not([width])` 会给
+   leaf 里的无宽度属性图片加 `max-width: 100%`，窄标签页里会把整列缩没。
+   这里的 em 值照旧生效（author CSS 优先于呈现属性）。 */
+.obsync-image-thumb {
+    width: 2.2em;
+    height: 2.2em;
+    object-fit: cover;
+    border-radius: var(--radius-s, 3px);
+    display: block;
+}
+
+/* 路径列：占满剩余宽度，过长时省略而不是换行（换行会把行高撑成两倍，
+   几十行之后表格就没法扫了）。`title` 属性给出完整路径。 */
+.obsync-image-path {
+    max-width: 0;
+    width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.obsync-image-size {
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+}
+
+.obsync-image-badges {
+    white-space: nowrap;
+}
+
+.obsync-image-badge {
+    display: inline-block;
+    margin-left: 0.25em;
+    padding: 0 0.35em;
+    border-radius: var(--radius-s, 3px);
+    font-size: var(--font-ui-smaller, 0.75em);
+    line-height: 1.6;
+    border: 1px solid var(--background-modifier-border);
+    color: var(--text-muted);
+}
+
+/* 「本地」「云端」是**事实**，用中性色 —— 它们不是好或坏，只是有或没有。 */
+.obsync-image-badge-local,
+.obsync-image-badge-remote {
+    color: var(--text-normal);
+}
+
+/* 「已链接」是好的（有人用），「无人引用」是待处理的（可能该删）。
+   只有这两个用颜色，因为只有它们携带判断。 */
+.obsync-image-badge-linked {
+    color: var(--text-success, var(--color-green, #3f9c35));
+    border-color: currentColor;
+}
+
+.obsync-image-badge-orphan {
+    color: var(--text-warning, var(--color-orange, #d68b00));
+    border-color: currentColor;
+}
+
+.obsync-image-empty {
+    padding: 1.5em 0.5em;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+/* ── 操作 ── */
+
+.obsync-image-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4em;
+    padding-top: 0.6em;
+}
+
+.obsync-image-hint {
+    flex: 1 1 100%;
+    font-size: var(--font-ui-smaller, 0.8em);
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+/* ── 重命名预览 ── */
+
+.obsync-image-rename-preview {
+    margin: 0.5em 0;
+}
+
+.obsync-image-rename-count {
+    font-size: var(--font-ui-small, 0.9em);
+    color: var(--text-normal);
+    margin-bottom: 0.3em;
+}
+
+.obsync-image-rename-list {
+    margin: 0;
+    padding-left: 1.1em;
+    list-style: disc outside;
+    max-height: 12em;
+    overflow: auto;
+}
+
+.obsync-image-rename-item {
+    font-size: var(--font-ui-smaller, 0.8em);
+    line-height: 1.6;
+    word-break: break-all;
+}
+
+.obsync-image-rename-arrow {
+    margin: 0 0.35em;
+    color: var(--text-muted);
+}
+
+.obsync-image-rename-problem {
+    margin-left: 0.5em;
+    color: var(--text-warning, var(--color-orange, #d68b00));
 }

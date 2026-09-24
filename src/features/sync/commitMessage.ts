@@ -1,4 +1,4 @@
-import os from "node:os";
+import { Platform } from "obsidian";
 
 /**
  * 提交信息模板展开。
@@ -51,9 +51,20 @@ function formatDate(date: Date): string {
     );
 }
 
+/**
+ * 机器名。
+ *
+ * **不静态 import `node:os`** —— 审核规则 `obsidianmd/no-nodejs-modules` 禁止
+ * 静态导入 Node 内置模块（移动端没有 Node，静态导入会让整个插件在移动端加载失败），
+ * 它要求的写法正是「`require` 落在 `Platform.isDesktop` 守卫内」。这里照办。
+ *
+ * 非桌面端返回空串：`{{hostname}}` 被替换成空，而不是让提交失败。
+ * 取不到（Electron 之外的宿主）时退回 `"unknown"`，同样是「不阻断提交」。
+ */
 function hostnameOf(): string {
+    if (!Platform.isDesktop) return "";
     try {
-        // node:os 在 Electron 渲染进程可用（阶段一构建配置已把 node 内置模块列为外部依赖）。
+        const os = require("node:os") as typeof import("node:os");
         return os.hostname();
     } catch {
         return "unknown";

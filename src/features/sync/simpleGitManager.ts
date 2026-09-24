@@ -218,6 +218,67 @@ export class SimpleGitManager implements GitManager {
         return [...status.staged, ...status.unstaged, ...status.untracked];
     }
 
+    // ── 差异 ──────────────────────────────────────────────────────────────
+
+    /**
+     * 某个文件的差异原文。
+     *
+     * ## 三个选项都不是装饰
+     *
+     * - `-c core.quotePath=false` —— 不加它，**非 ASCII 路径会被转义成八进制**
+     *   （`"a/\344\270\255.md"`），而中文文件名在这个插件的目标场景里是常态。
+     *   实测：加与不加的输出差别见 `tests/features/simpleGitManager.test.ts`。
+     * - `--no-color` —— 用户可能配了 `color.ui=always`，那样输出里会混进 ANSI
+     *   转义序列，行号会解析错、界面会出现乱码方块。
+     * - `--no-ext-diff` —— 不加它会走用户在 `.gitconfig` 里配的外部 diff 工具，
+     *   而那类工具（比如 difftastic）输出的**不是 unified diff**，
+     *   解析器会把它当成一片上下文行。
+     *
+     * 未跟踪文件这里什么都不会输出（git 的行为），由 `SyncService` 兜底 ——
+     * 那是展示层的决策，不该塞进这一层。
+     */
+    async diffFile(path: string, options: { staged?: boolean } = {}): Promise<string> {
+        const git = await this.git();
+        const args = [
+            "-c",
+            "core.quotePath=false",
+            "diff",
+            "--no-color",
+            "--no-ext-diff",
+        ];
+        if (options.staged) args.push("--cached");
+        args.push("--", path);
+        return wrap("reading file diff", () => git.raw(args));
+    }
+
+    /**
+     * 某条提交引入的改动。
+     *
+     * `-m --first-parent` 是为了**合并提交**：git 对合并提交默认不输出任何差异
+     * （它不知道该跟哪个父提交比），于是用户在历史里点开一个合并提交会看到一片
+     * 空白。加上这两个选项后它跟第一父提交比 —— 那正是「这次合并带进来了什么」。
+     * 对普通提交这两个选项没有副作用（实测）。
+     *
+     * `--format=` 抑制提交头（作者、日期、message），这里只要补丁本身。
+     */
+    async commitPatch(hash: string): Promise<string> {
+        const git = await this.git();
+        return wrap("reading commit diff", () =>
+            git.raw([
+                "-c",
+                "core.quotePath=false",
+                "show",
+                "--no-color",
+                "--no-ext-diff",
+                "--format=",
+                "-m",
+                "--first-parent",
+                hash,
+                "--",
+            ])
+        );
+    }
+
     /**
      * 测试远端可达性与鉴权（只读）。
      *

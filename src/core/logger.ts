@@ -27,7 +27,11 @@ export class Logger {
 
     info(message: string, ...args: unknown[]): void {
         if (!this.verbose) return;
-        console.info(PREFIX, message, ...args);
+        // `console.debug` 而不是 `console.info`：社区审核的 `no-console` 规则
+        // 只放行 debug / warn / error（info 与 log 会被报成
+        // 「Avoid unnecessary logging to console」）。两者都是 verbose 门控的，
+        // 行为上没有差别，所以按审核允许的那个写。
+        console.debug(PREFIX, message, ...args);
     }
 
     warn(message: string, ...args: unknown[]): void {

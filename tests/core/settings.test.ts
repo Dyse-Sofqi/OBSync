@@ -28,9 +28,12 @@ describe("availableUpdateKey（身份键）", () => {
 
 describe("normalizeSettings", () => {
     it("空数据返回完整默认值", () => {
-        expect(normalizeSettings(undefined)).toEqual(DEFAULT_SETTINGS);
-        expect(normalizeSettings(null)).toEqual(DEFAULT_SETTINGS);
-        expect(normalizeSettings("garbage")).toEqual(DEFAULT_SETTINGS);
+        // folders 要单独比：默认值写的是 `.`（给人看），归一之后是 `[""]`
+        // （整个库）—— 这正是 normalizeSettings 该做的事。
+        const expected = { ...DEFAULT_SETTINGS, images: { ...DEFAULT_SETTINGS.images, folders: [""] } };
+        expect(normalizeSettings(undefined)).toEqual(expected);
+        expect(normalizeSettings(null)).toEqual(expected);
+        expect(normalizeSettings("garbage")).toEqual(expected);
     });
 
     it("保留用户已设置的值", () => {
@@ -598,6 +601,318 @@ describe("normalizeSettings", () => {
 
             expect(settings.installer.tracked[0]!.id).toBe("demo");
             expect(settings.installer.tracked[0]!.origin).toBeUndefined();
+        });
+    });
+});
+
+/**
+ * 图片同步（Cloudflare R2）的设置。
+ *
+ * 这一组**没有专门的迁移代码** —— `mergeWithDefaults` 会把缺失的键补上，
+ * 于是 v3 的 `data.json`（里面根本没有 `images`）读出来就是一份完整的默认值。
+ * 这一点值得单独测：它是「新增一整组设置项不需要写迁移」这个设计的兑现处，
+ * 而一旦有人把它改成「按版本号逐项补」，漏掉一项的后果是**那个字段是
+ * `undefined`** —— 后续 `images.folders.some(...)` 之类的调用直接抛错。
+ *
+ * 另一条主线是**校验**：`data.json` 可以被手改，也会随笔记仓库同步到别的设备，
+ * 而这一组字段里有一个（`folders`）决定「插件能动哪些文件」—— 它错了的代价
+ * 是「动了不该动的文件」或「一个文件都不动」，两种都没有提示。
+ */
+describe("normalizeSettings：图片同步（v3 → v4）", () => {
+    it("v3 的 data.json 里没有 images 时补上完整默认值", () => {
+        const settings = normalizeSettings({ version: 3, language: "zh-cn" });
+
+        expect(settings.version).toBe(SETTINGS_VERSION);
+        // folders 要单独比：默认值写的是 `.`（给人看），归一之后是 `[""]`
+        // （整个库）—— 这正是 normalizeSettings 该做的事。
+        expect(settings.images).toEqual({ ...DEFAULT_SETTINGS.images, folders: [""] });
+    });
+
+    it("默认：受管文件夹是仓库根目录（整个库）", () => {
+        // 这个插件服务的场景是「库本身是一个 git 仓库」，仓库文件夹就是那个
+        // 场景里最自然的范围；曾经这里是 `[]`（一个都不预设）。
+        expect(DEFAULT_SETTINGS.images.folders).toEqual(["."]);
+        // 落地的形状是归一后的：`.` → 空串（见 normalizeFolder）。
+        expect(normalizeSettings({}).images.folders).toEqual([""]);
+    });
+
+    it("默认：删本地图片时会问一句「云端那份也删吗」", () => {
+        // 删除是不可逆的（R2 没有回收站），而「不问」意味着用户的云端备份
+        // 会在他毫无察觉的情况下一直留着 —— 或者更糟：某天发现它又回到本地了。
+        expect(DEFAULT_SETTINGS.images.deleteRemotePolicy).toBe("ask");
+    });
+
+    it("默认：自动同步关闭（它真的读写文件与网络，不该自己跑起来）", () => {
+        expect(DEFAULT_SETTINGS.images.autoSyncMinutes).toBe(0);
+    });
+
+    it("默认：总开关开着，但没配好之前它什么也不做", () => {
+        expect(DEFAULT_SETTINGS.images.enabled).toBe(true);
+        // 「开着」不等于「会跑」—— 配置不全时 `isConfigured()` 为假。
+        expect(DEFAULT_SETTINGS.images.accountId).toBe("");
+        expect(DEFAULT_SETTINGS.images.bucket).toBe("");
+    });
+
+    it("保留用户填的值", () => {
+        const settings = normalizeSettings({
+            images: {
+                accountId: "abc123",
+                bucket: "notes",
+                accessKeyId: "AKIA",
+                prefix: "sync",
+                publicBaseUrl: "https://img.example.com",
+                folders: ["attachments"],
+                conflictPolicy: "local",
+                compressFormat: "webp",
+                compressQuality: 60,
+                compressMaxEdge: 2400,
+                autoSyncMinutes: 30,
+                enabled: false,
+                deleteRemotePolicy: "never",
+            },
+        });
+
+        expect(settings.images).toMatchObject({
+            accountId: "abc123",
+            bucket: "notes",
+            accessKeyId: "AKIA",
+            prefix: "sync",
+            publicBaseUrl: "https://img.example.com",
+            folders: ["attachments"],
+            conflictPolicy: "local",
+            compressFormat: "webp",
+            compressQuality: 60,
+            compressMaxEdge: 2400,
+            autoSyncMinutes: 30,
+            enabled: false,
+            deleteRemotePolicy: "never",
+        });
+    });
+
+    /**
+     * `folders` 是**唯一决定「插件能动哪些文件」**的字段，它的校验最要紧：
+     * 非字符串的条目会让 `isInsideFolders` 抛错（整轮同步挂掉），
+     * 而没归一化的路径（`/attachments/`、`a//b`）会让范围判断悄悄失准。
+     */
+    it("folders 逐项归一、去重，并丢掉非字符串的条目", () => {
+        const settings = normalizeSettings({
+            images: {
+                folders: ["/attachments/", "attachments", "   ", "assets//img", ".", 42, null, {}],
+            },
+        });
+
+        // `attachments` 的两种写法合成一条；`.` 归一成空串（整个库）
+        expect(settings.images.folders).toEqual(["attachments", "assets/img", ""]);
+    });
+
+    it("folders 不是数组时退回空数组（**绝不能把整个库变成受管范围**）", () => {
+        for (const value of ["attachments", {}, 42, null, true]) {
+            expect(normalizeSettings({ images: { folders: value } }).images.folders).toEqual([]);
+        }
+    });
+
+    /**
+     * 「还没配过」与「配坏了」是两件事，处置必须相反。
+     *
+     * 缺失拿默认值（仓库根目录）；坏形状宁可退到空数组 —— 拿默认值兜底的话，
+     * 一个手改坏的 `folders` 会被悄悄变成「同步整个库」，而那正是上一行那条
+     * 用例要防的事（默认值不再是空数组之后，光靠 mergeWithDefaults 兜不住）。
+     */
+    it("folders 缺失时拿默认值（仓库根目录）", () => {
+        expect(normalizeSettings({}).images.folders).toEqual([""]);
+        expect(normalizeSettings({ images: {} }).images.folders).toEqual([""]);
+    });
+
+    it("枚举非法时回退默认", () => {
+        const settings = normalizeSettings({
+            images: {
+                conflictPolicy: "whatever",
+                compressFormat: "gif",
+                deleteRemotePolicy: "sometimes",
+            },
+        });
+
+        expect(settings.images.conflictPolicy).toBe("newer");
+        expect(settings.images.compressFormat).toBe("keep");
+        expect(settings.images.deleteRemotePolicy).toBe("ask");
+    });
+
+    it("数值越界时钳制", () => {
+        const settings = normalizeSettings({
+            images: {
+                autoSyncMinutes: 99_999,
+                compressQuality: 500,
+                compressMaxEdge: 999_999,
+            },
+        });
+
+        expect(settings.images.autoSyncMinutes).toBe(24 * 60);
+        expect(settings.images.compressQuality).toBe(100);
+        expect(settings.images.compressMaxEdge).toBe(20_000);
+    });
+
+    it("质量下限是 10 而不是 1（质量 1 的 jpeg 基本不可看，而用户多半是手滑拖到底）", () => {
+        expect(normalizeSettings({ images: { compressQuality: 0 } }).images.compressQuality).toBe(
+            10
+        );
+        expect(normalizeSettings({ images: { compressQuality: -5 } }).images.compressQuality).toBe(
+            10
+        );
+    });
+
+    it("最长边可以为 0（表示不缩放）", () => {
+        expect(normalizeSettings({ images: { compressMaxEdge: 0 } }).images.compressMaxEdge).toBe(0);
+    });
+
+    it("字符串字段拿到非字符串时当没写", () => {
+        const settings = normalizeSettings({
+            images: {
+                accountId: 42,
+                bucket: null,
+                accessKeyId: ["AKIA"],
+                prefix: {},
+                publicBaseUrl: true,
+            },
+        });
+
+        expect(settings.images).toMatchObject({
+            accountId: "",
+            bucket: "",
+            accessKeyId: "",
+            prefix: "",
+            publicBaseUrl: "",
+        });
+    });
+
+    /**
+     * 密钥**不在设置里** —— 它走 `core/secretStore`（键 `r2`），与平台令牌
+     * 同一条路径。这条断言守的是「不要为了方便把它加回设置」：
+     * `data.json` 会随笔记仓库同步到别的设备，密钥跟着走等于泄漏。
+     */
+    it("Secret Access Key 不在设置里（它走 SecretStore）", () => {
+        expect(Object.keys(DEFAULT_SETTINGS.images)).not.toContain("secretAccessKey");
+    });
+
+    it("不与 DEFAULT_SETTINGS 共享嵌套对象（改它不会污染默认值）", () => {
+        // 与 installer.tracked 同一个坑：`mergeWithDefaults` 只做浅拷贝，
+        // 「磁盘数据里缺这个键」时若不深拷贝，`images.folders.push(...)`
+        // 会就地改写模块级的 DEFAULT_SETTINGS —— 此后每次读设置都从一份
+        // 脏默认值开始，表现为「删掉的文件夹又回来了」。
+        const first = normalizeSettings({});
+        first.images.folders.push("attachments");
+
+        expect(DEFAULT_SETTINGS.images.folders).toEqual(["."]);
+        expect(normalizeSettings({}).images.folders).toEqual([""]);
+    });
+
+    /**
+     * v4 → v5：取消双向删除，改成「删本地时问一句」。
+     *
+     * 这组用例存在的理由：两个老开关里**只有一个**有对应物，所以迁移不是
+     * 机械改名。搞错方向的后果是「用户明明关掉了『删本地时动云端』，
+     * 却开始被弹窗追问」—— 而那是他自己明确拒绝过的行为。
+     */
+    describe("v4 → v5 迁移（双向删除 → 询问）", () => {
+        function v4(images: Record<string, unknown>) {
+            return normalizeSettings({ version: 4, images });
+        }
+
+        it("把「本地删除时，云端也删除」的选择接过来", () => {
+            // 关掉过它的用户明确表达过「删本地别动云端」——
+            // 那就别拿询问去打扰他。
+            expect(v4({ deleteRemoteWhenLocalDeleted: false }).images.deleteRemotePolicy).toBe("never");
+            expect(v4({ deleteRemoteWhenLocalDeleted: true }).images.deleteRemotePolicy).toBe("ask");
+        });
+
+        it("没写过这个字段（老数据里没有）时用默认值", () => {
+            expect(v4({}).images.deleteRemotePolicy).toBe("ask");
+        });
+
+        it("字段是坏值时用默认值（data.json 可以手改）", () => {
+            expect(v4({ deleteRemoteWhenLocalDeleted: "yes" }).images.deleteRemotePolicy).toBe("ask");
+            expect(v4({ deleteRemoteWhenLocalDeleted: null }).images.deleteRemotePolicy).toBe("ask");
+        });
+
+        /**
+         * `deleteLocalWhenRemoteDeleted`（云端删了 → 本地也删）**没有**对应物：
+         * 那个方向的行为被整个去掉了。它被静默丢弃是有意的 —— 把它翻译成
+         * `deleteRemotePolicy` 会让「云端的变化影响本地」以另一种形式复活
+         * （新字段管的是本地删除，方向正好相反）。
+         */
+        it("另一个开关不影响新字段（方向相反，不能混为一谈）", () => {
+            expect(v4({ deleteLocalWhenRemoteDeleted: false }).images.deleteRemotePolicy).toBe("ask");
+            expect(v4({ deleteLocalWhenRemoteDeleted: true }).images.deleteRemotePolicy).toBe("ask");
+        });
+
+        it("两个老字段都不会留在结果里（它们已经从类型里去掉）", () => {
+            const settings = v4({
+                deleteLocalWhenRemoteDeleted: true,
+                deleteRemoteWhenLocalDeleted: true,
+            });
+
+            expect(Object.keys(settings.images)).not.toContain("deleteLocalWhenRemoteDeleted");
+            expect(Object.keys(settings.images)).not.toContain("deleteRemoteWhenLocalDeleted");
+        });
+    });
+
+    /**
+     * v5 → v6：「问一句」从开关变成三态下拉。
+     *
+     * 两端都有对应物，所以**没有默认值丢失**：`false` 必须翻成 `never` 而不是
+     * 回落默认的 `ask` —— 否则关掉过询问的用户会开始被弹窗追问他自己拒绝过的
+     * 行为。
+     */
+    describe("v5 → v6 迁移（询问开关 → 三态下拉）", () => {
+        function v5(images: Record<string, unknown>) {
+            return normalizeSettings({ version: 5, images });
+        }
+
+        it("开关的两端各自接过来", () => {
+            expect(v5({ askDeleteRemote: true }).images.deleteRemotePolicy).toBe("ask");
+            expect(v5({ askDeleteRemote: false }).images.deleteRemotePolicy).toBe("never");
+        });
+
+        it("没写过这个字段（v5 默认就是问）时用默认值", () => {
+            expect(v5({}).images.deleteRemotePolicy).toBe("ask");
+        });
+
+        it("字段是坏值时用默认值（data.json 可以手改）", () => {
+            expect(v5({ askDeleteRemote: "yes" }).images.deleteRemotePolicy).toBe("ask");
+            expect(v5({ askDeleteRemote: null }).images.deleteRemotePolicy).toBe("ask");
+        });
+
+        /**
+         * 新字段已经写过值时不碰它。data.json 会随笔记仓库同步，两台设备版本
+         * 不一致时旧字段只是残留 —— 此时听新字段的。
+         */
+        it("新字段已写过值时不动它（旧字段只是残留）", () => {
+            const settings = v5({ deleteRemotePolicy: "always", askDeleteRemote: false });
+            expect(settings.images.deleteRemotePolicy).toBe("always");
+        });
+
+        it("v4 数据先迁到 v5 再迁到 v6，两步都不丢", () => {
+            // v4 的 `deleteRemoteWhenLocalDeleted: false` → v5 的「不问」→ v6 的 never。
+            // 这条链是最可能被「一次只跑一个迁移」的写法剪断的地方。
+            expect(
+                normalizeSettings({
+                    version: 4,
+                    images: { deleteRemoteWhenLocalDeleted: false },
+                }).images.deleteRemotePolicy
+            ).toBe("never");
+        });
+
+        it("v5 数据不再被迁移覆盖（用户之后手动改过的值要留住）", () => {
+            const settings = normalizeSettings({
+                version: 5,
+                images: { askDeleteRemote: false, deleteRemoteWhenLocalDeleted: true },
+            });
+
+            expect(settings.images.deleteRemotePolicy).toBe("never");
+        });
+
+        it("版本号升到 6", () => {
+            expect(SETTINGS_VERSION).toBe(6);
+            expect(v5({}).version).toBe(6);
         });
     });
 });

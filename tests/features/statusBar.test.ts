@@ -106,11 +106,14 @@ describe("getVaultRoot —— 这个值必须是文件系统的绝对路径", ()
 });
 
 describe("StatusBar 渲染", () => {
-    it("初始没有状态时只显示插件名", () => {
+    it("初始没有状态时显示**本地化的面板名**（不再是写死的品牌名）", () => {
+        // 写死 "SyncHub" 有两个问题：英文界面下也是中文界面那句品牌名（不本地化），
+        // 以及审核的 `ui/sentence-case` 会把裸 camelCase 品牌名报成「应为 'Synchub'」
+        // —— 而 `obsidianmd/*` 规则禁止用 disable 注释压掉，只能换掉这个字面量。
         const { item, last } = createItem();
         new StatusBar({ item, getT: () => zhCN });
 
-        expect(last()).toBe("SyncHub");
+        expect(last()).toBe(zhCN.sync.viewTitle);
     });
 
     it("分支 + ahead/behind 用无语言符号表示", () => {
@@ -201,14 +204,14 @@ describe("StatusBar 渲染", () => {
         expect(last()).toBe("SyncHub: main");
     });
 
-    it("状态不可得时退回插件名（不是报错）", () => {
+    it("状态不可得时退回面板名（不是报错）", () => {
         const { item, last } = createItem();
         const bar = new StatusBar({ item, getT: () => zhCN });
 
         bar.update(makeStatus({ branch: "main" }));
         bar.update(undefined);
 
-        expect(last()).toBe("SyncHub");
+        expect(last()).toBe(zhCN.sync.viewTitle);
     });
 
     it("渲染失败不向外抛（状态栏坏掉绝不能打断同步本身）", () => {

@@ -9,10 +9,10 @@ import {
     ButtonComponent,
     createdSettings,
     DropdownComponent,
+    openedModals,
     resetCreatedSettings,
+    resetOpenedModals,
     Setting,
-    TextComponent,
-    ToggleComponent,
 } from "../stubs/obsidian";
 import { zhCN } from "../../src/core/i18n/locales/zh-cn";
 import { en } from "../../src/core/i18n/locales/en";
@@ -179,6 +179,50 @@ function harness(options: {
             calls.push(`checkout:${name}`);
         },
         pendingChangeBytes: async () => options.pendingBytes ?? 0,
+        // 差异入口：返回一份最小的可渲染结果（真正的解析在 diff.test.ts 里测）。
+        fileDiff: async (path: string) => {
+            calls.push(`fileDiff:${path}`);
+            return {
+                path,
+                unstaged: {
+                    path,
+                    kind: "text" as const,
+                    hunks: [
+                        {
+                            header: "@@ -1 +1 @@",
+                            lines: [
+                                { kind: "del" as const, text: "旧", oldLine: 1, newLine: null },
+                                { kind: "add" as const, text: "新", oldLine: null, newLine: 1 },
+                            ],
+                        },
+                    ],
+                    additions: 1,
+                    deletions: 1,
+                    truncated: false,
+                },
+                staged: { path, kind: "empty" as const, hunks: [], additions: 0, deletions: 0, truncated: false },
+            };
+        },
+        commitDiff: async (hash: string) => {
+            calls.push(`commitDiff:${hash}`);
+            return [
+                {
+                    path: "notes/a.md",
+                    kind: "text" as const,
+                    hunks: [
+                        {
+                            header: "@@ -1 +1 @@",
+                            lines: [
+                                { kind: "add" as const, text: "提交里的新行", oldLine: null, newLine: 1 },
+                            ],
+                        },
+                    ],
+                    additions: 1,
+                    deletions: 0,
+                    truncated: false,
+                },
+            ];
+        },
     } as unknown as SyncService;
 
     const git = {
@@ -258,10 +302,12 @@ function ariaLabel(dropdown: DropdownComponent): string | undefined {
  *
  * 按钮看文字（图标按钮没有文字，退化成图标名），下拉框看当前值。混在一起排成
  * 一条，才能验「分支下拉夹在推送和立即同步之间」这种排布。
+ *
+ * 参数类型从 `Setting["controls"]` 取，而不是手写那串联合 —— 替身新增控件
+ * （滑块、多行文本框）时这里不用改，也不会因为「回调签名比数组元素类型窄」
+ * 而报错。
  */
-function controlLabel(
-    control: ButtonComponent | DropdownComponent | ToggleComponent | TextComponent
-): string {
+function controlLabel(control: Setting["controls"][number]): string {
     if (control instanceof DropdownComponent) return `<select:${control.value}>`;
     if (control instanceof ButtonComponent) return control.text || `<icon:${control.icon}>`;
     return "<other>";
@@ -273,8 +319,23 @@ function containerClass(setting: Setting): string {
     return container.cls ?? "";
 }
 
+/**
+ * DOM shim 的节点形状（见 `tests/setup.ts`）。
+ *
+ * 提交行是**裸 DOM**（不是 `Setting`），它的交互只能靠 `trigger("click")` 驱动 ——
+ * 所以这里要把 shim 记下的 `attrs` / `children` / `listeners` 都写进类型里。
+ */
+type ShimNode = {
+    cls?: string;
+    text?: string;
+    attrs?: Record<string, string>;
+    children?: ShimNode[];
+    trigger?: (name: string, ...args: unknown[]) => void;
+};
+
 beforeEach(() => {
     resetCreatedSettings();
+    resetOpenedModals();
 });
 
 describe("SourceControlView 渲染", () => {
@@ -538,18 +599,26 @@ describe("SourceControlView 渲染", () => {
         );
         expect(rows.map(rowPath)).toEqual(["已暂存.md", "未暂存.md", "新文件.md"]);
 
+        // 每行三个按钮，顺序是 差异 / 在远端打开 / 暂存开关 ——
+        // 「查看差异」排在最前：这一行上只有它能回答「变了什么」。
+        expect(rows[0]!.buttons.map((button) => button.icon)).toEqual([
+            "file-diff",
+            "external-link",
+            "minus",
+        ]);
+
         // 已暂存的那行给的是「取消暂存」
         const stagedRow = rows[0]!;
-        expect(stagedRow.buttons[1]!.icon).toBe("minus");
-        expect(stagedRow.buttons[1]!.tooltip).toBe(zhCN.sync.actUnstage);
-        stagedRow.buttons[1]!.click();
+        expect(stagedRow.buttons[2]!.icon).toBe("minus");
+        expect(stagedRow.buttons[2]!.tooltip).toBe(zhCN.sync.actUnstage);
+        stagedRow.buttons[2]!.click();
         expect(h.calls).toContain("unstage:已暂存.md");
 
         // 未暂存的那行给的是「暂存」
         const unstagedRow = rows[1]!;
-        expect(unstagedRow.buttons[1]!.icon).toBe("plus");
-        expect(unstagedRow.buttons[1]!.tooltip).toBe(zhCN.sync.actStage);
-        unstagedRow.buttons[1]!.click();
+        expect(unstagedRow.buttons[2]!.icon).toBe("plus");
+        expect(unstagedRow.buttons[2]!.tooltip).toBe(zhCN.sync.actStage);
+        unstagedRow.buttons[2]!.click();
         expect(h.calls).toContain("stage:未暂存.md");
     });
 
@@ -579,8 +648,37 @@ describe("SourceControlView 渲染", () => {
         const row = createdSettings.find((setting) =>
             setting.classes.includes("obsync-change-row")
         )!;
-        row.buttons[0]!.click();
+        row.buttons[1]!.click();
         expect(h.calls).toContain("fileOnRemote:a.md");
+    });
+
+    /**
+     * 「查看差异」的完整链路：点下去 → 弹出差异弹窗 → 内容真的渲染出来。
+     *
+     * 只断言「弹窗打开了」是不够的：入口按钮最常见的坏法是「弹是弹了，里面
+     * 什么都没有」（`load()` 接错了方法、或者结果没被渲染）。所以这里一直验到
+     * 弹窗里的增删行。
+     */
+    it("点「查看差异」弹出弹窗，并把这一行的差异画出来", async () => {
+        const h = harness({ status: status({ unstaged: [change("a.md", "modified")] }) });
+
+        await h.view.onOpen();
+        const row = createdSettings.find((setting) =>
+            setting.classes.includes("obsync-change-row")
+        )!;
+        row.buttons[0]!.click();
+
+        expect(h.calls).toContain("fileDiff:a.md");
+        const modal = openedModals.at(-1)!;
+        await flush();
+
+        const text = JSON.stringify(modal.contentEl);
+        // 增删两行都在（内容来自 harness 里那份最小差异）
+        expect(text).toContain("+新");
+        expect(text).toContain("-旧");
+        expect(text).toContain(zhCN.sync.diff.section.working);
+        // 已暂存那节是空的 → 整节不渲染（一个只有标题的空节像没加载出来）
+        expect(text).not.toContain(zhCN.sync.diff.section.staged);
     });
 
     it("冲突行**不给暂存开关**，但给「放弃本次合并」", async () => {
@@ -599,9 +697,13 @@ describe("SourceControlView 渲染", () => {
             setting.classes.includes("obsync-conflict")
         )!;
         expect(rowPath(conflictRow)).toBe("notes/会打架.md");
-        // 只有「在远端打开」一个按钮：冲突文件的暂存要等用户在编辑器里
-        // 把 <<<<<<< 处理掉，面板看不到内容，所以不给这个入口。
-        expect(conflictRow.buttons).toHaveLength(1);
+        // 两个按钮：差异 + 在远端打开。**没有**暂存开关 —— 冲突文件的暂存要等
+        // 用户在编辑器里把 <<<<<<< 处理掉，面板看不到内容，所以不给这个入口；
+        // 但差异是只读的，而且冲突时恰恰最需要看清内容。
+        expect(conflictRow.buttons.map((button) => button.icon)).toEqual([
+            "file-diff",
+            "external-link",
+        ]);
     });
 
     it("干净仓库只提示无事可做，不给暂存分组", async () => {
@@ -646,6 +748,45 @@ describe("SourceControlView 渲染", () => {
 
         const text = JSON.stringify(h.view.contentEl);
         expect(text).toContain(zhCN.sync.historyFailed);
+    });
+
+    /**
+     * 提交行的「看差异」入口。
+     *
+     * 提交行是裸 DOM（不是 `Setting`），所以这里走的是替身的 `trigger("click")`
+     * —— 没有它，这个入口「点了有没有反应」在测试里根本看不出来。
+     */
+    it("历史里每条提交都能看它引入了什么改动", async () => {
+        const commit: CommitInfo = {
+            hash: "0123456789abcdef",
+            shortHash: "0123456",
+            message: "同步：1 个文件",
+            author: "Sofqi",
+            date: new Date(2026, 8, 19, 8, 5).toISOString(),
+        };
+        const h = harness({ commits: [commit] });
+
+        await h.view.onOpen();
+
+        const list = (h.view.contentEl as unknown as {
+            children: Array<{ cls?: string; children?: unknown[] }>;
+        }).children.find((child) => (child.cls ?? "").split(" ").includes("obsync-history"));
+        const row = (list!.children as Array<{ children: Array<ShimNode> }>)[0]!;
+        const head = row.children[0]!;
+        const diff = head.children![1] as unknown as ShimNode;
+
+        expect(diff.attrs?.["data-icon"]).toBe("file-diff");
+        expect(diff.attrs?.title).toBe(zhCN.sync.actDiffCommit);
+
+        diff.trigger!("click");
+        await flush();
+
+        expect(h.calls).toContain(`commitDiff:${commit.hash}`);
+        const text = JSON.stringify(openedModals.at(-1)!.contentEl);
+        expect(text).toContain(zhCN.sync.diff.section.commit);
+        expect(text).toContain("+提交里的新行");
+        // 标题带上 hash 与信息第一行 —— 只有 hash 认不出是哪一条
+        expect(text).toContain("0123456");
     });
 });
 

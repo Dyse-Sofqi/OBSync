@@ -375,6 +375,10 @@ export class Setting {
     readonly buttons: ButtonComponent[] = [];
     readonly toggles: ToggleComponent[] = [];
     readonly dropdowns: DropdownComponent[] = [];
+    readonly sliders: SliderComponent[] = [];
+    readonly textAreas: TextAreaComponent[] = [];
+    /** `setDisabled()` 的结果。 */
+    disabled = false;
     /**
      * 控件的**调用顺序**。
      *
@@ -384,7 +388,12 @@ export class Setting {
      * 分支下拉右边」这类），所以这里要能还原出完整的一条。
      */
     readonly controls: Array<
-        ButtonComponent | DropdownComponent | ToggleComponent | TextComponent
+        | ButtonComponent
+        | DropdownComponent
+        | ToggleComponent
+        | TextComponent
+        | SliderComponent
+        | TextAreaComponent
     > = [];
 
     constructor(public containerEl: HTMLElement) {
@@ -437,10 +446,172 @@ export class Setting {
         callback?.(component);
         return this;
     }
+    addSlider(callback?: (slider: SliderComponent) => unknown): this {
+        const component = new SliderComponent();
+        this.sliders.push(component);
+        this.controls.push(component);
+        callback?.(component);
+        return this;
+    }
+    addTextArea(callback?: (area: TextAreaComponent) => unknown): this {
+        const component = new TextAreaComponent();
+        this.textAreas.push(component);
+        this.controls.push(component);
+        callback?.(component);
+        return this;
+    }
+    /**
+     * 置灰整个设置项。
+     *
+     * 真实的 `Setting.setDisabled` 会把 `is-disabled` 加到 `settingEl` 上。
+     * 替身记下来即可 —— 「这个开关有没有被灰掉」是会被断言的状态
+     * （它决定用户能不能拨，而灰错了等于功能消失）。
+     */
+    setDisabled(disabled: boolean): this {
+        this.disabled = disabled;
+        return this;
+    }
     then(callback: (value: this) => unknown): this {
         callback(this);
         return this;
     }
+}
+
+/**
+ * 滑块。
+ *
+ * `quality` 与 `maxEdge` 这两个参数在图片编辑里是**用户唯一能调的东西**，
+ * 所以替身要把它们真的存下来 —— 空实现会让「拨了没反应」这类问题在测试里
+ * 完全看不出来。
+ */
+export class SliderComponent {
+    private value = 0;
+    private min = 0;
+    private max = 100;
+    private step = 1;
+    disabled = false;
+    private changeHandler: ((value: number) => unknown) | undefined;
+    constructor(public inputEl: HTMLElement = document.createElement("input")) {}
+
+    setLimits(min: number, max: number, step: number): this {
+        this.min = min;
+        this.max = max;
+        this.step = step;
+        return this;
+    }
+    getLimits(): { min: number; max: number; step: number } {
+        return { min: this.min, max: this.max, step: this.step };
+    }
+    setValue(value: number): this {
+        this.value = value;
+        return this;
+    }
+    getValue(): number {
+        return this.value;
+    }
+    setDisabled(value: boolean): this {
+        this.disabled = value;
+        return this;
+    }
+    setDynamicTooltip(): this {
+        return this;
+    }
+    onChange(callback: (value: number) => unknown): this {
+        this.changeHandler = callback;
+        return this;
+    }
+    /** 模拟用户拖动。 */
+    slide(value: number): this {
+        this.value = value;
+        this.changeHandler?.(value);
+        return this;
+    }
+}
+
+/**
+ * 多行文本框。设置页用它填「一行一个」的文件夹列表。
+ *
+ * `onChange` 必须**真的记住并调用**回调：那个列表决定「插件能动哪些文件」，
+ * 而「改了没生效」这类问题只有能驱动它才测得出来（空实现下所有交互用例
+ * 都只能断言「渲染没抛错」）。
+ */
+export class TextAreaComponent {
+    value = "";
+    placeholder = "";
+    disabled = false;
+    private changeHandler: ((value: string) => unknown) | undefined;
+    constructor(public inputEl: HTMLElement = document.createElement("input")) {}
+
+    setValue(value: string): this {
+        this.value = value;
+        return this;
+    }
+    getValue(): string {
+        return this.value;
+    }
+    setPlaceholder(value: string): this {
+        this.placeholder = value;
+        return this;
+    }
+    setDisabled(value: boolean): this {
+        this.disabled = value;
+        return this;
+    }
+    onChange(callback: (value: string) => unknown): this {
+        this.changeHandler = callback;
+        return this;
+    }
+    /** 模拟用户输入。 */
+    type(value: string): this {
+        this.value = value;
+        this.changeHandler?.(value);
+        return this;
+    }
+}
+
+/**
+ * vault 里的文件与文件夹。
+ *
+ * 图片同步模块要 `instanceof TFile` 才能区分「文件」与「文件夹」
+ * （`getAbstractFileByPath` 两者都可能返回），所以替身必须提供**真实的类**
+ * 而不是结构类型 —— 结构类型下 `instanceof` 永远为假，于是下载路径会静默
+ * 什么都不做。
+ */
+export class TAbstractFile {
+    name: string;
+    parent: TFolder | null = null;
+    constructor(public path: string) {
+        this.name = path.slice(path.lastIndexOf("/") + 1);
+    }
+}
+
+export class TFolder extends TAbstractFile {
+    children: TAbstractFile[] = [];
+    isRoot(): boolean {
+        return this.path === "/";
+    }
+}
+
+export class TFile extends TAbstractFile {
+    stat = { ctime: 0, mtime: 0, size: 0 };
+    extension = "";
+    basename = "";
+    constructor(path: string) {
+        super(path);
+        const dot = this.name.lastIndexOf(".");
+        this.basename = dot <= 0 ? this.name : this.name.slice(0, dot);
+        this.extension = dot <= 0 ? "" : this.name.slice(dot + 1);
+    }
+}
+
+/**
+ * 图标按钮。
+ *
+ * 工具条上的按钮靠 `setIcon` + `aria-label` 表达含义（只有图标、没有文字），
+ * 所以替身要把这两样都记下来 —— 否则「按钮有没有标签」这件事无法断言。
+ */
+export function setIcon(parent: HTMLElement, iconId: string): void {
+    parent.setAttribute("data-icon", iconId);
 }
 
 export class PluginSettingTab {
@@ -481,6 +652,14 @@ export class Plugin {
         ribbons: [] as Array<{ icon: string; title: string; onClick: () => void }>,
         statusBarItems: 0,
         events: 0,
+        /**
+         * Markdown 后处理器的数量。
+         *
+         * 图片工具条挂在它上面（`registerImageToolbar`），而那是**移动端唯一
+         * 能直接对图片动手的入口** —— 命令面板与右键菜单在手机上不好用。
+         * 所以「移动端也注册了它」是会被断言的事，得能数出来。
+         */
+        postProcessors: 0,
     };
 
     constructor(app?: unknown, manifest?: unknown) {
@@ -520,6 +699,21 @@ export class Plugin {
     registerView(type: string): void {
         this.registered.views.push(type);
     }
+    /**
+     * Markdown 后处理器。
+     *
+     * 图片工具条挂在它上面。替身必须**真的记住**回调，两个理由：
+     * 装配路径一跑就会调它，缺了这个方法直接 TypeError（症状是「插件加载
+     * 失败」，与真正的原因隔得很远）；记下来之后测试还能驱动一遍，
+     * 验「处理器对一张图片做了什么」。
+     */
+    readonly postProcessors: Array<(element: unknown, context: unknown) => unknown> = [];
+    registerMarkdownPostProcessor(
+        callback: (element: unknown, context: unknown) => unknown
+    ): void {
+        this.registered.postProcessors += 1;
+        this.postProcessors.push(callback);
+    }
     registerEvent(): void {
         this.registered.events += 1;
     }
@@ -553,13 +747,35 @@ export class ItemView {
     async onClose(): Promise<void> {}
 }
 
+/**
+ * 测试用：按打开顺序记录所有 `Modal`。
+ *
+ * 与 `createdSettings` 同一个理由：设置页 / 视图里的「点这个按钮会弹出什么」
+ * 只有拿到**实例**才验得了。没有它，「浏览…」按钮点下去是打开选择器还是
+ * 什么也没发生，在测试里看不出来 —— 而那正是这类入口按钮最容易犯的错。
+ */
+export const openedModals: Modal[] = [];
+
+export function resetOpenedModals(): void {
+    openedModals.length = 0;
+}
+
 export class Modal {
     containerEl = document.createElement("div");
+    /**
+     * 弹窗最外层那个节点。
+     *
+     * 真实 `Modal` 有它，而它**不总是**和 `contentEl` 同一个东西 ——
+     * 差异视图要把整个弹窗撑宽（`.obsync-diff-modal` 改的是它的宽度），
+     * 挂在 `contentEl` 上不会有任何效果。缺了它那一行会直接 TypeError。
+     */
+    modalEl = document.createElement("div");
     readonly titleEl = document.createElement("div");
     readonly contentEl = document.createElement("div");
     constructor(public app: unknown) {}
     /** 与真实行为一致：open 触发 onOpen（弹窗的渲染都挂在它上面）。 */
     open(): void {
+        openedModals.push(this);
         this.onOpen();
     }
     close(): void {
@@ -580,6 +796,12 @@ export class FuzzySuggestModal<T> extends Modal {
 }
 
 export class SuggestModal<T> extends Modal {
+    /** `setPlaceholder` 的入参 —— 选择器的占位文案（设置项构造时会设）。 */
+    placeholder = "";
+    setPlaceholder(value: string): this {
+        this.placeholder = value;
+        return this;
+    }
     getSuggestions(): T[] {
         return [];
     }

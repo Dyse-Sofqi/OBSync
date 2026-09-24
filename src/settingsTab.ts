@@ -7,6 +7,11 @@ import {
 } from "obsidian";
 import { LANGUAGE_OPTIONS, type LanguageSetting, type LocaleStrings } from "./core/i18n";
 import { logger } from "./core/logger";
+import { DEFAULT_SETTINGS } from "./core/settings";
+import { formatFolders, normalizeFolders, parseFolders } from "./features/images/imageScan";
+import { FolderSuggestModal } from "./features/images/ui/FolderSuggestModal";
+import type { ImageSyncService } from "./features/images/imageSyncService";
+import type { SyncPlan, SyncSummary } from "./features/images/types";
 import type {
     DiagnosticCheck,
     DiagnosticsReport,
@@ -20,12 +25,15 @@ import { getHost } from "./host/hostRegistry";
 import { SUPPORTED_HOSTS, type HostKind } from "./host/types";
 
 /**
- * 设置页的四个标签页。
+ * 设置页的五个标签页。
  *
  * 顺序即显示顺序。把「插件与主题」放第一页：用户进设置页多半是想看
  * 哪个有更新、或再装一个，而不是来调开关的。
+ *
+ * 「图片同步」紧跟在「仓库同步」后面：两者都是「把库里的东西同步到远端」，
+ * 用户找它们时的心智是连着的 —— 中间插一个「通用」会让它变得难找。
  */
-type SettingsTabId = "tracked" | "installer" | "sync" | "general";
+type SettingsTabId = "tracked" | "installer" | "sync" | "images" | "general";
 
 /**
  * 设置页。
@@ -83,6 +91,9 @@ export class ObsyncSettingsTab extends PluginSettingTab {
                 break;
             case "sync":
                 this.renderSync();
+                break;
+            case "images":
+                this.renderImages();
                 break;
             case "general":
                 this.renderGeneral();
@@ -142,6 +153,7 @@ export class ObsyncSettingsTab extends PluginSettingTab {
             { id: "tracked", label: t.settings.tabs.tracked },
             { id: "installer", label: t.settings.tabs.installer },
             { id: "sync", label: t.settings.tabs.sync },
+            { id: "images", label: t.settings.tabs.images },
             { id: "general", label: t.settings.tabs.general },
         ];
 
@@ -812,7 +824,712 @@ export class ObsyncSettingsTab extends PluginSettingTab {
                     })
             );
 
+        this.renderGitignore();
+
         this.renderDiagnostics();
+    }
+
+    /**
+     * `.gitignore` 一节：**在这里直接改内容**，不用另开编辑器。
+     *
+     * ## 为什么值得放进设置页
+     *
+     * `.gitignore` 不是「一个顺带的文件」，它是同步行为的一部分：哪些文件根本
+     * 不会进版本控制由它决定（`workspace.json` 那种每次开关标签都会变的文件，
+     * 不同步它是避免多设备冲突的关键）。而此前唯一的入口是命令面板里的
+     * 「编辑 .gitignore」——**只有已经知道有这个功能的人才找得到**。
+     *
+     * 更要紧的是「看得见」：用户配好之后最想确认的一件事是
+     * 「`workspace.json` 到底排除了没有」，而那需要把内容显示出来。
+     *
+     * ## 落盘时机
+     *
+     * 失焦落盘 + 一个显式的「保存」按钮。理由与令牌那一行不同（那里是密钥），
+     * 但同源：**每敲一个键就写一次文件**会让 git 在用户还在打字的中间态上做判断
+     * （`.gitignore` 一改，面板上的改动列表立刻就变）。失焦保存保证「点到别处
+     * 不会丢」，显式按钮保证「我知道什么时候写下去了」。
+     *
+     * 文件不存在时**不自动创建**（`readGitignore` 的说明）：设置页只是被打开一下，
+     * 不该因此往用户库里多出一个文件。要建就点「填入默认内容」再保存。
+     */
+    private renderGitignore(): void {
+        const t = this.obsync.t;
+        const sync = this.obsync.sync;
+        if (!sync) return;
+
+        const heading = new Setting(this.containerEl)
+            .setName(t.settings.sync.gitignoreHeading)
+            .setHeading();
+        this.containerEl.createEl("p", {
+            cls: "setting-item-description",
+            text: t.settings.sync.gitignoreDesc,
+        });
+
+        // 状态徽标：用户最需要一眼确认的两件事 —— 磁盘上有没有这个文件、
+        // 框里的改动写下去了没有。
+        const statusEl = heading.nameEl.createSpan({ cls: "obsync-badge" });
+
+        /** 框里的内容（内存暂存）。 */
+        let pending = "";
+        let dirty = false;
+        let created = false;
+        let saving = false;
+        let saveButton: ButtonComponent | undefined;
+
+        const refreshStatus = (): void => {
+            statusEl.setText(
+                saving
+                    ? t.settings.sync.gitignoreSaving
+                    : dirty
+                      ? t.settings.sync.gitignoreDirty
+                      : created
+                        ? t.settings.sync.gitignoreSaved
+                        : t.settings.sync.gitignoreMissing
+            );
+            statusEl.toggleClass("obsync-badge-update", dirty && !saving);
+            statusEl.toggleClass("obsync-badge-ok", !dirty && created);
+            statusEl.toggleClass("obsync-badge-muted", !dirty && !created);
+            // 没有未保存的改动时按钮置灰：点了什么都不发生，只会让人怀疑它坏了。
+            // 保存中也要灰 —— 写盘走同步队列，前面排着一个拉取时可能等几秒。
+            saveButton?.setDisabled(saving || !dirty);
+        };
+
+        /**
+         * 写下去。
+         *
+         * `announce` 只给显式点「保存」用 —— 失焦保存如果每次都弹一条提示，
+         * 用户每点一下别处就被打扰一次；那时徽标从「有未保存的修改」翻成
+         * 「已保存」本身就是反馈。
+         */
+        const save = async (announce: boolean): Promise<void> => {
+            if (!dirty || saving) return;
+            const value = pending;
+            saving = true;
+            refreshStatus();
+            try {
+                await sync.service.writeGitignore(value);
+                // 只在内容没被继续改动时才清掉「未保存」：写盘期间用户接着敲的字
+                // 不在刚写下去的那一份里，标成已保存就是撒谎。
+                if (pending === value) dirty = false;
+                created = true;
+                if (announce) {
+                    this.obsync.notifier.success(t.settings.sync.gitignoreSavedNotice);
+                }
+            } catch (err) {
+                // 失败必须说清「磁盘上还是旧内容」：用户以为自己改了，
+                // 而 git 那边一点变化都没有。
+                this.obsync.notifier.reportError(err, t.settings.sync.gitignoreSaveFailed);
+            } finally {
+                saving = false;
+                refreshStatus();
+            }
+        };
+
+        /**
+         * 代码框**直接挂在页面上**，不是某个 `Setting` 的控件。
+         *
+         * 放进 `.setting-item-control` 的话，它只会拿到右侧那几百像素宽 ——
+         * 那是 Obsidian 给「一个下拉 / 一个输入框」留的宽度，而 12 行的规则清单
+         * 挤在里面根本没法读。块级元素在块级容器里天然就是全宽，
+         * 不依赖 Obsidian 设置页的 flex 细节（那些规则没有公开承诺）。
+         */
+        const areaEl = this.containerEl.createEl("textarea", { cls: "obsync-gitignore" });
+        // 一行一条规则，12 行够看清一整套排除规则（模板大约 20 行，滚动即可）。
+        areaEl.rows = 12;
+        // 示例值用**本库的配置目录名**（可以不是 `.obsidian`）——
+        // 写死的话用户在自定义配置目录的库里会照着填错。
+        areaEl.placeholder = `${this.obsync.app.vault.configDir}/workspace.json`;
+        areaEl.spellcheck = false;
+        areaEl.value = pending;
+        /**
+         * 宽度与 `box-sizing` **只在 `styles.css` 里写**（`.obsync-gitignore`），
+         * 这里刻意不碰 `areaEl.style`：
+         *
+         * 社区审核的 `obsidianmd/no-static-styles-assignment` 禁止直接写内联样式 ——
+         * 而且 `setCssProps({ width: "100%" })` 同样会被判违规（那条规则只放行
+         * `--*` 自定义属性）。静态宽度本来就该待在类里，动态值才需要 `setCssProps`。
+         *
+         * 于是这一格的全宽完全依赖样式表 —— 配套前提是**插件目录里有 `.hotreload`
+         * 标记**（Hot Reload 才会在 styles.css 变化时重载插件）。没有那个标记时，
+         * 「改了 CSS 看不到效果」会被误当成「宽度没生效」。
+         */
+        areaEl.addEventListener("input", () => {
+            pending = areaEl.value;
+            dirty = true;
+            refreshStatus();
+        });
+        // 失焦也保存 —— 点到别处不会丢
+        areaEl.addEventListener("blur", () => void save(false));
+
+        // 按钮另起一行：三个按钮挤在代码框旁边只会互相压扁
+        // （与图片同步页的文件夹选择入口同一个形状）。
+        //
+        // `obsync-gitignore-actions` 让按钮**贴左**：代码框是全宽的，而这一行
+        // 没有名称/描述，Obsidian 默认会把控件推到最右 —— 那会离框太远，
+        // 看不出这三个按钮是给上面那个框用的。
+        new Setting(this.containerEl)
+            .setClass("obsync-gitignore-actions")
+            .addButton((button) => {
+                saveButton = button;
+                return button
+                    .setButtonText(t.settings.sync.gitignoreSave)
+                    .setCta()
+                    .setDisabled(true)
+                    .onClick(() => void save(true));
+            })
+            .addButton((button) =>
+                button
+                    .setButtonText(t.settings.sync.gitignoreRestore)
+                    // 只**填进框里**，不直接写盘：覆盖掉用户自己的规则是数据损失，
+                    // 让他先看一眼再决定要不要保存。
+                    .onClick(() => {
+                        pending = t.sync.gitignoreTemplate(this.obsync.app.vault.configDir);
+                        dirty = true;
+                        areaEl.value = pending;
+                        refreshStatus();
+                    })
+            )
+            .addButton((button) =>
+                button.setButtonText(t.settings.sync.gitignoreOpen).onClick(async () => {
+                    try {
+                        if (!(await sync.service.openGitignore())) {
+                            // 点了一个按钮什么也没发生是最容易被当成「插件坏了」
+                            // 的一种失败 —— 说清发生了什么，并指向上面那个框。
+                            this.obsync.notifier.warn(t.sync.gitignoreOpenFailed);
+                        }
+                    } catch (err) {
+                        this.obsync.notifier.reportError(err);
+                    }
+                })
+            );
+
+        refreshStatus();
+
+        // 读内容要 await，而渲染是同步的 —— 先把框画出来，读到了再填。
+        void (async () => {
+            try {
+                const content = await sync.service.readGitignore();
+                // 用户可能在读盘那几百毫秒里已经动手了 —— 别把输入盖掉。
+                if (content !== undefined && !dirty) {
+                    created = true;
+                    pending = content;
+                    areaEl.value = content;
+                }
+            } catch (err) {
+                // 读不出来不该让整页崩：徽标留在「尚未创建」，用户仍然可以写一份新的。
+                logger.debug("could not read .gitignore", err);
+            }
+            refreshStatus();
+        })();
+    }
+
+    /**
+     * 标签四：图片同步（R2 双副本）。
+     *
+     * 与「仓库同步」页同构：标题 → 注意事项 → 设置项 → 操作与结果。
+     * 差别在注意事项的分量 —— 那页的坑是「数据可能丢」，这页的坑是
+     * 「文件可能被**删掉**」，所以三条提示必须留在最上方，不能塞进单项描述。
+     */
+    private renderImages(): void {
+        const t = this.obsync.t;
+        const images = this.obsync.settings.images;
+        const service = this.obsync.images?.service;
+
+        new Setting(this.containerEl).setName(t.settings.images.heading).setHeading();
+
+        const notes = this.containerEl.createDiv({ cls: "obsync-image-notes" });
+        notes.createDiv({
+            cls: "obsync-image-notes-heading",
+            text: t.settings.images.notesHeading,
+        });
+        const noteList = notes.createEl("ul");
+        for (const note of t.settings.images.notes) {
+            noteList.createEl("li", { text: note });
+        }
+
+        new Setting(this.containerEl)
+            .setName(t.settings.images.enabled)
+            .setDesc(t.settings.images.enabledDesc)
+            .addToggle((toggle) =>
+                toggle.setValue(images.enabled).onChange(async (value) => {
+                    images.enabled = value;
+                    // 不重绘：这一页没有「可用性由 enabled 决定」的控件。
+                    // 定时器在**逻辑层**读同一个字段（features/images/index.ts），
+                    // 所以这里不需要额外做什么，拨完即生效。
+                    await this.commit();
+                })
+            );
+
+        new Setting(this.containerEl)
+            .setName(t.settings.images.folders)
+            .setDesc(t.settings.images.foldersDesc)
+            .addTextArea((area) => {
+                area.inputEl.rows = 3;
+                area.setPlaceholder(t.settings.images.foldersPlaceholder);
+                // 空串（整个库）显示成 `.`：一个空行读起来像「什么都没填」，
+                // 而它正是默认值（见 formatFolderPath）。
+                area.setValue(formatFolders(images.folders));
+                area.onChange(async (value) => {
+                    // 拆行 + 丢空行 + 归一都在 parseFolders 里：`/attachments/` 与
+                    // `attachments` 必须变成同一个值，否则范围判断会悄悄失准；
+                    // 而空行必须在这里丢 —— 进了 normalizeFolders 就会被当成
+                    // 「整个库」（见那边的说明）。
+                    images.folders = parseFolders(value);
+                    await this.commit();
+                });
+            });
+
+        if (images.folders.length === 0) {
+            this.containerEl.createEl("p", {
+                cls: "setting-item-description",
+                text: t.settings.images.foldersEmpty,
+            });
+        }
+
+        // 选择入口与「恢复默认」。
+        //
+        // 单独一行而不是塞进上面那一行：`.setting-item-control` 是 flex 且默认
+        // 不换行（见 styles.css 里 obsync-actions 的注释），一个三行高的文本框
+        // 再并两个按钮只会互相压扁。与页面底部那排「测试 / 预览 / 立即同步」
+        // 同一形状 —— 无名称的设置行。
+        new Setting(this.containerEl)
+            .addButton((button) =>
+                button.setButtonText(t.settings.images.foldersBrowse).onClick(() => {
+                    new FolderSuggestModal(this.obsync.app, t, images.folders, (folder) => {
+                        images.folders = normalizeFolders([...images.folders, folder]);
+                        // 重绘：文本框要立刻显示新加的那一行（否则用户以为没选上），
+                        // 「还没有指定文件夹」那行提示也要跟着消失。
+                        void this.commit(true);
+                    }).open();
+                })
+            )
+            .addButton((button) =>
+                button
+                    .setButtonText(t.settings.images.foldersReset)
+                    // 已经是默认值就置灰：点了什么都不发生，只会让人怀疑按钮是坏的。
+                    // 置灰而不改值 —— 与仓库同步页的总开关同一个道理。
+                    .setDisabled(isDefaultFolders(images.folders))
+                    .onClick(async () => {
+                        images.folders = normalizeFolders([...DEFAULT_SETTINGS.images.folders]);
+                        await this.commit(true);
+                    })
+            );
+
+        // ── 连接 ──
+        new Setting(this.containerEl).setName(t.settings.images.connectionHeading).setHeading();
+
+        new Setting(this.containerEl)
+            .setName(t.settings.images.accountId)
+            .setDesc(t.settings.images.accountIdDesc)
+            .addText((text) =>
+                text
+                    .setPlaceholder(t.settings.images.accountIdPlaceholder)
+                    .setValue(images.accountId)
+                    .onChange(async (value) => {
+                        images.accountId = value.trim();
+                        await this.commit();
+                    })
+            );
+
+        new Setting(this.containerEl)
+            .setName(t.settings.images.bucket)
+            .setDesc(t.settings.images.bucketDesc)
+            .addText((text) =>
+                text.setValue(images.bucket).onChange(async (value) => {
+                    images.bucket = value.trim();
+                    await this.commit();
+                })
+            );
+
+        new Setting(this.containerEl)
+            .setName(t.settings.images.accessKeyId)
+            .setDesc(t.settings.images.accessKeyIdDesc)
+            .addText((text) =>
+                text.setValue(images.accessKeyId).onChange(async (value) => {
+                    images.accessKeyId = value.trim();
+                    await this.commit();
+                })
+            );
+
+        this.renderR2Secret();
+
+        new Setting(this.containerEl)
+            .setName(t.settings.images.prefix)
+            .setDesc(t.settings.images.prefixDesc)
+            .addText((text) =>
+                text
+                    // 刻意**不给占位符**：示例值（对象键前缀）大小写敏感，而审核的
+                    // `ui/sentence-case` 会把它报成「应为 'Images'」——照着改会让用户
+                    // 填出一个不对的前缀。示例已经在描述里（「例如 images」）。
+                    .setValue(images.prefix)
+                    .onChange(async (value) => {
+                        images.prefix = value.trim();
+                        await this.commit();
+                    })
+            );
+
+        new Setting(this.containerEl)
+            .setName(t.settings.images.publicBaseUrl)
+            .setDesc(t.settings.images.publicBaseUrlDesc)
+            .addText((text) =>
+                text
+                    .setPlaceholder("https://img.example.com")
+                    .setValue(images.publicBaseUrl)
+                    .onChange(async (value) => {
+                        images.publicBaseUrl = value.trim();
+                        await this.commit();
+                    })
+            );
+
+        // ── 冲突与删除 ──
+        new Setting(this.containerEl).setName(t.settings.images.conflictHeading).setHeading();
+
+        new Setting(this.containerEl)
+            .setName(t.settings.images.conflictPolicy)
+            .setDesc(t.settings.images.conflictPolicyDesc)
+            .addDropdown((dropdown) => {
+                dropdown
+                    .addOption("newer", t.settings.images.conflictNewer)
+                    .addOption("local", t.settings.images.conflictLocal)
+                    .addOption("remote", t.settings.images.conflictRemote);
+                dropdown.setValue(images.conflictPolicy);
+                dropdown.onChange(async (value) => {
+                    images.conflictPolicy = value as typeof images.conflictPolicy;
+                    await this.commit();
+                });
+            });
+
+        new Setting(this.containerEl)
+            .setName(t.settings.images.deleteRemotePolicy)
+            .setDesc(t.settings.images.deleteRemotePolicyDesc)
+            .addDropdown((dropdown) => {
+                dropdown
+                    .addOption("ask", t.settings.images.deleteRemoteAsk)
+                    .addOption("always", t.settings.images.deleteRemoteAlways)
+                    .addOption("never", t.settings.images.deleteRemoteNever);
+                dropdown.setValue(images.deleteRemotePolicy);
+                dropdown.onChange(async (value) => {
+                    images.deleteRemotePolicy = value as typeof images.deleteRemotePolicy;
+                    await this.commit();
+                });
+            });
+
+        new Setting(this.containerEl)
+            .setName(t.settings.images.autoSync)
+            .setDesc(t.settings.images.autoSyncDesc)
+            .addText((text) => {
+                text.inputEl.type = "number";
+                text.inputEl.min = "0";
+                text.setValue(String(images.autoSyncMinutes));
+                text.onChange(async (value) => {
+                    const parsed = Number.parseInt(value, 10);
+                    if (!Number.isFinite(parsed)) return;
+                    images.autoSyncMinutes = parsed;
+                    await this.commit();
+                });
+            });
+
+        // ── 裁剪与压缩的默认值 ──
+        new Setting(this.containerEl).setName(t.settings.images.compressHeading).setHeading();
+
+        new Setting(this.containerEl)
+            .setName(t.settings.images.compressQuality)
+            .setDesc(t.settings.images.compressQualityDesc)
+            .addText((text) => {
+                text.inputEl.type = "number";
+                text.inputEl.min = "10";
+                text.inputEl.max = "100";
+                text.setValue(String(images.compressQuality));
+                text.onChange(async (value) => {
+                    const parsed = Number.parseInt(value, 10);
+                    if (!Number.isFinite(parsed)) return;
+                    images.compressQuality = parsed;
+                    await this.commit();
+                });
+            });
+
+        new Setting(this.containerEl)
+            .setName(t.settings.images.compressMaxEdge)
+            .setDesc(t.settings.images.compressMaxEdgeDesc)
+            .addText((text) => {
+                text.inputEl.type = "number";
+                text.inputEl.min = "0";
+                text.setValue(String(images.compressMaxEdge));
+                text.onChange(async (value) => {
+                    const parsed = Number.parseInt(value, 10);
+                    images.compressMaxEdge = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+                    await this.commit();
+                });
+            });
+
+        new Setting(this.containerEl)
+            .setName(t.settings.images.compressFormat)
+            .setDesc(t.settings.images.compressFormatDesc)
+            .addDropdown((dropdown) => {
+                for (const format of ["keep", "jpeg", "webp", "png"] as const) {
+                    dropdown.addOption(format, t.images.formatOption[format]);
+                }
+                dropdown.setValue(images.compressFormat);
+                dropdown.onChange(async (value) => {
+                    images.compressFormat = value as typeof images.compressFormat;
+                    await this.commit();
+                });
+            });
+
+        // ── 操作 ──
+        new Setting(this.containerEl).setName(t.settings.images.actionsHeading).setHeading();
+
+        if (!service) {
+            // 装配层没给出服务（理论上不会发生）—— 说明白，而不是给一堆点了没反应的按钮。
+            this.containerEl.createEl("p", {
+                cls: "setting-item-description",
+                text: t.images.notice.notConfigured,
+            });
+            return;
+        }
+
+        const resultEl = this.containerEl.createDiv({ cls: "obsync-diagnostics" });
+
+        // 图片管理标签页的入口。挂在这里而不是只留命令面板：设置页是用户排查
+        // 「我库里这些图到底是什么状态」时的必经之路，而命令面板只有**已经知道
+        // 有这个功能**的人才找得到。
+        new Setting(this.containerEl)
+            .setName(t.settings.images.openManager)
+            .setDesc(t.settings.images.openManagerDesc)
+            .addButton((button) =>
+                button.setButtonText(t.settings.images.openManager).onClick(() => {
+                    void this.obsync.openImageManager();
+                })
+            );
+
+        this.renderImageActions(resultEl, service);
+    }
+
+    /**
+     * R2 的 Secret Access Key。
+     *
+     * 与平台令牌同一套做法（内存暂存 + 失焦落盘 + 状态徽标），但多一个「保存」按钮：
+     * 这个字段没有「测试」可以顺带触发落盘，而用户粘完密钥之后最常见的动作是
+     * 直接去点下面的「测试连接」—— 那时如果还没落盘，测的就是**旧值**，
+     * 报出来的错会让人去怀疑一个根本没被使用的密钥。
+     */
+    private renderR2Secret(): void {
+        const t = this.obsync.t;
+        const label = t.settings.images.secretKey;
+
+        let pending = this.obsync.secretStore.getSecretValue("r2") ?? "";
+        let statusEl: HTMLElement | undefined;
+
+        const refreshStatus = (): void => {
+            if (!statusEl) return;
+            const configured = pending.trim().length > 0;
+            statusEl.setText(
+                configured
+                    ? t.settings.images.secretConfigured
+                    : t.settings.images.secretNotConfigured
+            );
+            statusEl.toggleClass("obsync-badge-ok", configured);
+            statusEl.toggleClass("obsync-badge-muted", !configured);
+        };
+
+        const setting = new Setting(this.containerEl)
+            .setName(label)
+            .setDesc(t.settings.images.secretKeyDesc)
+            .addText((text) => {
+                text.inputEl.type = "password";
+                text.inputEl.autocomplete = "off";
+                text.inputEl.spellcheck = false;
+                text.setPlaceholder(t.settings.images.secretPlaceholder);
+                text.setValue(pending);
+                text.onChange((value) => {
+                    pending = value;
+                });
+            })
+            .addButton((button) =>
+                button.setButtonText(t.settings.images.secretSave).onClick(() => {
+                    this.obsync.secretStore.setSecretValue("r2", pending);
+                    refreshStatus();
+                    this.obsync.notifier.success(t.settings.images.secretSaved);
+                })
+            )
+            .addExtraButton((button) =>
+                button
+                    .setIcon("trash")
+                    .setTooltip(t.settings.images.secretClear)
+                    .onClick(() => {
+                        this.obsync.secretStore.clearSecretValue("r2");
+                        pending = "";
+                        setting.settingEl.empty();
+                        this.display();
+                        this.obsync.notifier.info(t.settings.images.secretCleared);
+                    })
+            );
+
+        statusEl = setting.nameEl.createSpan({ cls: "obsync-badge" });
+        refreshStatus();
+    }
+
+    /** 三个操作按钮 + 结果区。 */
+    private renderImageActions(resultEl: HTMLElement, service: ImageSyncService): void {
+        const t = this.obsync.t;
+
+        new Setting(this.containerEl)
+            .addButton((button) =>
+                button.setButtonText(t.settings.images.test).onClick(async () => {
+                    button.setDisabled(true);
+                    button.setButtonText(t.settings.images.testing);
+                    resultEl.empty();
+                    try {
+                        const result = await service.testConnection();
+                        if (result.ok) {
+                            resultEl.createEl("p", {
+                                cls: "obsync-diag-ok",
+                                text: t.settings.images.testOk(this.obsync.settings.images.bucket),
+                            });
+                        } else {
+                            resultEl.createEl("p", {
+                                cls: "obsync-diag-failed",
+                                text: this.obsync.notifier.describeError(
+                                    result.error,
+                                    t.settings.images.testFailed
+                                ),
+                            });
+                        }
+                    } finally {
+                        button.setDisabled(false);
+                        button.setButtonText(t.settings.images.test);
+                    }
+                })
+            )
+            .addButton((button) =>
+                button.setButtonText(t.settings.images.preview).onClick(async () => {
+                    button.setDisabled(true);
+                    button.setButtonText(t.settings.images.previewing);
+                    try {
+                        this.renderPlanResult(
+                            resultEl,
+                            t.images.plan.heading,
+                            await service.plan()
+                        );
+                    } catch (err) {
+                        resultEl.empty();
+                        resultEl.createEl("p", {
+                            cls: "obsync-diag-failed",
+                            text: this.obsync.notifier.describeError(err, t.images.notice.previewFailed),
+                        });
+                    } finally {
+                        button.setDisabled(false);
+                        button.setButtonText(t.settings.images.preview);
+                    }
+                })
+            )
+            .addButton((button) =>
+                button
+                    .setButtonText(t.settings.images.syncNow)
+                    .setCta()
+                    .onClick(async () => {
+                        button.setDisabled(true);
+                        button.setButtonText(t.settings.images.syncing);
+                        try {
+                            const summary = await service.run();
+                            this.renderSummaryResult(resultEl, summary);
+                        } catch (err) {
+                            resultEl.empty();
+                            resultEl.createEl("p", {
+                                cls: "obsync-diag-failed",
+                                text: this.obsync.notifier.describeError(err, t.images.notice.syncFailed),
+                            });
+                        } finally {
+                            button.setDisabled(false);
+                            button.setButtonText(t.settings.images.syncNow);
+                        }
+                    })
+            );
+    }
+
+    /** 把一份计划渲染成用户能逐条核对的清单。 */
+    private renderPlanResult(container: HTMLElement, heading: string, plan: SyncPlan): void {
+        const t = this.obsync.t;
+        container.empty();
+
+        const counts = { upload: 0, download: 0, skip: 0, conflict: 0 };
+        for (const entry of plan.entries) counts[entry.action] += 1;
+
+        container.createEl("p", {
+            cls: "obsync-diag-ok",
+            // 冲突数单独列出来：它是这一页上唯一「有一边的改动会消失」的情况，
+            // 而它不是用户主动要求的动作。
+            text: `${heading} — ${t.images.plan.counts(
+                counts.upload,
+                counts.download,
+                counts.conflict,
+                counts.skip
+            )}`,
+        });
+
+        // 截断要说出来：它意味着「云端有这一份但没被列到」会被当成缺一份而重传。
+        // 那不是错误，但用户看到「明明一样却要重传」会以为是 bug。
+        if (plan.truncated) {
+            container.createEl("p", { cls: "obsync-diag-failed", text: t.images.plan.truncated });
+        }
+
+        const interesting = plan.entries.filter((entry) => entry.action !== "skip");
+        if (interesting.length === 0) {
+            container.createEl("p", { cls: "obsync-diag-skipped", text: t.images.plan.empty });
+            return;
+        }
+
+        const list = container.createEl("ul", { cls: "obsync-diag-list" });
+        // 只列前 50 条：一次列几千行既没人看，也会让设置页卡住。
+        for (const entry of interesting.slice(0, 50)) {
+            // 冲突用失败色标出来 —— 它是这一页上唯一「有东西会被覆盖掉」的情况。
+            // 这一页存在的意义就是让用户在执行前看清那些。
+            const cls = entry.action === "conflict" ? "obsync-diag-failed" : "obsync-diag-ok";
+            const item = list.createEl("li", { cls });
+            item.createSpan({
+                text: `${t.images.plan.action[entry.action]} · ${t.images.plan.reason[entry.reason]} · `,
+            });
+            item.createSpan({ text: entry.path });
+        }
+        if (interesting.length > 50) {
+            container.createEl("p", {
+                cls: "obsync-diag-skipped",
+                text: t.images.plan.more(interesting.length - 50),
+            });
+        }
+    }
+
+    /** 一轮执行之后的结果。 */
+    private renderSummaryResult(container: HTMLElement, summary: SyncSummary): void {
+        const t = this.obsync.t;
+        container.empty();
+
+        const didNothing = summary.uploaded === 0 && summary.downloaded === 0;
+
+        container.createEl("p", {
+            cls: summary.failed > 0 ? "obsync-diag-failed" : "obsync-diag-ok",
+            text: didNothing
+                ? t.images.notice.syncNothing
+                : t.images.notice.syncDone(summary.uploaded, summary.downloaded),
+        });
+
+        // 截断只影响「结果完不完整」，不再是「不敢删」的说明（删除已经不在计划里）。
+        if (summary.truncated) {
+            container.createEl("p", { cls: "obsync-diag-failed", text: t.images.plan.truncated });
+        }
+
+        if (summary.errors.length > 0) {
+            container.createEl("p", {
+                cls: "obsync-diag-failed",
+                text: t.images.notice.syncFailedMany(summary.errors.length),
+            });
+            const list = container.createEl("ul", { cls: "obsync-diag-list" });
+            for (const entry of summary.errors.slice(0, 20)) {
+                const item = list.createEl("li", { cls: "obsync-diag-failed" });
+                item.createSpan({ text: `${entry.path}：` });
+                item.createSpan({ text: entry.message });
+            }
+        }
     }
 
     /**
@@ -923,4 +1640,17 @@ function describeCheck(check: DiagnosticCheck, t: LocaleStrings): string {
 export function createSettingsTab(app: App, plugin: ObsyncPlugin): ObsyncSettingsTab {
     void app;
     return new ObsyncSettingsTab(plugin);
+}
+
+/**
+ * 当前列表是否就是默认值（仓库根目录）。
+ *
+ * 两边都过一遍 `normalizeFolders`：设置里的形状保证是归一后的（加载与每次写入
+ * 都归一遍），而默认值写的是 `.` —— 不归一的话 `["."]` 与 `[""]` 会被判成不同，
+ * 「恢复默认」在刚刚重置完的状态下仍然是可点的。
+ */
+function isDefaultFolders(folders: string[]): boolean {
+    const current = normalizeFolders(folders);
+    const fallback = normalizeFolders(DEFAULT_SETTINGS.images.folders);
+    return current.length === fallback.length && current.every((item, index) => item === fallback[index]);
 }

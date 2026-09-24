@@ -16,25 +16,31 @@
 
 ### 简介
 
-SyncHub 把两件事合在一起，并且让它们都**不只认 GitHub**：
+SyncHub 把三件事合在一起，并且让它们都**不只认 GitHub**：
 
 - **笔记仓库同步** —— 用 git 把整个库同步到 GitHub 或 Gitee：提交、拉取、推送一条链走完，
-  冲突不替你决定而是留下一份处理指南
+  冲突不替你决定而是留下一份处理指南；面板上每个文件、每条提交都能点开**看差异**
+- **图片同步** —— 库里的图片在 Cloudflare R2 上存一份副本（笔记走 git，图片走对象存储）：
+  只补齐、从不自动删除，删本地时问一句；带一个可筛选的**图片管理面板**
 - **社区插件与主题** —— 从 GitHub 或 Gitee 安装、更新、冻结、取消绑定；
   库里已经装好的插件与主题可以一次性绑定进来跟着一起更新
 - **SyncHub 自身也能更新** —— 设置页里检查并更新它自己
 
-两个功能共用同一层平台适配，所以 **GitHub 与 Gitee 的差别只实现一次**。界面中文优先、英文对等。
+三件事共用同一层平台适配，所以 **GitHub 与 Gitee 的差别只实现一次**。界面中文优先、英文对等。
 
-SyncHub bundles two things and refuses to be GitHub-only:
+SyncHub bundles three things and refuses to be GitHub-only:
 
 - **Vault sync over git** — commit, pull and push your whole vault to GitHub *or* Gitee in one chain.
   Conflicts are never resolved for you: SyncHub stops the chain and writes a resolution guide instead.
+  Every file and every commit in the panel opens a **diff view**.
+- **Image sync** — keeps a copy of your vault's images on Cloudflare R2 (notes over git, images over
+  object storage): it only fills gaps and never deletes on its own, asks once before deleting a cloud
+  copy, and ships a filterable **image manager**.
 - **Community plugins and themes** — install, update, freeze and unbind from either platform,
   and adopt the plugins/themes you already have so they update alongside.
 - **SyncHub updates itself** — check and apply new versions of the plugin from its own settings page.
 
-Both features share a single platform layer, so **every GitHub/Gitee difference is implemented once**.
+All three share a single platform layer, so **every GitHub/Gitee difference is implemented once**.
 Chinese-first UI with an equal English one.
 
 ### 关键词 / Keywords
@@ -42,8 +48,13 @@ Chinese-first UI with an equal English one.
 **中文**
 
 - **笔记同步** — 提交 → 拉取 → 推送一条链 · 冲突指南（不自动解决）· 自动提交/推送/拉取定时器 ·
-  仓库同步视图（侧边栏，可点状态栏打开）· 状态栏条目 · 初始化仓库时建 `.gitignore` ·
+  仓库同步视图（侧边栏，可点状态栏打开）· 状态栏条目 · 初始化仓库时建 `.gitignore`
+  （设置页里可直接编辑）· **差异视图**（逐文件 / 逐提交 / 当前文件）·
   在远端打开文件/历史/提交 · 编辑远端 · 连接测试
+- **图片同步** — Cloudflare R2 双副本（只复制不删除）· 删本地时问一句（三档）· 受管文件夹 ·
+  图片管理面板（本地 / 云端 / 已链接三条轴筛选、缩略图、批量同步 / 压缩 / 重命名 / 删除）·
+  笔记内裁剪压缩（保持原格式、只在变小时写回）· Excalidraw 压缩画布的引用也认得出 ·
+  公网外链 · 密钥进系统密钥库
 - **插件与主题** — 地址识别（GitHub / Gitee）· release 资产与仓库源码双通道 · 版本选择（含预发布回退）·
   写入前备份 + 失败回滚 · 更新检查（单个/全部/启动/进入设置页）· 常驻更新徽标 · 冻结 ·
   **版本回退** · 取消绑定（不删文件）· 绑定已装插件与主题 · Gitee 镜像发现 · 自我更新
@@ -54,8 +65,14 @@ Chinese-first UI with an equal English one.
 
 - **Vault sync** — commit → pull → push in one chain · conflict guide (no auto-resolution) ·
   auto commit/push/pull timers · repository sync view (sidebar, openable from the status bar) ·
-  status-bar item · `.gitignore` created on init ·
+  status-bar item · `.gitignore` created on init (editable in the settings page) ·
+  **diff view** (per file / per commit / current file) ·
   open file/history/commit on the remote · edit remote · connection test
+- **Image sync** — Cloudflare R2 mirror (copy only, never delete) · one prompt before deleting a cloud
+  copy (three modes) · managed folders · image manager (filter on local / cloud / linked, thumbnails,
+  batch sync / compress / rename / delete) · crop and compress inside the note (keeps the original
+  format, writes back only when smaller) · understands Excalidraw's compressed canvas references ·
+  public URLs · secret key in the OS keychain
 - **Plugins & themes** — address recognition (GitHub / Gitee) · release assets **and** repository source fallback ·
   version picker (with prerelease fallback) · backup before write + rollback on failure · update checks
   (single / all / on startup / on opening settings) · persistent update badges · freeze ·
@@ -99,7 +116,8 @@ Chinese-first UI with an equal English one.
 - **初始化仓库** —— 顺便建一份 `.gitignore`（默认排除 `.obsidian/workspace.json`、
   `.obsidian/plugins/ob-sync/data.json` 这类**每台设备各自维护**的文件，同步它们只会
   制造冲突）。**已存在的 `.gitignore` 绝不覆盖**，
-  另有「编辑 .gitignore」命令可以随时改它
+  也可以随时改它 —— 「仓库同步」设置页里有一个**可直接编辑的多行代码框**
+  （带「填入默认内容」与「在编辑器中打开」两个按钮），命令面板里也有「编辑 .gitignore」
 - **冲突处理** —— 检测到冲突时在库根目录写一份《SyncHub 冲突指南.md》列出冲突文件，
   然后**立即停止同步链**；手动解决后重新同步，或用「放弃当前合并」回到拉取之前
 - **自动同步**（默认关闭）—— 自动提交 / 自动推送 / 自动拉取三个间隔（分钟，0 = 关闭）。
@@ -111,9 +129,15 @@ Chinese-first UI with an equal English one.
   分支下拉 / **靠右的**立即同步 / **最右的**刷新），下面是：远端地址（脱敏后回显）+ 编辑入口、
   `领先 / 落后远端`、**并排两栏**的仓库大小与待提交改动、冲突区（列出冲突文件 + 放弃合并）、
   **按「已暂存 / 更改」分组的文件列表**
-  （逐个文件暂存 / 取消暂存、点文件名打开笔记、在远端打开此文件）、最近 10 条提交
-  （点 hash 在远端查看这条提交）。不是 git 仓库时这里直接给「初始化仓库」按钮。
-  面板是**活的**：自动提交、库外改动、命令面板里的动作都会让它自己刷新
+  （逐个文件暂存 / 取消暂存、点文件名打开笔记、**查看差异**、在远端打开此文件）、最近 10 条提交
+  （点 hash 在远端查看这条提交，或点旁边的差异图标看它改了什么）。不是 git 仓库时这里直接给
+  「初始化仓库」按钮。面板是**活的**：自动提交、库外改动、命令面板里的动作都会让它自己刷新
+- **差异视图** —— 面板上每个文件（含冲突行）与每条提交都能点开看改了什么；
+  命令面板里也有 **SyncHub：查看当前文件的差异**（看正在编辑的这一个）。
+  **工作区改动**与**已暂存改动**分成两节（同一个文件可能两边都有内容），逐行给出
+  新旧两个行号、增删分色。未跟踪的新文件按「全部新增」显示内容，二进制、纯重命名、
+  内容被截断、文件过大各有明确说明 —— 空白会被读成「没有改动」，那是完全不同的结论。
+  合并提交也能看（git 默认对它不输出差异）
 - **状态栏条目** —— 分支 / `↑ahead ↓behind` / `~脏文件数` / `⚠冲突数`，以及进行中的动作；
   贴在状态栏**最左侧**（这是刻意的：它回答「现在同步到哪了」，不该藏在右下角），
   并且**可以点开**（打开仓库同步视图）。贴最左需要把状态栏拉成全屏宽，而**那会改变
@@ -124,6 +148,37 @@ Chinese-first UI with an equal English one.
 - **连接测试** —— 一条递进的检查链：git 可执行文件 → 是否 git 仓库 → 有没有远端 →
   平台能否识别 → **真的 `ls-remote` 连一次**。任何一步失败就停，并说明「只验证了读取」
 - **编辑远端地址** —— 地址里带凭据（`https://user:token@…`）时会给出警告，提示信息本身也脱敏
+
+#### 🖼️ 图片同步（Cloudflare R2）
+
+给库里的图片在 Cloudflare R2 上存一份副本 —— **笔记走 git，图片走对象存储**。
+
+- **只复制，从不删除** —— 每一轮比对只做「缺哪边补哪边」（云端多出来的下载回来、
+  本地多出来的传上去）。**删除只在你删掉本地那张图、并被问过之后才发生**：
+  「一边少了 = 用户删的」这件事本质上判断不准（清单丢失、两台设备各删一边都会错），
+  判断错的代价是删掉你没打算删的东西
+- **删本地时问一句**（默认）—— 弹一次窗问「云端那份也删吗」。也可以设成
+  **永远同步云端**（不问，直接一起删 —— R2 没有回收站，删掉不可逆）或
+  **永不同步云端**（云端永远不动；注意那一份会被下一轮同步**下载回本地**，
+  因为镜像是双向补齐的）
+- **受管的文件夹**（默认整个库）—— 这是**唯一的边界**：只有落在范围内的图片会被同步，
+  也只有它们会被删除传播。可以从列表里挑（「浏览…」），手打路径的错法不用自己防
+- **图片管理面板**（命令 / 侧栏图标 / 设置页按钮）—— 把三件互相独立的事摊平成一张
+  可筛选的表：**本地有哪些图**、**云端有哪些图**、**哪些图被笔记 / 画布引用着**。
+  三条轴任意组合筛选（有 / 无），于是「把没传上去的补上」「清理没人引用的图」
+  「处理只留在云端的」都变成一次筛选的事。每行有缩略图、体积与三个状态徽标，
+  「已链接」那个悬停能看到**是谁在引用它** —— 判断一张图能不能删时这是决定性信息
+- **批量操作** —— 同步选中（缺哪边补哪边）、**压缩并同步**（保持原格式，而且
+  **只在变小时才写回**：已经压过的图再压一次往往更大）、**重命名**（模板式，带实时预览，
+  走 Obsidian 官方改名入口所以**笔记里的链接会跟着更新**）、删除本地 / 删除本地 + 云端
+- **笔记内裁剪与压缩** —— 阅读视图里每张库内图片都有悬浮工具条；裁剪框可直接拖拽，
+  质量 / 最长边 / 输出格式可调（PNG 是无损的，质量那一格会灰掉）
+- **Excalidraw 画布里的引用也认得出** —— 画布数据是 LZString 压缩后写进 `.excalidraw.md` 的，
+  压缩之后图片 id 在正文里**一个字都搜不到**；不认的话「清理失联图片」会把正在用的图删掉
+- **公网外链** —— 填了自定义域名（或 `r2.dev` 域名）之后，工具条上能直接复制图片外链。
+  留空就是明确地表示「还没配」：存储端点每次读都要签名，那种链接粘到笔记里必然打不开
+
+**Secret Access Key 走系统密钥库**（与平台令牌同一条路径），不进 `data.json`。
 
 #### 🧩 社区插件与主题
 
@@ -197,13 +252,29 @@ Chinese-first UI with an equal English one.
 - 「提交」「推送」是**两个动作**，不是一个：提交只写本地仓库，推送只发送**已提交**的
   内容。想一步到位就用「立即同步」
 - 提交信息不用填：它在设置里配模板，每次自动生成
-- 也可以在仓库同步视图里逐个文件操作（暂存 / 取消暂存、点开文件、看历史），
+- 也可以在仓库同步视图里逐个文件操作（暂存 / 取消暂存、点开文件、**看差异**、看历史），
   或点侧边栏的状态栏条目把它打开
+- 想看改动内容：在面板里点那一行的**差异图标**，或用命令
+  **SyncHub：查看当前文件的差异**（看正在编辑的这一个）
 - 想在浏览器里看某个文件：命令 **SyncHub：在浏览器中打开当前文件**，或右键文件选「**在远端打开**」
 
 自动同步默认关闭。需要的话在设置页设「自动提交并同步 / 自动推送 / 自动拉取」的间隔（分钟）。
 
 **遇到冲突**：SyncHub 不替你决定保留哪一边 —— 它写一份冲突指南并停下，等你处理。
+
+#### 同步图片
+
+在设置页的「图片同步」里填 R2 的账号 ID、桶名、Access Key ID 与 **Secret Access Key**
+（密钥走系统密钥库），然后：
+
+- **SyncHub：同步图片** —— 缺哪边补哪边。只想先看看会发生什么，用
+  **SyncHub：预览图片同步**（只算不做）
+- 想整理图片：**SyncHub：打开图片管理**（或侧栏的图片图标）—— 筛选、批量同步 / 压缩 /
+  重命名 / 删除都在那里
+- 自动同步默认关闭。需要的话设「自动同步间隔（分钟）」
+- 想让工具条上的「复制云端链接」可用，还要填**公网访问地址**（自定义域名或 `r2.dev` 域名）
+
+**图片同步与笔记同步互不相干**：前者走 R2、后者走 git，各自有独立的开关与定时器。
 
 ### 设置页
 
@@ -211,7 +282,8 @@ Chinese-first UI with an equal English one.
 | --- | --- |
 | 已跟踪插件与主题 | 已安装/添加的插件与主题列表，含更新徽标、检查、更新、版本管理（回退）、冻结、打开仓库、取消绑定（不删文件） |
 | 插件安装器 | 启用开关、更新检查时机、Gitee 镜像发现、**访问令牌**（GitHub / Gitee）、SyncHub 自身更新（含**更新来源**） |
-| 仓库同步 | 同步开关、自动提交/推送/拉取间隔、提交信息模板、整合策略、git 路径、**连接测试** |
+| 仓库同步 | 同步开关、自动提交/推送/拉取间隔、提交信息模板、整合策略、git 路径、**`.gitignore` 编辑框**（可直接改，也能填默认内容或转到编辑器）、**连接测试** |
+| 图片同步 | 受管文件夹（含「浏览…」）、R2 连接与密钥、冲突与删除策略、压缩默认值、操作按钮 |
 | 通用 | 界面语言、提示开关、调试日志、**状态栏占满整屏宽** |
 
 **令牌只保存在本机**（Obsidian 的密钥存储，老版本回退到 localStorage），
@@ -327,15 +399,19 @@ pnpm verify:head # 在 **HEAD** 上跑测试（提交后跑一次，见下）
 
 ### Introduction
 
-SyncHub bundles two things and refuses to be GitHub-only:
+SyncHub bundles three things and refuses to be GitHub-only:
 
 - **Vault sync over git** — commit, pull and push your whole vault to GitHub *or* Gitee in one chain.
   Conflicts are never resolved for you: SyncHub stops the chain and writes a resolution guide instead.
+  Every file and every commit in the panel opens a **diff view**.
+- **Image sync** — keeps a copy of your vault's images on Cloudflare R2 (notes over git, images over
+  object storage): it only fills gaps and never deletes on its own, asks once before deleting a cloud
+  copy, and ships a filterable **image manager**.
 - **Community plugins and themes** — install, update, freeze and unbind from either platform,
   and adopt the plugins/themes you already have so they update alongside.
 - **SyncHub updates itself** — check and apply new versions of the plugin from its own settings page.
 
-Both features share a single platform layer, so **every GitHub/Gitee difference is implemented once**.
+All three share a single platform layer, so **every GitHub/Gitee difference is implemented once**.
 Chinese-first UI with an equal English one.
 
 ### Features
@@ -376,8 +452,9 @@ Needs the system `git` binary, so it is **desktop-only** (Windows / macOS / Linu
   `Commit` → `Push`
 - **Initialize repository** — also creates a `.gitignore` (excluding per-device files such as
   `.obsidian/workspace.json` and `.obsidian/plugins/ob-sync/data.json`, which only ever produce
-  conflicts). An existing `.gitignore` is **never overwritten**, and there is an "Edit .gitignore"
-  command
+  conflicts). An existing `.gitignore` is **never overwritten**, and you can edit it at any time —
+  the "Vault sync" settings tab has an **editable multi-line box** for it (with "Fill in defaults"
+  and "Open in editor" buttons), and there is also an "Edit .gitignore" command
 - **Conflicts** — on conflict SyncHub writes a resolution guide listing the conflicted files and
   **stops the chain** (continuing would commit conflict markers or push them upstream).
   Resolve by hand and sync again, or use "Abort current merge"
@@ -392,10 +469,18 @@ Needs the system `git` binary, so it is **desktop-only** (Windows / macOS / Linu
   **`Refresh` at the far right**; below that are the remote URL (redacted) with an edit entry,
   `ahead / behind`, repository size and pending changes **side by side**, a conflict section
   (conflicted files + abort merge), the changed files **grouped into staged / changes**
-  (per-file stage / unstage, click a file name to open the note, open the file on the remote) and
-  the last 10 commits (click a hash to view that commit on the remote). When the vault is not a git
-  repository it offers an "Initialise repository" button. The panel is **live**: auto commits,
-  outside edits and command-palette actions refresh it
+  (per-file stage / unstage, click a file name to open the note, **view diff**, open the file on the
+  remote) and the last 10 commits (click a hash to view that commit on the remote, or the diff icon
+  next to it to see what it changed). When the vault is not a git repository it offers an
+  "Initialise repository" button. The panel is **live**: auto commits, outside edits and
+  command-palette actions refresh it
+- **Diff view** — every file in the panel (conflict rows included) and every commit opens a diff;
+  the command palette also has **SyncHub: View diff of the current file** for whatever you are
+  editing. **Working tree** and **staged** changes are shown as separate sections (a file can have
+  both), with old and new line numbers and coloured additions/deletions. Untracked new files are
+  shown as "all added", and binary files, pure renames, truncated content and oversized files each
+  say what they are — blank space reads as "nothing changed", which is a different conclusion.
+  Merge commits work too (git prints no diff for them by default)
 - **Status-bar item** — branch / `↑ahead ↓behind` / `~dirty` / `⚠conflicts` plus the action in progress;
   pinned to the **far left** of the status bar on purpose, and **clickable** (opens the repository
   sync view).
@@ -408,6 +493,46 @@ Needs the system `git` binary, so it is **desktop-only** (Windows / macOS / Linu
 - **Connection test** — a step-by-step chain: git binary → git repo → remote configured →
   platform recognised → **an actual `ls-remote`**. It states that it only proves read access
 - **Edit remote** — warns when the URL embeds credentials, and redacts them in messages
+
+#### 🖼️ Image sync (Cloudflare R2)
+
+Keeps a copy of your vault's images on Cloudflare R2 — **notes travel over git, images over object
+storage**.
+
+- **It only ever copies, never deletes** — each round fills the gaps on both sides (download what the
+  cloud has extra, upload what the vault has extra). **Deletion happens only after you delete a local
+  image and are asked about it**: "one side is missing it = the user deleted it" cannot be decided
+  reliably (a lost state file, or one device deleting each side, both break it), and getting it wrong
+  deletes something you did not mean to lose
+- **Asks before deleting the cloud copy** (default) — one dialog per deletion. Or set it to
+  **always sync the cloud** (delete both without asking; R2 has no trash) or **never sync the cloud**
+  (the cloud copy is left alone — but the next round will download it back, since the mirror fills
+  both directions)
+- **Managed folders** (the whole vault by default) — the **single boundary**: only images inside it
+  are synced, and only they can be affected by deletions. Pick them from a list ("Browse…") instead
+  of hand-typing paths
+- **Image manager** (command / ribbon icon / settings button) — flattens three independent facts into
+  one filterable table: **which images are local**, **which are on the cloud**, and **which are
+  referenced** by notes or canvases. Filter on any combination of the three, so "upload what is
+  missing", "clean up orphans" and "deal with cloud-only files" are each a single filter. Every row
+  has a thumbnail, a size and three status badges; hovering "linked" shows **who references it** —
+  decisive information when deciding whether an image can go
+- **Batch actions** — sync selected (fill whichever side is missing), **compress and sync** (keeps the
+  original format and **only writes back when smaller** — re-compressing an already-compressed image
+  usually makes it bigger), **rename** (templated with a live preview, going through Obsidian's own
+  rename so **links in your notes follow along**), delete local / delete local + cloud
+- **Crop and compress inside the note** — every in-vault image gets a floating toolbar in reading
+  view; the crop box is draggable and quality / max edge / output format are adjustable (PNG is
+  lossless, so the quality control is greyed out for it)
+- **Excalidraw canvas references count too** — canvas data is LZString-compressed inside
+  `.excalidraw.md`, so image ids appear **nowhere** in the text; without decompressing them,
+  "clean up orphans" would delete images that are in use
+- **Public URLs** — set a custom domain (or an `r2.dev` domain) and the toolbar can copy an image's
+  public URL. Leaving it empty means "not configured yet" on purpose: the storage endpoint needs a
+  signature per read and would 403 when pasted into a note
+
+**The Secret Access Key lives in the system keychain** (the same path as platform tokens), never in
+`data.json`.
 
 #### 🧩 Community plugins and themes
 
@@ -493,8 +618,10 @@ First set the remote in the settings page under "Vault sync" (command
 - "Commit" and "Push" are **two separate actions**: commit writes to the local repository only,
   push sends **committed** content only. Use "Sync now" to do both
 - No commit message to type: it comes from the template in the settings
-- You can also work per file in the repository sync view (stage / unstage, open a file, view
-  history), or click the status-bar item to open it
+- You can also work per file in the repository sync view (stage / unstage, open a file, **view
+  diff**, view history), or click the status-bar item to open it
+- To see what changed: click the **diff icon** on a row in the panel, or use the command
+  **SyncHub: View diff of the current file** for the one you are editing
 - To view a file in the browser: command **SyncHub: Open current file in browser**, or right-click
   the file and pick **Open on the remote**
 
@@ -504,13 +631,30 @@ auto pull" intervals (minutes) in the settings.
 **On conflict**, SyncHub does not decide which side wins — it writes a resolution guide and stops,
 waiting for you.
 
+#### Syncing images
+
+Fill in the R2 account ID, bucket, Access Key ID and **Secret Access Key** on the "Image sync"
+settings tab (the secret goes to the system keychain), then:
+
+- **SyncHub: Sync images** — fills whichever side is missing. To see what it *would* do first, use
+  **SyncHub: Preview image sync** (computes, never writes)
+- To tidy up: **SyncHub: Open image manager** (or the ribbon icon) — filtering, batch
+  sync / compress / rename / delete all live there
+- Automatic sync is off by default; set the "auto sync interval (minutes)" if you want it
+- To enable "copy cloud link" in the toolbar, also fill in the **public base URL** (a custom domain
+  or an `r2.dev` domain)
+
+**Image sync and vault sync are independent**: one goes through R2, the other through git, with their
+own switches and timers.
+
 ### Settings
 
 | Tab | Contents |
 | --- | --- |
 | Tracked plugins & themes | The list, with update badges, check, update, version manager (rollback), freeze, open repo, unbind |
 | Plugin installer | Enable switch, update-check timing, Gitee mirror discovery, **access tokens**, self-update |
-| Vault sync | Enable switch, auto commit/push/pull intervals, commit message template, strategy, git path, connection test |
+| Vault sync | Enable switch, auto commit/push/pull intervals, commit message template, strategy, git path, **`.gitignore` editor** (edit in place, fill in defaults, or open it in the editor), connection test |
+| Image sync | Managed folders (with "Browse…"), R2 connection and secret, conflict and deletion policy, compression defaults, action buttons |
 | General | UI language, notices, debug logging, **status bar spans the full width** |
 
 Tokens are stored **locally only** (Obsidian's secret storage, falling back to localStorage for older
@@ -613,9 +757,13 @@ Architecture notes and a long list of field-tested pitfalls live in
 
 如果这个插件对你有帮助，欢迎扫码赞助 ❤️
 
-![赞助](zanshang.jpg)
+![赞助](https://raw.githubusercontent.com/Dyse-Sofqi/SyncHub/main/zanshang.jpg)
 
 也可通过 [PayPal](https://paypal.me/Sofqi) 赞助。
+
+If SyncHub has been useful to you, you are welcome to buy me a coffee ❤️
+
+![Sponsor](https://raw.githubusercontent.com/Dyse-Sofqi/SyncHub/main/zanshang.jpg)
 
 You can also sponsor via [PayPal](https://paypal.me/Sofqi).
 

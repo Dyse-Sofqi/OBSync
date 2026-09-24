@@ -248,6 +248,34 @@ function checkHardcodedCjk() {
 
 // ── 3. 未使用的 i18n 键 ─────────────────────────────────────────────────────
 
+/**
+ * 数一行里**不在字符串中**的括号净数（`(` 记 +1，`)` 记 -1）。
+ *
+ * 要跳过字符串，是因为形参可以有默认值、类型也可以是函数类型
+ * （`onChange: (v: number) => void`），而 locale 里的字符串完全可能含括号。
+ * 逐行扫的简单状态机够用：locale 文件里的字符串都是单行的（长文本用 `+` 拼接，
+ * 而不是多行模板串）。
+ */
+function parenBalance(line) {
+    let depth = 0;
+    let quote = "";
+    for (let index = 0; index < line.length; index++) {
+        const char = line[index];
+        if (quote) {
+            if (char === "\\") index++;
+            else if (char === quote) quote = "";
+            continue;
+        }
+        if (char === '"' || char === "'" || char === "`") {
+            quote = char;
+            continue;
+        }
+        if (char === "(") depth++;
+        else if (char === ")") depth--;
+    }
+    return depth;
+}
+
 function checkUnusedI18nKeys() {
     const localePath = path.join(SRC, "core/i18n/locales/zh-cn.ts");
     if (!fs.existsSync(localePath)) return { name: "未使用的 i18n 键", skipped: true };
@@ -255,8 +283,25 @@ function checkUnusedI18nKeys() {
     const collectKeys = (source) => {
         const keys = [];
         const stack = [];
+        /**
+         * 还在多行参数表里的括号深度（0 = 不在里面）。
+         *
+         * 形参的写法（`upload: number,`）与键值对**长得一模一样**，逐行扫
+         * 分不出来。不加这个守卫时，每个形参名都会被登记成一个 i18n 键。
+         * 以前没暴露出来只是碰巧：`upload` / `skipped` 这些名字在代码里
+         * 别处也有 `.upload` / `.skipped` 的访问，于是被当成「已引用」了 ——
+         * 换一个没被别处用到的形参名（`conflicts`）就会立刻误报。
+         */
+        let paramDepth = 0;
+
         for (const line of source.split("\n")) {
             const trimmed = line.trim();
+
+            if (paramDepth > 0) {
+                paramDepth = Math.max(0, paramDepth + parenBalance(trimmed));
+                continue;
+            }
+
             if (!trimmed || trimmed.startsWith("//") || trimmed.startsWith("/*")) continue;
 
             const match = /^(\w+):\s*(.*)$/.exec(trimmed);
@@ -270,6 +315,13 @@ function checkUnusedI18nKeys() {
                 continue;
             }
             keys.push([...stack.map((entry) => entry[1]), match[1]].join("."));
+
+            // 值以 `(` 开头 = 这是个函数值，后面可能是**多行**参数表。
+            // 单行参数表（`(a: number, b: string) =>`）的净括号数为 0，
+            // 于是不会误进「参数表模式」。
+            if (match[2].startsWith("(")) {
+                paramDepth = Math.max(0, parenBalance(match[2]));
+            }
         }
         return keys;
     };
@@ -335,6 +387,14 @@ function checkCssClasses() {
         {
             match: (name) => name === "obsync-sync-view",
             why: "源码控制视图的类型标识（registerView 用），不是 CSS 类",
+        },
+        {
+            match: (name) => name === "obsync-image-view",
+            why: "图片管理视图的类型标识（registerView 用），不是 CSS 类",
+        },
+        {
+            match: (name) => name.startsWith("obsync-image-state"),
+            why: "图片同步状态清单的 localStorage 键（syncState.ts）",
         },
     ];
 
@@ -511,7 +571,13 @@ function checkUnreadSettings() {
     ]);
 
     const settingsSource = stripComments(read(settingsPath));
-    const containers = { InstallerSettings: "installer", SyncSettings: "sync" };
+    const containers = {
+        InstallerSettings: "installer",
+        SyncSettings: "sync",
+        // 图片同步的字段里有「决定删不删文件」的那两个开关。它们**必须**被
+        // 逻辑层读到 —— 只在设置页把值存下来而没人消费，正是这个检查要拦的东西。
+        ImageSyncSettings: "images",
+    };
 
     const fields = [];
     for (const [name, container] of Object.entries(containers)) {

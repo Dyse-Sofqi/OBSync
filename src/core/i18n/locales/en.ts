@@ -13,6 +13,7 @@ export const en = {
         name: "SyncHub",
         ribbonSync: "SyncHub: open the repository sync view",
         ribbonInstaller: "SyncHub: install community plugins",
+        ribbonImages: "SyncHub: open the image manager",
     },
 
     common: {
@@ -69,6 +70,7 @@ export const en = {
             tracked: "Plugins & themes",
             installer: "Plugin installer",
             sync: "Vault sync",
+            images: "Image sync",
             general: "General",
         },
         language: {
@@ -191,6 +193,154 @@ export const en = {
             strategyReset: "Reset (remote wins, local commits dropped)",
             gitPath: "Git executable path",
             gitPathDesc: "Leave empty to use git from PATH. Only needed on Windows when git is not on PATH.",
+
+            // The .gitignore section: editable in place so users can see what is
+            // currently ignored without leaving the settings page.
+            gitignoreHeading: "Ignore rules (.gitignore)",
+            gitignoreDesc:
+                "One rule per line; lines starting with `#` are comments. Changes here are written " +
+                "straight to the .gitignore in the vault root — no separate editor needed. To edit it " +
+                "in Obsidian's own editor, use the button below.",
+            gitignoreMissing: "not created yet",
+            gitignoreDirty: "unsaved changes",
+            gitignoreSaved: "saved",
+            gitignoreSave: "Save",
+            gitignoreSaving: "Saving…",
+            gitignoreRestore: "Fill in defaults",
+            gitignoreOpen: "Open in editor",
+            gitignoreSavedNotice: "Saved .gitignore.",
+            gitignoreSaveFailed:
+                "Could not save .gitignore — the file on disk still holds the previous content.",
+        },
+
+        images: {
+            heading: "Image sync",
+            notesHeading: "Things to know",
+            notes: [
+                "Syncing only ever copies: every round fills the gaps on both sides (download what the " +
+                    "cloud has extra, upload what the vault has extra). Nothing is deleted. Deletion is " +
+                    "always something you start yourself — see the next item.",
+                "When you delete a managed image on this device, the plugin asks whether the cloud copy " +
+                    "should go too. Deleting is irreversible (R2 has no recycle bin); choosing \"keep\" " +
+                    "records a marker so the next sync will not download it back. That prompt can be changed " +
+                    "in the \"Conflicts and deletion\" section.",
+                "Images inside the managed folders are usually tracked by git as well. The two paths are " +
+                    "independent: git keeps version history, R2 keeps images out of the repository and makes " +
+                    "them linkable from outside. SyncHub will not touch your .gitignore.",
+            ],
+            enabled: "Enable image sync",
+            enabledDesc:
+                "Let SyncHub sync images at startup and in the background. Turning this off stops all automatic " +
+                "syncing; the \"Sync now\" button on this page still works (that is you asking for it).",
+            folders: "Managed image folders",
+            foldersDesc:
+                "One per line, as vault-relative paths (for example attachments). Only images inside these " +
+                "folders are processed, and deletions only ever happen inside them — this is the single " +
+                "boundary of what the plugin may touch. Use . for the whole vault; **the default is the " +
+                "repository root (whole vault)**: pick one with \"Browse…\" below, or press \"Restore " +
+                "default\" to come back to it.",
+            foldersPlaceholder: "attachments\nassets/images",
+            foldersEmpty:
+                "No folder specified, so sync will not run. Type one (for example attachments), pick one " +
+                "with \"Browse…\", or press \"Restore default\" to go back to the repository root.",
+            foldersBrowse: "Browse…",
+            foldersReset: "Restore default",
+            folderPickerPlaceholder: "Search folders…",
+            folderPickerRoot: "Repository root (whole vault)",
+            folderPickerIncluded: "Already managed",
+
+            connectionHeading: "Cloudflare R2 connection",
+            accountId: "R2 account ID",
+            accountIdDesc:
+                "The account ID shown on the R2 overview page in the Cloudflare dashboard. The bare ID is " +
+                "enough (.r2.cloudflarestorage.com is appended for you); a full storage endpoint works too.",
+            accountIdPlaceholder: "e.g. 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
+            bucket: "Bucket name",
+            bucketDesc:
+                "Which bucket the images go into. Objects outside the prefix are never touched, but a " +
+                "**dedicated bucket** is the least surprising setup.",
+            accessKeyId: "Access Key ID",
+            accessKeyIdDesc:
+                "Create it under R2's \"Manage API tokens\" with at least object read & write permission. " +
+                "This value is not a secret and will be synced to your other devices.",
+            secretKey: "Secret Access Key",
+            secretKeyDesc:
+                "The value shown **only once** when the token is created. It is kept on this machine only " +
+                "(system keychain) — never written to data.json, never synced.",
+            secretPlaceholder: "Paste the secret…",
+            secretSave: "Save secret",
+            secretClear: "Clear secret",
+            secretSaved: "R2 secret saved",
+            secretCleared: "R2 secret cleared",
+            secretConfigured: "Configured",
+            secretNotConfigured: "Not configured",
+            prefix: "Cloud prefix",
+            prefixDesc:
+                "Prefix for the object keys (for example images). Leave empty to put them at the bucket root. " +
+                "It only decides *where* they live; changing it does not invalidate the sync state.",
+            publicBaseUrl: "Public base URL",
+            publicBaseUrlDesc:
+                "A custom domain or r2.dev domain, used to build image links. Leave it empty and " +
+                "\"Copy cloud link\" stays unavailable — the storage endpoint requires a signature on every " +
+                "read, so a link built from it would never open. This is not guessed for you.",
+
+            conflictHeading: "Conflicts and deletion",
+            conflictPolicy: "When both sides changed",
+            conflictPolicyDesc:
+                "The same file changed locally and in the cloud. Images cannot be merged automatically, so one " +
+                "side has to win.",
+            conflictNewer: "Newest wins (compare modification times)",
+            conflictLocal: "Local wins",
+            conflictRemote: "Cloud wins",
+            deleteRemotePolicy: "When deleting a local image, ask whether to delete the cloud backup too",
+            /**
+             * All three options need their consequence spelled out — this is a dropdown, so the
+             * user only ever sees the current value. The "never" half matters most: without it,
+             * a deleted image comes back on the next sync (mirroring refills from the cloud),
+             * which looks like a bug.
+             */
+            deleteRemotePolicyDesc:
+                "What happens to the cloud backup when you delete an image from the vault and the cloud " +
+                "still has a copy: \"Ask each time\" opens one prompt; \"Always sync the cloud\" deletes " +
+                "it right away (R2 has no recycle bin — deletion is irreversible); \"Never sync the " +
+                "cloud\" leaves the cloud untouched — but that copy will be **downloaded back** on the " +
+                "next sync (mirroring fills in both directions).",
+            deleteRemoteAsk: "Ask each time",
+            deleteRemoteAlways: "Always sync the cloud",
+            deleteRemoteNever: "Never sync the cloud",
+            autoSync: "Automatic sync interval (minutes)",
+            autoSyncDesc:
+                "0 disables it (the default). Each run fills in whatever is missing on either side (uploads " +
+                "and downloads). Syncing never deletes anything — deletions only happen after you delete a " +
+                "local image and answer the prompt.",
+
+            compressHeading: "Crop and compression defaults",
+            compressQuality: "Default quality",
+            compressQualityDesc:
+                "Default quality for lossy formats (JPEG / WebP), 10–100. PNG is lossless and ignores it.",
+            compressMaxEdge: "Default longest edge (pixels)",
+            compressMaxEdgeDesc:
+                "The default scaling limit in the crop/compress dialog. 0 means no scaling. It only shrinks — " +
+                "enlarging a small image just makes it blurrier and bigger.",
+            compressFormat: "Default output format",
+            compressFormatDesc:
+                "\"Keep as is\" does not mean \"no compression\": a JPEG stays a JPEG but is still re-encoded " +
+                "at the chosen quality; only the container is preserved.",
+
+            actionsHeading: "Actions",
+            test: "Test connection",
+            testing: "Testing…",
+            testOk: (bucket: string) => `Connection works — bucket ${bucket} is reachable.`,
+            testFailed: "Connection test failed",
+            preview: "Preview changes",
+            previewing: "Comparing…",
+            syncNow: "Sync now",
+            syncing: "Syncing…",
+            openManager: "Open the image manager",
+            openManagerDesc:
+                "Lists every image in the managed folders by three states — local, cloud, linked — " +
+                "so you can filter out orphans, not-yet-uploaded and cloud-only images, then sync, " +
+                "compress, rename or delete them in bulk.",
         },
     },
 
@@ -527,6 +677,7 @@ export const en = {
         cmdEditRemote: "SyncHub: Edit remote URL",
         cmdOpenFileOnRemote: "SyncHub: Open current file in browser",
         cmdOpenFileHistoryOnRemote: "SyncHub: View current file history in browser",
+        cmdOpenDiff: "SyncHub: View diff of the current file",
 
         // File context menu
         menuOpenOnRemote: "Open on remote",
@@ -559,6 +710,7 @@ export const en = {
         actUnstageAll: "Unstage all",
         actOpenFile: "Open this file",
         actOpenFileOnRemote: "Open this file on the remote",
+        actDiff: "View diff",
         actAbortMerge: "Abort this merge",
         sectionStaged: (count: number) => `Staged changes (${count})`,
         sectionChanges: (count: number) => `Changes (${count})`,
@@ -567,6 +719,7 @@ export const en = {
         historyEmpty: "No commits yet.",
         historyFailed: "Could not read the commit history.",
         commitOnRemote: "View this commit on the remote",
+        actDiffCommit: "View this commit's changes",
         remoteLabel: "Remote",
         detachedHeadLabel: "Detached HEAD (not on any branch)",
         aheadOf: (count: number) => `${count} commit(s) ahead of the remote`,
@@ -576,6 +729,25 @@ export const en = {
             "This branch does not track a remote branch yet; pushing will set it up.",
         conflictHint:
             "These files changed both locally and on the remote, so git cannot decide which side to keep. Resolve them and commit, or abort this merge.",
+
+        // Diff view. `section` is indexed by kind (`t.sync.diff.section[kind]`).
+        diff: {
+            title: "Diff",
+            section: {
+                working: "Working tree changes (unstaged)",
+                staged: "Staged changes",
+                commit: "Changes in this commit",
+            },
+            loading: "Reading diff…",
+            loadFailed: "Could not read the diff.",
+            noChanges: "Nothing to show.",
+            binary: "Binary file — content diff not shown.",
+            renamed: "Contents unchanged; the file was only renamed.",
+            tooLarge: "File is too large; content diff not shown.",
+            truncated: "Too much content — only the beginning is shown.",
+            noNewline: "(no newline at end of file)",
+            stats: (additions: number, deletions: number) => `+${additions} −${deletions}`,
+        },
 
         editRemoteTitle: "Edit remote URL",
         editRemoteLabel: "Remote repository URL",
@@ -593,30 +765,40 @@ export const en = {
         gitignoreCreated:
             "Created a .gitignore (it excludes Obsidian's workspace state files, which would otherwise cause conflicts between devices).",
         cmdEditGitignore: "SyncHub: Edit .gitignore",
-        /** Contents of the .gitignore written when initialising a repository. */
-        gitignoreTemplate: [
-            "# Created by SyncHub.",
-            "",
-            "# Obsidian's workspace layout (panels, tabs, cursor positions). It is",
-            "# per-device; syncing it only creates conflicts — the single most common",
-            "# pitfall when syncing a vault across devices.",
-            ".obsidian/workspace.json",
-            ".obsidian/workspace-mobile.json",
-            "",
-            "# This plugin's own settings (sync interval, pull strategy…). They are",
-            "# per-device; syncing them only makes two devices overwrite each other's",
-            "# settings.",
-            ".obsidian/plugins/ob-sync/data.json",
-            "",
-            "# Obsidian's trash",
-            ".trash/",
-            "",
-            "# OS junk",
-            ".DS_Store",
-            "Thumbs.db",
-            "",
-            "# Add anything else you want to ignore below.",
-        ].join("\n"),
+        gitignoreOpenFailed:
+            "Could not open .gitignore in Obsidian's editor. Use the box on the \"Vault sync\" " +
+            "settings tab instead, or open the .gitignore in the vault root with a system editor.",
+        /**
+         * Contents of the .gitignore written when initialising a repository.
+         *
+         * The parameter is the vault's **config directory name** (`vault.configDir`),
+         * not a hardcoded `.obsidian`: users can rename it, and a hardcoded value
+         * would make every one of these rules match nothing.
+         */
+        gitignoreTemplate: (configDir: string) =>
+            [
+                "# Created by SyncHub.",
+                "",
+                "# Obsidian's workspace layout (panels, tabs, cursor positions). It is",
+                "# per-device; syncing it only creates conflicts — the single most common",
+                "# pitfall when syncing a vault across devices.",
+                `${configDir}/workspace.json`,
+                `${configDir}/workspace-mobile.json`,
+                "",
+                "# This plugin's own settings (sync interval, pull strategy…). They are",
+                "# per-device; syncing them only makes two devices overwrite each other's",
+                "# settings.",
+                `${configDir}/plugins/ob-sync/data.json`,
+                "",
+                "# Obsidian's trash",
+                ".trash/",
+                "",
+                "# OS junk",
+                ".DS_Store",
+                "Thumbs.db",
+                "",
+                "# Add anything else you want to ignore below.",
+            ].join("\n"),
 
         repoInited: "Git repository initialized.",
         mergeAborted: "Merge aborted; the repository is back to the pre-pull state.",
@@ -668,5 +850,302 @@ export const en = {
         conflictGuideAbort:
             "To discard this merge and return to the pre-pull state, run \"SyncHub: Abort current merge\".",
         conflictGuideFooter: (time: string) => `Generated automatically by SyncHub at ${time}. Safe to delete once resolved.`,
+    },
+
+    images: {
+        formatOption: {
+            keep: "Keep as is",
+            jpeg: "JPEG",
+            webp: "WebP",
+            png: "PNG",
+        },
+
+        cmdSync: "SyncHub: sync images to the cloud",
+        cmdPreview: "SyncHub: preview image sync changes",
+        cmdEdit: "SyncHub: crop / compress the current image",
+        cmdCopyLink: "SyncHub: copy the current image's cloud link",
+        cmdManage: "SyncHub: open the image manager",
+
+        toolbar: {
+            crop: "Crop / compress",
+            copyLink: "Copy cloud link",
+        },
+
+        notice: {
+            syncDone: (uploaded: number, downloaded: number) =>
+                `Image sync finished: ${uploaded} uploaded, ${downloaded} downloaded.`,
+            syncNothing: "Image sync finished: local and cloud already match, nothing to do.",
+            syncFailed: "Image sync failed",
+            syncFailedMany: (count: number) => `${count} file(s) failed`,
+            previewFailed: "Could not preview image sync changes",
+            linkCopied: (url: string) => `Cloud link copied: ${url}`,
+            noPublicBase:
+                "No public base URL is configured, so a link cannot be built. Set a custom domain or r2.dev " +
+                "domain under Image sync settings.",
+            notInScope: "This image is not inside a managed image folder, so SyncHub will not sync it.",
+            notConfigured:
+                "Image sync is not configured yet. Fill in the R2 details and the managed image folders on " +
+                "the Image sync settings page first.",
+            editorOpenFailed: "Could not open the image editor",
+            singleUploadFailed: "Uploading this image failed (the local save was not affected)",
+            deleteBackupFailed: "Could not delete the cloud backup",
+            deleteBackupFailedMany: (count: number) => `${count} cloud backup(s) could not be deleted.`,
+            remoteDeleted: (count: number) => `Deleted ${count} cloud backup(s).`,
+            remoteKept: (count: number) =>
+                `Kept ${count} cloud backup(s). The local copies are gone and will not be synced back.`,
+            renameFailed: "Could not move the cloud copy to the new name",
+            deleteOutOfScope: "Not inside a managed image folder; SyncHub will not touch it",
+        },
+
+        deleteRemote: {
+            title: (count: number) =>
+                count === 1
+                    ? "Also delete this image from the cloud?"
+                    : `Also delete these ${count} images from the cloud?`,
+            desc:
+                "These images still have a backup in the cloud. The local copies are already gone — what " +
+                "should happen to the cloud ones?",
+            more: (count: number) => `${count} more not listed.`,
+            warningHeading: "Cloud deletions cannot be undone",
+            warning:
+                "The local copies can most likely still be restored from the vault's trash, but the cloud " +
+                "has **no trash** — once deleted they are really gone (unless you have a copy elsewhere). " +
+                "Choosing \"Keep cloud backup\" leaves the cloud copy in place; it just will not be synced " +
+                "back to this device.",
+            keep: "Keep cloud backup",
+            delete: "Delete cloud backup too",
+        },
+
+        plan: {
+            heading: "Pending changes",
+            empty: "Local and cloud already match — nothing to do.",
+            counts: (upload: number, download: number, conflicts: number, skipped: number) =>
+                `${upload} to upload, ${download} to download, ${conflicts} conflicted, ${skipped} skipped.`,
+            truncated:
+                "There are more objects in the cloud than one listing can return, so this run may be " +
+                "incomplete: images that were not listed will be treated as missing from the cloud and " +
+                "uploaded again. Re-uploading is safe, just wasteful.",
+            more: (count: number) => `${count} more not listed.`,
+            action: {
+                upload: "Upload",
+                download: "Download",
+                conflict: "Conflict",
+                skip: "Skip",
+            },
+            reason: {
+                "local-new": "New locally",
+                "local-changed": "Changed locally",
+                "remote-new": "New in cloud",
+                "remote-changed": "Changed in cloud",
+                "local-deleted": "Deleted locally (kept in cloud)",
+                conflict: "Changed on both sides",
+                "in-sync": "In sync",
+            },
+        },
+
+        editor: {
+            title: (name: string) => `Crop / compress: ${name}`,
+            unsupported:
+                "This format cannot be re-encoded through a canvas: SVG would be rasterised and GIF would keep " +
+                "only the first frame. Convert it to PNG / JPEG / WebP first.",
+            readFailed: "Could not read this image.",
+            decodeFailed:
+                "Could not decode this image — it may be corrupt, or the format is not supported on this platform.",
+            format: "Output format",
+            formatDesc:
+                "Switching format usually changes the size far more than tweaking quality. WebP is typically " +
+                "about a quarter smaller than JPEG and supports transparency.",
+            quality: "Quality",
+            qualityDesc:
+                "Only affects lossy formats (JPEG / WebP). PNG is lossless and ignores this.",
+            maxEdge: "Longest edge (pixels)",
+            maxEdgeDesc: "0 means no scaling. It only shrinks — enlarging a small image just blurs it.",
+            ratio: "Lock aspect ratio",
+            ratioDesc: "Keep the ratio while dragging the selection.",
+            ratioFree: "Free",
+            ratioOriginal: "Original ratio",
+            ratioSquare: "1:1",
+            overwrite: "Overwrite the original",
+            overwriteDesc:
+                "Turn this off to save as a new file instead (same folder, -edited suffix), leaving the " +
+                "original untouched. Overwriting is what most people want — links in notes point at the " +
+                "original file, so saving a copy would leave those links showing the old image.",
+            targetOverwrite: (path: string) => `Will write back to: ${path}`,
+            targetNew: (path: string) => `Will create: ${path}`,
+            reset: "Reset selection",
+            cancel: "Cancel",
+            save: "Save",
+            saving: "Saving…",
+            summary: (width: number, height: number, size: string, extension: string) =>
+                `Output: ${width} × ${height} · ${size} · .${extension}`,
+            saveFailed: "Could not save the image",
+            saved: (path: string) => `Saved ${path}`,
+        },
+
+        manager: {
+            title: "Image manager",
+
+            scanning: "Scanning images and references…",
+            scanningOf: (done: number, total: number) => `Scanning references… ${done}/${total}`,
+            scanFailed: "Could not scan images and references",
+            loading: "Scanning…",
+
+            statLocal: "Local",
+            statRemote: "Cloud",
+            statLinked: "Linked",
+            statOrphan: "Orphans",
+            statTotal: "Total",
+            statLocalBytes: "Local size",
+
+            remoteFailed: (message: string) =>
+                `Could not read the cloud listing: ${message}. The "Cloud" column below cannot be trusted.`,
+            notConfigured: "Image sync is not configured, so only the local and reference states are shown.",
+            truncated: "There are more cloud objects than one listing returns; this view may be incomplete.",
+
+            filterLocal: "Local",
+            filterRemote: "Cloud",
+            filterLinked: "Linked",
+            filterState: {
+                any: "Any",
+                yes: "Yes",
+                no: "No",
+            },
+            minSize: "Min size",
+            minSizeUnit: "KB",
+            sort: "Sort",
+            sortOption: {
+                path: "By path",
+                "size-desc": "Largest first",
+                "size-asc": "Smallest first",
+            },
+            search: "Search",
+            searchPlaceholder: "Path contains…",
+
+            presetOrphans: "Orphans",
+            presetPendingUpload: "To upload",
+            presetRemoteOnly: "Cloud only",
+            presetLarge: "Large images",
+            presetReset: "Reset filters",
+
+            selectAll: "Select all",
+            clearSelection: "Clear selection",
+            selectedCount: (count: number) => `${count} selected`,
+            shown: (visible: number, total: number) => `Showing ${visible} / ${total}`,
+            empty: "No images in the managed folders.",
+            emptyFiltered: "No images match the current filters.",
+            capped: (hidden: number) => `${hidden} more not shown — narrow the filters to see them.`,
+
+            columnPath: "Path",
+            columnSize: "Size",
+            columnState: "State",
+            badgeLocal: "Local",
+            badgeRemote: "Cloud",
+            badgeLinked: (count: number) => `Linked ×${count}`,
+            badgeOrphan: "Unreferenced",
+
+            actionSync: "Sync selected",
+            actionCompress: "Compress & sync",
+            actionRename: "Rename…",
+            actionDeleteLocal: "Delete local",
+            actionDeleteBoth: "Delete local + cloud",
+            noSelection: "Select the images you want to act on first.",
+            compressHint: (params: string) =>
+                `Compression uses the settings page values (quality / max edge = ${params}), **keeps the ` +
+                `original format**, and only writes back when the result is smaller.`,
+
+            syncing: "Syncing the selected images…",
+            syncDone: (uploaded: number, downloaded: number, failed: number) =>
+                failed > 0
+                    ? `Selection synced: ${uploaded} uploaded, ${downloaded} downloaded, ${failed} failed.`
+                    : `Selection synced: ${uploaded} uploaded, ${downloaded} downloaded.`,
+            syncFailed: "Could not sync the selected images",
+            syncFailedMany: (count: number) => `${count} image(s) could not be synced.`,
+
+            compressing: "Compressing…",
+            compressingOf: (done: number, total: number) => `Compressing… ${done}/${total}`,
+            compressNothing: (skipped: number) =>
+                `Nothing was compressed — ${skipped} image(s) either cannot be re-encoded (SVG / GIF) or got larger.`,
+            compressDone: (count: number, saved: string, skipped: number) =>
+                `Compressed ${count} image(s), saving ${saved}${skipped > 0 ? ` (${skipped} skipped)` : ""}.`,
+            compressFailed: (count: number, sample: string) =>
+                `${count} image(s) failed to compress, e.g. ${sample}.`,
+
+            renaming: "Renaming…",
+            renameTitle: (count: number) => `Rename ${count} image(s)`,
+            renameDesc: (placeholders: string) =>
+                `Build the new file names from a template. Available placeholders: ${placeholders}. ` +
+                `The folder stays the same — Obsidian updates the links in your notes for you.`,
+            renameTemplate: "Name template",
+            renameStart: "Start number",
+            renamePreviewCount: (renameable: number, total: number) =>
+                `${renameable} of ${total} selected will be renamed.`,
+            renameProblem: {
+                unchanged: "name unchanged, skipped",
+                invalid: "invalid name, skipped",
+                taken: "target exists, skipped",
+                extChanged: "extension changed, skipped",
+            },
+            renameConfirm: (count: number) => `Rename ${count}`,
+            renameCancel: "Cancel",
+            renameDone: (renamed: number, planned: number) => `Renamed ${renamed} of ${planned}.`,
+            renameFailedMany: (count: number, sample: string) =>
+                `${count} image(s) could not be renamed, e.g. ${sample}.`,
+            renameMissing: "the file is no longer in the vault",
+
+            deleting: "Deleting…",
+            deleteDone: (local: number, remote: number, failed: number) =>
+                failed > 0
+                    ? `Deleted ${local} local and ${remote} cloud copy/copies; ${failed} failed.`
+                    : `Deleted ${local} local and ${remote} cloud copy/copies.`,
+            deleteFailed: "Bulk delete failed",
+            deleteFailedMany: (count: number, sample: string) =>
+                `${count} image(s) could not be deleted, e.g. ${sample}.`,
+
+            confirmLocalTitle: (count: number) => `Delete the local copies of ${count} image(s)?`,
+            confirmLocalDesc:
+                "The local copies go to the trash (per your \"Settings → Files and links → Deleted files\" choice). " +
+                "The cloud copies stay — but they will **not be synced back to this device**: SyncHub records that " +
+                "you deleted them, otherwise the next sync would download them again.",
+            confirmLocalOk: (count: number) => `Delete ${count} local copy/copies`,
+
+            confirmBothTitle: (count: number) => `Delete ${count} image(s) locally and in the cloud?`,
+            confirmBothDesc:
+                "The local copies go to the trash and the cloud copies are really deleted. After this, neither side has them.",
+            confirmBothWarningHeading: "Cloud deletion cannot be undone",
+            confirmBothWarning:
+                "The local copies can most likely be restored from the trash, but R2 has **no trash** — once " +
+                "deleted they are gone (unless you have another copy elsewhere). Also, any links to them in your " +
+                "notes will become broken links.",
+            confirmBothOk: (count: number) => `Delete ${count} (including cloud)`,
+            confirmCancel: "Cancel",
+        },
+
+        errors: {
+            notConfigured: (missing: string) =>
+                `Image sync is not configured yet; missing: ${missing}. Fill it in on the Image sync settings page.`,
+            noFolders:
+                "No managed image folder is configured. Add one (for example attachments) on the Image sync settings page.",
+            authFailed:
+                "R2 rejected the request: the Access Key ID or Secret Access Key is wrong, or the token has no " +
+                "permission for this bucket.",
+            bucketNotFound: (bucket: string) =>
+                `Bucket ${bucket} was not found. Check the name, and whether the token is scoped to it.`,
+            listFailed: (status: number, detail: string) =>
+                `Listing cloud objects failed (HTTP ${status}): ${detail}`,
+            uploadFailed: (path: string, status: number, detail: string) =>
+                `Uploading ${path} failed (HTTP ${status}): ${detail}`,
+            downloadFailed: (path: string, status: number, detail: string) =>
+                `Downloading ${path} failed (HTTP ${status}): ${detail}`,
+            deleteFailed: (path: string, status: number, detail: string) =>
+                `Deleting ${path} in the cloud failed (HTTP ${status}): ${detail}`,
+            network: (detail: string) =>
+                `Could not reach R2: ${detail}. Check your network (or proxy) and retry.`,
+            localReadFailed: (path: string, detail: string) =>
+                `Reading the local file ${path} failed: ${detail}`,
+            localWriteFailed: (path: string, detail: string) =>
+                `Writing the local file ${path} failed: ${detail}`,
+            decodeFailed: (path: string) =>
+                `Could not decode ${path} — it may be corrupt, or the format is unsupported on this platform.`,
+        },
     },
 } satisfies LocaleStrings;

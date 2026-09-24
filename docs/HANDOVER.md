@@ -50,14 +50,21 @@
 | 一：脚手架 + core + host 抽象层 | ✅ 完成 | `002056d` |
 | 二：插件安装器（BRAT 复刻） | ✅ 完成 | `46170ef` |
 | 三：Git 同步（obsidian-git 复刻） | 🟩 代码与单测完成 | `bdd2861` |
-
-> 阶段二之后按使用反馈持续增补（均已提交）：绑定库里已有的插件（`1a73339`）、
-> 可用更新常驻徽标（`e9a0729`）、插件身份改用 manifest id（`3c4e660`）、
-> 检查时机调整（`c5bc825`）。设置结构版本现在是 `SETTINGS_VERSION = 2`。
 | 主题支持（绑定 + 更新） | ✅ 完成 | 见五点五节 |
 | 插件版本管理（回退到指定版本） | ✅ 完成 | 见五点七节 |
 | 仓库同步视图（侧边栏详情面板） | ✅ 完成 | 见五点八节 |
+| 差异视图（逐文件 / 逐提交 / 当前文件） | ✅ 完成 | 见五点八节 |
+| `.gitignore` 可在设置页直接编辑 | ✅ 完成 | 见五点八节 |
+| 图片同步（Cloudflare R2 双副本 + 笔记内裁剪压缩） | ✅ 完成 | 见五点九节 |
 | 四：打磨与发布 | ⬜ 未开始 | — |
+
+> 阶段二之后按使用反馈持续增补（均已提交）：绑定库里已有的插件（`1a73339`）、
+> 可用更新常驻徽标（`e9a0729`）、插件身份改用 manifest id（`3c4e660`）、
+> 检查时机调整（`c5bc825`）。
+>
+> 设置结构版本现在是 `SETTINGS_VERSION = 6`：v2 → v3 加了主题支持，
+> v4 → v5 把图片同步的双向删除改成「删本地时问一句」，
+> v5 → v6 把那一句从开关改成三态下拉。
 
 ### 验收复查记录（2026-09-16）
 
@@ -176,6 +183,35 @@ pnpm verify:head # 在 **HEAD**（而不是工作区）上跑测试 —— 提�
 加条目时必须写清为什么安全，否则它们会变成掩盖问题的地方。
 「设置项无人读取」的判据与它扫不到的两类写法，见第七节。
 
+### 社区审核规范复查（`pnpm lint:review`）
+
+闸门是 `eslint.review.config.mjs`（`pnpm lint:review`，接在 `pnpm build` 里）。
+它**只把审核打回过的两条**设成 error（`obsidianmd/no-unsupported-api`、
+`eslint-comments/require-description`），其余显式关掉 —— 理由写在那个文件里。
+
+**要看全景跑 `pnpm lint`**（= `obsidianmd.configs.recommended`，不裁剪）。
+0.1.7 发版前跑了一遍：obsidianmd 相关从 18 处降到 1 处，剩的那 1 处是**有意保留**
+（`settings-tab/prefer-setting-definitions` —— 设置页整体是手写渲染的，
+迁到 1.13 的声明式 API 是一次独立改造）。另有 40 余条 `@typescript-eslint/*`
+风格项是既有欠账（`no-unnecessary-type-assertion` 之类），本项目一直把
+`pnpm lint` 当**信息性**输出，不当闸门。
+
+**几条判据是踩出来的，改代码前先看**：
+
+| 规则 | 它到底要什么 |
+| --- | --- |
+| `no-static-styles-assignment`（**error**） | 不许 `el.style.x = "字面量"`。**`setCssProps({ width: "100%" })` 同样违规** —— 那条规则只放行 `--*` 自定义属性。静态样式必须待在 CSS 类里，只有动态值才该走自定义属性 |
+| `no-nodejs-modules` | 不许**静态** import Node 内置模块；它认可的写法是「`require` / 动态 `import()` 落在 `Platform.isDesktop` 守卫内」。`commitMessage.ts` 的 `node:os` 就是这么改的 |
+| `no-console`（以 `rule-custom-message` 报出） | 只放行 `console.debug` / `warn` / `error` —— `console.info` 会被报成「Avoid unnecessary logging to console」。所以 `logger.info()` 落到 `console.debug` |
+| `prefer-window-timers` | 定时器写 `window.setTimeout` / `window.clearTimeout`，否则弹出窗口（popout window）下行为不一致 |
+| `prefer-create-el` | 别用 `document.createElement`（建出来的节点属于主窗口的 document）；`div` 用 `createDiv`，其余用 `createEl` |
+| `hardcoded-config-path` | 不许写死 `.obsidian`：配置目录可以改名，写死会让规则一条都不匹配（`.gitignore` 模板据此改用 `vault.configDir`） |
+| `ui/sentence-case` | 只放行「句子大小写」，裸 camelCase 品牌名会被要求改成 `Synchub` 这种形态 |
+
+**⚠ `obsidianmd/*` 规则不允许用 `eslint-disable` 压掉**：`eslint-comments/no-restricted-disable`
+把 `obsidianmd/*` 与 `no-console` 都列进了禁止名单。所以上面几条**只能换写法**，
+加 disable 只会多出一条 error（这条是实测撞到的）。
+
 ### 提交后：`pnpm verify:head`（在 HEAD 上跑，而不是工作区）
 
 `pnpm test` 读的是**工作区文件**。工作区里还压着没提交的改动时，全绿只说明
@@ -234,14 +270,15 @@ commit 是本地历史、随时能 `git reset`，**push 才是「别人能看到
 
 ## 三点五、设置页结构
 
-设置页分四个标签页（`src/settingsTab.ts`，自绘标签栏，Obsidian 的
+设置页分五个标签页（`src/settingsTab.ts`，自绘标签栏，Obsidian 的
 `PluginSettingTab` 没有内建分页）：
 
 | 标签 | 内容 |
 | --- | --- |
 | 已追踪插件 | 三个主操作按钮（添加插件仓库 / 绑定已有插件 / 检查全部更新）+ 跟踪列表 |
-| 插件安装器 | 启用开关、更新检查时机、Gitee 镜像发现、**访问令牌**（GitHub / Gitee） |
-| 仓库同步 | **注意事项**（标题正下方，2026-09-19 加）、同步开关（策略为「重置」时禁用）、自动提交/推送/拉取间隔、提交信息模板、整合策略、gitPath |
+| 插件安装器 | 启用开关、更新检查时机、Gitee 镜像发现、**访问令牌**（GitHub / Gitee）、SyncHub 自身更新 |
+| 仓库同步 | **注意事项**（标题正下方，2026-09-19 加）、同步开关（策略为「重置」时禁用）、自动提交/推送/拉取间隔、提交信息模板、整合策略、gitPath、**`.gitignore` 编辑框**（2026-09-24 加）、连接测试 |
+| 图片同步 | 受管文件夹、R2 连接（含密钥）、冲突与删除策略、压缩默认值、三个操作按钮 |
 | 通用 | 界面语言、提示开关、调试日志、**状态栏占满整屏宽**（2026-09-19 加） |
 
 选中项存在内存（`activeTab`），页内重绘或切换标签后不回弹到第一页；
@@ -287,15 +324,17 @@ src/
 └─ features/sync/          # 阶段三产出，见第六节
    ├─ types.ts / errors.ts # 领域类型 + 按应对方式分类的错误（含 describeSyncError）
    ├─ gitManager.ts        # 抽象接口（含状态字符映射 mapStatusChar）
-   ├─ simpleGitManager.ts  # simple-git 实现（状态映射/错误收口/reset 策略）
+   ├─ simpleGitManager.ts  # simple-git 实现（状态映射/错误收口/reset 策略/diff 原文）
+   ├─ diff.ts              # unified diff 解析（纯函数）+ 未跟踪文件的「全部新增」构造
    ├─ auth.ts              # http.extraheader 注入（simple-git config 是字符串数组）
    ├─ remoteLinks.ts       # 「在远端打开」：凑齐 origin + 当前分支，拼网页地址
    ├─ commitMessage.ts     # 模板变量 {{date}}/{{hostname}}/{{numFiles}}/{{files}}
-   ├─ syncService.ts       # 编排：串行队列 + commit→pull→push 链 + 冲突指南
+   ├─ syncService.ts       # 编排：串行队列 + commit→pull→push 链 + 冲突指南 + 差异
    ├─ automatics.ts        # 自动定时器（剩余时间模型，时间戳存 localStorage）
    ├─ statusBar.ts         # 状态栏（由 service 显式驱动，不跑轮询；可点开视图）
    └─ ui/
       ├─ EditRemoteModal.ts   # 「编辑远端地址」弹窗（含凭据警告）
+      ├─ DiffModal.ts         # 差异视图（工作区 / 已暂存两节，逐行行号与增删配色）
       └─ SourceControlView.ts # 侧边栏面板（见五点八）+ 三个纯函数（changeRows 等）
 ```
 
@@ -757,13 +796,13 @@ gitee 镜像下载的选择**」。两件事在同一句话里：GitHub 资产�
 | 状态摘要 | 远端地址（**脱敏**）、`领先 / 落后远端` | 编辑远端 |
 | 体积（**两栏并排**） | 仓库大小、待提交改动 | — |
 | 冲突 | 冲突文件列表 + 一句人话说明 | 放弃本次合并（警示色） |
-| 更改 | 按「已暂存的更改 / 更改」分组，每组带条数 | 逐个文件暂存 / 取消暂存、整组暂存 / 取消暂存、点文件名打开笔记、在远端打开此文件 |
-| 最近提交 | 最近 10 条（hash / 首行信息 / 作者 · 时间） | 点 hash 在远端查看这条提交 |
+| 更改 | 按「已暂存的更改 / 更改」分组，每组带条数 | 逐个文件暂存 / 取消暂存、整组暂存 / 取消暂存、点文件名打开笔记、**查看差异**、在远端打开此文件 |
+| 最近提交 | 最近 10 条（hash / 首行信息 / 作者 · 时间） | 点 hash 在远端查看这条提交、点旁边的差异图标看它改了什么 |
 
 不是 git 仓库时：一句提示 + **「初始化仓库」按钮**（原来是死路）。
 
-**仍然刻意不做**（PLAN.md 的「明确不做」）：树形目录、hunk 级暂存、blame、diff 视图。
-最后一项不是界面工作量的问题 —— 它意味着要自己做一套编辑器内渲染。
+**仍然刻意不做**（PLAN.md 的「明确不做」）：树形目录、hunk 级暂存、blame。
+（diff **视图**在 2026-09-24 补上了，见下一节 —— 但它是弹窗，不在这个面板里画。）
 
 ### 顶部只有一行（当天的第二次改动）
 
@@ -877,6 +916,77 @@ gitee 镜像下载的选择**」。两件事在同一句话里：GitHub 资产�
   | `setDisabled(suspended)` → `setDisabled(false)` | 「总开关被禁用」失败 |
   | 在注意事项前插一个 `Setting`（破坏「紧邻标题」） | 「紧跟在标题下面」失败，提示 `expected '' to be 'obsync-sync-notes'` |
 
+### 差异视图（2026-09-24）
+
+用户原话：**「为仓库的git同步添加diff视图。」** 同时要求在「仓库同步」设置页里
+给 `.gitignore` 一个可直接编辑的代码框（见下一条）。
+
+#### 为什么是弹窗，不是又一个面板
+
+侧边栏面板是**入口**（窄、常驻、一眼扫完「哪些文件变了」），diff 是**展开看细节**
+（行很长、要看行号、看完就关）—— 两件事的形态相反。硬塞进侧边栏，每行都得横向
+滚动，而那正好把「看差异」变回「看不了」。
+
+顺带绕开另一个麻烦：视图类型要写进用户的 `workspace.json`，多一个就多一份
+持久化状态。所以内容是弹窗（`ui/DiffModal.ts`）画的，入口有三处：
+
+| 入口 | 位置 |
+| --- | --- |
+| 每个文件行 | 面板里**每一行**的第一个图标按钮（冲突行也有） |
+| 每条提交 | 「最近提交」里 hash 右边那个差异图标 |
+| 当前文件 | 命令 **SyncHub：查看当前文件的差异** |
+
+#### 分三层，每层各自可测
+
+| 层 | 干什么 | 怎么验 |
+| --- | --- | --- |
+| `diff.ts` | 解析 unified diff（纯函数）+ 未跟踪文件的「全部新增」构造 | `diff.test.ts`：fixture 是 **git 2.55 的真实输出** |
+| `GitManager.diffFile` / `commitPatch` | 拼 git 参数、取原文 | `simpleGitManager.test.ts`：**真仓库**跑 |
+| `SyncService.fileDiff` / `commitDiff` | 两侧都读、未跟踪兜底、交给纯函数解析 | `syncService.test.ts`：内存假 git |
+
+分三层不是为了好看：**正则只能靠真实输出校准**，而「未跟踪文件要不要读内容」
+这种判断只有编排层知道。
+
+#### 五个必须记住的点
+
+1. **`-c core.quotePath=false` 不能省。** 不加它，非 ASCII 路径会被转义成八进制
+   （`"a/\344\270\255.md"`）—— 而中文文件名在这个插件的目标场景里是常态。
+   实测对照见 `simpleGitManager.test.ts` 的「差异」一组。
+2. **`--no-ext-diff` 也不能省。** 用户在 `.gitconfig` 里配了外部 diff 工具
+   （difftastic 之类）时，输出**不是 unified diff**，解析器会把整份输出当成
+   一片上下文行 —— 界面上看着「没改动」。
+3. **合并提交要 `-m --first-parent`。** git 对合并提交默认**不输出任何差异**
+   （它不知道该跟哪个父提交比），于是用户在历史里点开一次拉取产生的合并提交
+   只会看到空白。对普通提交这两个选项没有副作用（实测）。
+4. **两侧都读，不挑一边。** `git status` 里的 `MM` 意味着工作区与索引都有内容，
+   只给一边等于把另一半藏起来 —— 而用户点开差异的意图恰恰是「我到底改了什么」。
+   所以弹窗是两节（工作区 / 已暂存），空的那节整节不渲染。
+5. **未跟踪文件的兜底必须**先确认它在未跟踪列表里**。** 一个干净的已跟踪文件
+   两侧也都为空，直接读内容当「全部新增」就是在无中生有一个不存在的改动
+   （`syncService.test.ts` 有一条用例专门钉这个）。
+
+另外：`DiffLine.text` **不含**行首的 `+` / `-` 标记，标记由展示层补 —— 这样
+`no-newline` 那行（`\ No newline at end of file`）能渲染成 locale 文案而不是
+把 git 的英文透传给用户。
+
+#### `.gitignore` 编辑框（同一天，同一个用户要求）
+
+放在「仓库同步」页的 gitPath 下面。多行等宽框 + 状态徽标（已保存 / 有未保存的
+修改 / 尚未创建 / 正在保存）+ 三个按钮（保存 / 填入默认内容 / 在编辑器中打开）。
+
+三条取舍：
+
+- **失焦保存 + 显式按钮**，不是「每敲一个键写一次」。`.gitignore` 一改，面板上的
+  改动列表立刻就变 —— 每敲一个键就写一次等于让 git 一直在用户的中间态上做判断。
+  失焦保证「点到别处不会丢」，按钮保证「我知道什么时候写下去了」（只有它弹提示）。
+- **文件不存在时不自动创建。** 打开设置页不该往用户库里多出一个文件 ——
+  `readGitignore` 因此刻意不学 `openGitignore`（后者会顺手建一份）。
+- **「填入默认内容」只填进框里，不直接覆盖磁盘。** 覆盖掉用户自己的规则是数据损失，
+  要让他先看一眼再决定保存。
+
+写入走同步队列（`writeGitignore`）：`commitAll` 的 `git add -A` 与它同时发生时，
+用户正在敲的半成品会被卷进一次提交。
+
 ### 六个必须记住的点
 
 1. **命令名与面板标题是两条 i18n 键。** `viewTitle`（「仓库同步」）是标题，
@@ -927,6 +1037,188 @@ gitee 镜像下载的选择**」。两件事在同一句话里：GitHub 资产�
   | 把分支下拉挪出工具条（另起一个 `Setting`） | 4 条失败（「工具条一行」+ 三条分支下拉的用例） |
 
 ---
+
+## 五点九、图片同步（Cloudflare R2，2026-09-22~23）
+
+> 用户原话（2026-09-22）：**「在"仓库同步"后添加"图片同步"标签页，增加将仓库图片同步到
+> R2 的能力，实现双副本架构，指定图片文件夹，本地和云端各存一份，双向删除同步，
+> 支持在笔记内直接对图片进行裁剪和压缩。」**
+>
+> 次日（2026-09-23）用户撤掉了其中一条：**「双向删除容易引发歧义，所以不做了，
+> 用删除本地图片时，询问是否同步删除云端备份代替。」** 下面的设计按改后的写。
+
+### 它是什么
+
+`features/images/` —— 把指定的图片文件夹镜像到 Cloudflare R2，并在笔记里直接裁剪 / 压缩。
+
+| 文件 | 职责 |
+| --- | --- |
+| `sha256.ts` / `sigv4.ts` | 手写的 SHA-256 / HMAC-SHA256 与 AWS Signature V4 |
+| `r2Client.ts` | S3 兼容客户端（ListObjectsV2 / Put / Get / Delete），走 `host/http.ts` |
+| `imageScan.ts` | 扩展名白名单 + 受管文件夹边界 + 本地扫描 |
+| `syncState.ts` | 状态清单（localStorage，键 `obsync-image-state`） |
+| `imageSyncService.ts` | 同步引擎：`plan` / `run` / `syncPath` / `publicUrlFor` / 删除三件套 |
+| `imageLibrary.ts` | 三方状态合并（本地 / 云端 / 引用）+ 筛选与排序 |
+| `ui/ImageEditorModal.ts` | 裁剪 / 压缩弹窗 |
+| `ui/imageToolbar.ts` | 阅读视图的悬浮工具条 |
+| `ui/ImageManagerView.ts` | 图片管理（**主工作区标签页**，2026-09-23 从弹窗改来） |
+| `ui/ConfirmDeleteRemoteModal.ts` | 「云端那份也删吗」的确认弹窗 |
+| `index.ts` | 装配（**两个平台都装**）+ 删除询问的攒批 |
+
+### 三条设计决定（改这块之前先读）
+
+1. **不用 `@aws-sdk/client-s3`，也不用 `crypto.subtle`。**
+   前者在浏览器环境下几百 KB，而我们只用四个操作；后者在移动端可能不是安全上下文，
+   而且会把整条签名链污染成 async。签名正确性靠 **AWS 官方向量**校准
+   （`tests/features/images/sigv4.test.ts`）—— 自己造的期望值两边一起错也照样绿，
+   而 R2 只会回一个没有解释的 403。
+2. **状态清单放 localStorage 而不是 vault 里的文件。**
+   它记的是**这台设备**上一次同步时的观察结果，随笔记仓库同步给别的设备没有意义
+   （那边有自己的观察）。按 **vault 路径**而非对象键存 —— 用户改前缀不会让清单失效。
+3. **`folders` 与 `prefix` 各管一件事。** `folders` = 管哪些（唯一的边界），
+   `prefix` = 放在桶的哪儿。两者都成立才归本插件处理。
+   `settings.images.prefix` 存用户原文，归一只在 `buildR2Config` 里发生。
+
+### 删除：为什么退回到「问一句」（2026-09-23）
+
+原设计是双向删除：一边删了，另一边跟着删。**它被去掉了，不要加回来。**
+
+那个判断**本质上做不准**：同一个「本地有、云端没有」既可能是「用户删了云端那份」
+也可能是「本地新增」，只能靠状态清单区分。而清单丢失（换设备、清了存储）、
+或者用户在两台设备上各删一边时，判断就会错 —— 错的代价是**删掉一份用户没打算
+删的东西**。用户说的「歧义」就是这个。
+
+现在：
+
+| 情况 | 行为 |
+| --- | --- |
+| 本地有、云端没有 | 上传（镜像补齐） |
+| 云端有、本地没有 | 下载；**除非**有墓碑 |
+| 用户删掉本地图片 | `vault.on("delete")` → 攒批 400ms → 弹窗问 → 删 / 留 |
+
+`run()` 里**没有任何删除动作**，`SyncActionKind` 也不再有 `delete-*`。
+
+#### 墓碑（`SyncedEntry.remoteOnly`）
+
+用户选了「保留云端副本」之后：本地没有、云端还有 —— 而镜像逻辑看到这个状态
+**只会想到「补齐」**，于是下一轮把那张图下载回来，看起来像「删除没生效」。
+所以 `keepRemoteBackup()` 记一条墓碑，`decide()` 在「只有云端」那一支里先看它。
+
+**没点按钮直接关窗（Esc / 点外面）也按「保留」处理，而且必须记墓碑** ——
+「不表态」不能等于「什么都不做」。
+
+墓碑不需要时间戳：云端那份消失时（别人删了 / 用户后来确认删除），`pruneState`
+会因为两边都不存在而把整条记录剪掉。
+
+#### `noteDeleted` 身上的守卫（每一个都对应一类「不该弹的窗」）
+
+`instanceof TFile`（删文件夹也会触发事件，而 `images.png` 这种文件夹名会被
+`isImagePath` 认成图片）/ `isImagePath` / `isInsideFolders` / `enabled` /
+`deleteRemotePolicy`（`never` 一档直接装没看见）/ `isConfigured` /
+**`hasRemoteBackup`**（挡掉绝大多数删除：用户删的多半是从没同步过的截图）。
+
+攒批 400ms：一次选中十张图删掉会发十个事件，逐个弹窗是灾难。
+
+#### 删除策略的三档（`deleteRemotePolicy`，2026-09-23 从开关改来）
+
+| 值 | 行为 |
+| --- | --- |
+| `ask`（默认） | 攒批 400ms → 弹窗问 → 删 / 留 |
+| `always` | 一次都不问：先记墓碑（挡住「同步把图补回来」的竞态），再直接删云端 |
+| `never` | 不问也不动云端，**不记墓碑** —— 下一轮同步会把云端那一份下载回来 |
+
+`always` 与弹窗里选「删除云端」的处置完全一致：删除成功时
+`deleteRemoteBackup` 连墓碑一起清掉，失败时墓碑留着（云端那份不动、也不会
+被下载回来），并各自报错。
+
+#### 设置结构 v4 → v5 → v6
+
+两个老开关里只有一个有对应物，所以**不是机械改名**：
+
+- `deleteRemoteWhenLocalDeleted`（本地删了 → 云端也删）问的正是「删本地时要不要
+  动云端」→ 接过来。关掉过它的用户明确表达过「别动云端」，那就别拿询问去打扰他；
+- `deleteLocalWhenRemoteDeleted`（云端删了 → 本地也删）**没有**对应物，那个方向
+  的行为被整个去掉了 → 静默丢弃。
+
+v5 → v6 把开关 `askDeleteRemote` 换成三态 `deleteRemotePolicy`，两端都有对应物
+（`true` → `ask`，`false` → `never`），**没有默认值丢失**。新字段已写过值时不碰
+它（data.json 会随仓库同步，两台设备版本不一致时旧字段只是残留）。
+
+因为 `mergeWithDefaults` 只保留默认值里存在的键，老字段在 `merged.images` 上已经
+看不到 —— 迁移得从**原始数据**里读（`readRawImages`）。
+
+### 笔记内编辑：为什么只在阅读视图
+
+「在笔记内直接裁剪 / 压缩」落在**阅读视图**（`registerMarkdownPostProcessor`），
+不是 Live Preview。三个理由：Live Preview 里图片常常是折叠的（光标不在那一行时
+只显示链接）；CM6 的图片 widget 是 Obsidian 内部实现、没有公开钩子；工具条只在
+鼠标移到图片上时出现，不占阅读面积。编辑模式的入口另外给：命令面板与文件右键菜单。
+
+工具条挂在 `img` **外面**包一层 `.obsync-image-wrap` —— 阅读视图里的 `img` 可能被
+`<a>` 包着、也可能被 p 的样式影响，自己包一层就有了可控的定位上下文。
+
+**编辑范围比同步范围窄**（`EDITABLE_EXTENSIONS`）：svg 是矢量图，画布会把它栅格化；
+gif 经过画布只剩第一帧。这两个格式**能同步但不能编辑**，编辑入口会明确拒绝并说明原因。
+
+压缩预览显示的是**真实编码出来的字节数**（同一个画布真的编码一遍），不是公式估算 ——
+估出来的 jpeg 体积能差两三倍，那等于编数字。
+
+### 图片管理：为什么是主工作区标签页（2026-09-23）
+
+原来是 `Modal`，用户要求改成标签页。理由很直接：**整理图片时要一边看着笔记
+一边决定哪张能删**，弹窗把整个库盖住只能二选一，标签页可以并排在笔记旁边。
+
+- 视图类型 `IMAGE_VIEW_TYPE`（`obsync-image-view`）**发布后不可改** —— 它持久化在
+  用户的 `workspace.json` 里，改了会让已经打开的标签页失效。
+- 注册**两个平台都做**（与同步视图的 `if (this.sync)` 守卫正好相反）：图片模块
+  移动端也装，工厂函数解引用 `this.images` 不会踩空，而手机上没有比这更好的入口。
+- 打开路径（命令 / 侧栏图标 / 设置页按钮）都走 `openImageManager()`：已经开着就
+  reveal，不再开第二个 —— 两个标签页扫的是同一批图，每扫一遍要好几秒。
+  与 `openSyncView` 同一套做法，区别只在 `getLeaf(true)`（主工作区）而不是
+  `getRightLeaf(false)`（右侧边栏）：盖住笔记正是弹窗被换掉的原因。
+- CSS 上 `.obsync-image-manager` 自己补了内边距与 `height: 100%` —— 弹窗那份
+  是 modal 容器给的，标签页的 `contentEl` 没有。`.view-content` 的高度是确定的
+  （Obsidian: `height: calc(100% - var(--header-height))`），所以表格区
+  （`.obsync-image-table-wrap`）用 `flex: 1 1 auto` **吃满页面剩余高度**、内部
+  滚动；`min-height: 0` 而不是某个下限 —— 矮叶子（窄分栏、手机）里让表格继续缩，
+  也不把操作栏挤出可见区。弹窗时代那个 `max-height: 45vh` 已删：它会让标签页
+  的下半部空一大块。
+
+#### 弹窗 → 标签页：图片会被 Obsidian 的 leaf 规则缩没（2026-09-23）
+
+ Obsidian 的 app.css 有一条 **只对 leaf 生效**的规则：
+
+```css
+.workspace-leaf-content img:not([width]), … { max-width: 100%; }
+```
+
+弹窗不在 `.workspace-leaf-content` 里，所以弹窗时代的缩略图从来不中招；搬到
+标签页之后立刻中招 —— 表格是自动布局，路径列带着 `max-width: 0`（省略号收尾），
+窄标签页里单元格被挤到接近 0 宽时，这条 `max-width` 让缩略图跟着缩到 0。
+
+**修法：尺寸必须同时写成 HTML `width` / `height` 属性**（`renderRow` 里），
+属性让 `img:not([width])` 不再匹配；实际尺寸仍由 `.obsync-image-thumb` 的 em 值
+决定（author CSS 优先于呈现属性）。`imageManagerRender.test.ts` 里有一条用例钉着
+这两个属性 —— 没有它，这个回归在单测里完全看不出来（Node 里没有那条规则）。
+
+### 边界与已知限制
+
+- **受管文件夹是唯一的边界**，`isInsideFolders` 的前缀判断**必须带 `/`** ——
+  不带的话 `attachments-old/` 会被 `attachments` 误判为在范围内。
+- **`hasRemoteBackup` 是按设备记的**：这台设备从没同步过、而别的设备传过同一张图时，
+  删本地不会弹窗。代价是**少问一次**（用户想在云端也删掉时得手动去删），而不是误删。
+- **git 操作导致的文件消失也会触发询问**（`vault.on("delete")` 不区分是谁删的）。
+  行为是一致的（保留 → 立墓碑 → 不会再回来），但用户可能觉得意外。
+- **`ImageEditorModal` 的画布那一半没有单测**（Node 里没有 canvas）——
+  能测的纯计算部分全抽到了 `imageEditor.ts`。
+
+### 验证
+
+- `tests/features/images/` 12 个文件。重点：`planSync.test.ts`（镜像语义 + 墓碑 +
+  删除三件套）、`imageDeletePrompt.test.ts`（该不该弹窗的每一个守卫）、
+  `confirmDeleteRemote.test.ts`（三个出口，含 Esc）、`sigv4.test.ts`（AWS 官方向量）。
+- `verify:mobile` 通过：这个模块**移动端也装**，静态导入图里不能有 Node 依赖
+  （`scripts/checks.mjs` 的「移动端安全」守着，当前 66 个模块）。
 
 ## 六、同步模块（阶段三）实现要点
 
@@ -1217,9 +1509,10 @@ git 拿不到凭据会**提问**（终端提问，或 Windows 上 Git Credential
 > 路径逐段编码（`encodePathSegments`），中文文件名与空格不会截断链接。
 
 **v1 有意不做的**（obsidian-git 有，但 PLAN.md 范围外）：逐文件 hunk 级暂存、
-diff 查看、树形文件视图、squash、子模块、行作者/blame。GitManager 接口里
+树形文件视图、squash、子模块、行作者/blame。GitManager 接口里
 分支管理原语已备好（listBranches/checkout/createBranch/deleteBranch），
 视图里有分支下拉，够用。
+（文件级 diff 查看已在 2026-09-24 补上，见五点八节的「差异视图」。）
 
 ### simple-git 的实测坑（改 sync 层前先看）
 
@@ -1267,6 +1560,19 @@ diff 查看、树形文件视图、squash、子模块、行作者/blame。GitMan
     确实需要时改用 `unsafe: { allowUnsafePager: true }` 或只传需要的键。
 12. **`git config --get <key>` 在键不存在时，simple-git 返回空串而不是抛错**
     （退出码 1 被解析掉了）。断言「配置未设置」要断言 `""`，别写 `rejects.toThrow()`。
+13. **`git diff` 的输出里有三样东西会咬人**（都是 2026-09-24 加差异视图时实测的）：
+    - **非 ASCII 路径默认被转义成八进制**（`"a/\344\270\255.md"`）——
+      `core.quotePath` 默认是 true，必须 `-c core.quotePath=false`；
+    - **`--- a/x` / `+++ b/x` 行末尾会多一个制表符**（路径含空格时 git 用它分隔），
+      不剥掉的话拿这个路径去库里找文件会找不到；
+    - **二进制段落没有 `+++` 行**，路径只能从 `Binary files a/x and b/y differ`
+      里取 —— 只认 `+++` 的话界面上会出现一个空名字的条目。
+14. **`git show <合并提交>` 默认什么都不输出。** 合并提交有多个父提交，git 不知道
+    该跟谁比，于是直接给空 —— 用户在历史里点开一次拉取产生的合并提交只会看到空白。
+    要 `-m --first-parent`（对普通提交没有副作用，实测）。
+15. **`raw()` 可以带 `-c`**：`git.raw(["-c", "core.quotePath=false", "diff", ...])`
+    会原样拼到子命令前面（simple-git 的 `spawn.args` 插件只负责在前面补 binary
+    与实例级的 config，两者都合法地排在子命令之前）。
 
 ### 测试策略
 
@@ -1408,6 +1714,22 @@ simple-git 的 config 传递（不碰网络、不需令牌）。
     > 教训：**测试 fixture 要按实测响应写，不能按类型写。** 这一组原来的 fixture 给资产
     > 造了 `id: 991` 与 `size: 1234`，于是「字段缺席」这条路径从来没被测过 ——
     > `GiteeHost.downloadAsset` 在那个 bug 存在期间**一个用例都没有**。
+
+### 测试基础设施（2026-09-22~23 补）
+
+22. **模拟「用户删了文件」时必须真的把它从库里拿掉**（`tests/helpers/fakeImageVault.remove()`）。
+    Obsidian 的 `vault.on("delete")` 是在文件**已经消失之后**才触发的 —— 测试里只
+    `seed` 出 `TFile` 当事件参数、不 `remove`，被测代码看到的还是「文件还在」，
+    整条「删本地 → 问云端」的路径根本走不到（三条用例因此假绿，靠断言失败才发现）。
+23. **stub 的 `TFile` / `TFolder` 缺 `vault` 字段**（真实 `TAbstractFile` 有它，
+    指向所属 Vault）。把替身文件传给参数类型是真实 `TAbstractFile` 的函数时编译不过 ——
+    在测试里断言一次即可，**别给替身加一个行为不对的 `vault`**。
+24. **`document.createElement("canvas")` 在 Node 里没有**，所以 `ImageEditorModal`
+    的画布那一半（`encode` / `toBlob`）没有单测。能测的纯计算部分全部抽到了
+    `imageEditor.ts` —— 分界线的判据是「有没有碰 DOM」，不是「像不像工具函数」。
+25. **`Edit` 的 `old_string` 必须来自**最新**的文件内容**。同一个文件连改几次时，
+    凭记忆拼 `old_string` 会静默失配（要么报「找不到」，要么匹配到别处）——
+    这一轮有一次误删了 `sanitizeTrackedItems` 注释里的一段，靠回读才发现。
 
 ### 死代码清点（2026-09-16，2026-09-17 更新）
 

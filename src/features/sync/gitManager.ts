@@ -83,6 +83,29 @@ export interface GitManager {
     fileChanges(): Promise<FileChange[]>;
 
     /**
+     * 某个文件的差异（unified diff **原文**）。
+     *
+     * 为什么返回原文而不是解析结果：解析是纯函数（见 `diff.ts`），
+     * 放在实现里会让「怎么拼参数」与「怎么读行号」缠在一起 ——
+     * 而后者才是最容易错、也最该被单独测的部分。
+     *
+     * `staged` 为真时比较「索引 ↔ HEAD」（即将被提交的内容），
+     * 否则比较「工作区 ↔ 索引」（还没暂存的内容）。
+     *
+     * **只读**：不写 index、不动引用，也不产生任何输出文件。
+     * 不是仓库时抛 `GitNotRepoError`。
+     */
+    diffFile(path: string, options?: { staged?: boolean }): Promise<string>;
+
+    /**
+     * 某条提交引入的改动（unified diff 原文，不含提交信息本身）。
+     *
+     * 合并提交默认不产出差异（git 的行为），实现应当带上「与第一父提交比较」
+     * 的选项 —— 否则用户在历史里点开一个合并提交只会看到一片空白。
+     */
+    commitPatch(hash: string): Promise<string>;
+
+    /**
      * 测试能否访问远端（**只读**，不改变任何东西）。
      *
      * 这是「鉴权配置对不对」的唯一权威检查：私有仓库令牌不对时，

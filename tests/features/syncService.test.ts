@@ -139,6 +139,27 @@ class FakeGit implements GitManager {
         return [];
     }
 
+    /**
+     * 差异脚本：路径 → 两份原文（工作区 / 已暂存）。
+     *
+     * 存原文而不是解析结果，是因为「怎么读 diff」已经由 `diff.ts` 的纯函数
+     * 单独测过了（拿的是真实 git 输出）—— 这里要验的是**编排**：
+     * 有没有去读两侧、未跟踪文件有没有兜底、返回的是不是解析后的结构。
+     */
+    diffs: Record<string, { unstaged?: string; staged?: string }> = {};
+    commitPatches: Record<string, string> = {};
+
+    async diffFile(path: string, options: { staged?: boolean } = {}): Promise<string> {
+        this.calls.push(`diffFile:${path}${options.staged ? ":staged" : ""}`);
+        const entry = this.diffs[path];
+        return (options.staged ? entry?.staged : entry?.unstaged) ?? "";
+    }
+
+    async commitPatch(hash: string): Promise<string> {
+        this.calls.push(`commitPatch:${hash}`);
+        return this.commitPatches[hash] ?? "";
+    }
+
     /** 仓库体积：给一个固定值，「与远端一致」的提示里会带上它。 */
     sizeBytes = 12 * 1024 * 1024;
     sizeObjects = 1234;
@@ -1140,5 +1161,126 @@ describe("状态订阅（仓库同步视图）", () => {
         });
 
         await expect(service.refresh()).resolves.toBeDefined();
+    });
+});
+
+/**
+ * 差异（2026-09-24）。
+ *
+ * 这一层的职责是**编排**：两侧都读、未跟踪文件兜底、把原文交给纯函数解析。
+ * 「怎么读 diff 的行号」由 `diff.test.ts` 拿真实 git 输出覆盖，
+ * 「参数拼得对不对」由 `simpleGitManager.test.ts` 在真仓库上覆盖 ——
+ * 这里只验那些两层都管不到的判断。
+ */
+describe("fileDiff / commitDiff", () => {
+    const MODIFIED = [
+        "diff --git a/a.md b/a.md",
+        "--- a/a.md",
+        "+++ b/a.md",
+        "@@ -1 +1 @@",
+        "-旧",
+        "+新",
+    ].join("\n");
+
+    it("两侧都读，并解析成结构（工作区与已暂存是两份不同的东西）", async () => {
+        const git = new FakeGit();
+        git.diffs["a.md"] = { unstaged: MODIFIED, staged: MODIFIED.replace("新", "暂存版") };
+        const { service } = makeService(git, createFakeApp());
+
+        const diff = await service.fileDiff("a.md");
+
+        expect(diff.path).toBe("a.md");
+        expect(diff.unstaged.kind).toBe("text");
+        expect(diff.unstaged.hunks[0]!.lines[1]!.text).toBe("新");
+        expect(diff.staged.hunks[0]!.lines[1]!.text).toBe("暂存版");
+        // 两侧都读了（只读一侧就会漏掉「改了又暂存」的文件的一半内容）
+        expect(git.calls).toContain("diffFile:a.md");
+        expect(git.calls).toContain("diffFile:a.md:staged");
+    });
+
+    it("未跟踪文件：git 不产出 diff，用库里的内容当「全部新增」", async () => {
+        const git = new FakeGit();
+        git.untracked = ["新笔记.md"];
+        const fake = createFakeApp({ "新笔记.md": "第一行\n第二行\n" });
+        const { service } = makeService(git, fake);
+
+        const diff = await service.fileDiff("新笔记.md");
+
+        expect(diff.unstaged.kind).toBe("text");
+        expect(diff.unstaged.additions).toBe(2);
+        expect(diff.unstaged.hunks[0]!.lines.map((line) => line.text)).toEqual([
+            "第一行",
+            "第二行",
+        ]);
+    });
+
+    /**
+     * 这条是**防编造**的：一个干净的已跟踪文件两侧也都为空，
+     * 把它读出来当成「全部新增」就是在无中生有一个不存在的改动。
+     */
+    it("两侧都空、文件也不在未跟踪列表里 → 就是「没有差异」", async () => {
+        const git = new FakeGit();
+        git.unstaged = ["a.md"]; // 已跟踪
+        const fake = createFakeApp({ "a.md": "库里有内容\n" });
+        const { service } = makeService(git, fake);
+
+        const diff = await service.fileDiff("a.md");
+
+        expect(diff.unstaged.kind).toBe("empty");
+        expect(diff.unstaged.hunks).toEqual([]);
+    });
+
+    it("未跟踪文件超过大小上限时不读进内存，只说「太大」", async () => {
+        const git = new FakeGit();
+        git.untracked = ["big.log"];
+        const fake = createFakeApp({ "big.log": "x".repeat(300 * 1024) });
+        const { service } = makeService(git, fake);
+
+        const diff = await service.fileDiff("big.log");
+
+        expect(diff.unstaged.kind).toBe("too-large");
+    });
+
+    it("commitDiff 解析出该提交里的多个文件", async () => {
+        const git = new FakeGit();
+        git.commitPatches["abc123"] = [MODIFIED, MODIFIED.replace(/a\.md/g, "b.md")].join("\n");
+        const { service } = makeService(git, createFakeApp());
+
+        const files = await service.commitDiff("abc123");
+
+        expect(files.map((file) => file.path)).toEqual(["a.md", "b.md"]);
+        expect(git.calls).toContain("commitPatch:abc123");
+    });
+});
+
+describe(".gitignore 读写", () => {
+    it("不存在时返回 undefined（**不**顺手创建 —— 打开设置页不该多出文件）", async () => {
+        const fake = createFakeApp();
+        const { service } = makeService(new FakeGit(), fake);
+
+        await expect(service.readGitignore()).resolves.toBeUndefined();
+        expect(fake.files.has(".gitignore")).toBe(false);
+    });
+
+    it("存在时读出原文", async () => {
+        const fake = createFakeApp({ ".gitignore": "# 规则\n.trash/\n" });
+        const { service } = makeService(new FakeGit(), fake);
+
+        await expect(service.readGitignore()).resolves.toBe("# 规则\n.trash/\n");
+    });
+
+    it("写入会落到磁盘，并刷新一次状态", async () => {
+        const git = new FakeGit();
+        const fake = createFakeApp();
+        const { service } = makeService(git, fake);
+        const seen: Array<unknown> = [];
+        service.onStatusChange((status) => seen.push(status));
+
+        await service.writeGitignore("# 新规则\n");
+
+        expect(fake.files.get(".gitignore")).toBe("# 新规则\n");
+        // `.gitignore` 决定「哪些文件该出现在改动列表里」——
+        // 改完不刷新的话，用户会以为没生效。
+        expect(seen.length).toBe(1);
     });
 });

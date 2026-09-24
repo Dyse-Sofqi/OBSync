@@ -1,0 +1,23 @@
+/**
+ * ⚠ 载荷**保留了原样的折行**（插件每 256 个字符折一次），不要整理它 ——
+ * 剥空白这一步正是靠它才验得到（见 decompressFromBase64 的说明）。
+ * 真实样本：从测试库的 `test1/Drawing 2026-07-09 04.03.49.excalidraw.md`
+ * 里抽出来的 `compressed-json` 代码块内容（原样，未做任何加工）。
+ *
+ * 用途只有一个：让 LZString 解压**对着真实数据**校准。自造的期望值
+ * 两边一起错也照样绿，而线上表现是「画布里的图片被当成失联删掉」。
+ */
+export const EXCALIDRAW_COMPRESSED = "N4KAkARALgngDgUwgLgAQQQDwMYEMA2AlgCYBOuA7hADTgQBuCpAzoQPYB2KqATLZMzYBXUtiRoIACyhQ4zZAHoFAc0JRJQgEYA6bGwC2CgF7N6hbEcK4OCtptbErHALRY8RMpWdx8Q1TdIEfARcZgRmBShcZQUebR4AVniaOiCEfQQOKGZuAG1wMFAwYogSbggARX02SQAFAGkAGQB5FOLIWERyqCwoNpLMbmcAZgB2ADZ4hP4SmCGeUYAGbQBO\n\nFZ4ARgAOUemCyAoSdW5hsdWNta2eFY3FjYTxxJnISQRCZWluC7jF37//v7DZ4QazKYLcRbA5hQUhsADWCAAwmx8GxSOUAMQbBDY7H9SCaXDYOHKWFCDjEZGo9ESGHWZhwXCBLL4iAAM0I+HwAGVYOCJIIPKzobCEQB1I6Sbh8fYQEXwhC8mD89CCsrAskfDjhHJoDbAtiM7BqOZ637A0nCOAASWIutQuQAusC2eQMrbuBwhFzgYQKVhyrgeKyyRT\n\ntcx7V6fbKwghiNxRhtRitFqNRlsgbLGCx2Fw0KMACzA7OsTgAOU4YgTww2iXuCRWvuYABE0j142g2QQwsDNMIKQBRYIZLL2p3AoRwYi4dtfdPDBIFja3FYJRZF2Wo4lx7hd/A92U9TB9WnhPoaygAFV63TPrLZnCg3MIRnEqHuw204wBP8WMva7KPgAYrg+icqaqBbMCR5QAAgkQyh5ugwRsueWZMFA5gEPB7xIdAhqsnoWS4H6TAemgUb4AapDv\n\nH6BDXset7QqyuBCFAbAAErhC+b4wkICDAkQ2oABJvB8J7vlMwKSKEDFQI0fpwru3YCZuimet6+AFAAvuAzp0LgcBwLyM5vkUHSvBk5TTqQSkzAwhAIBQABCRIkqGlIomimJsr5fn9BA2AiMyUDWj0+i8qKSJeTS6BYjiCUBUFpAhWF6SucSlrkp51LdOQHAMkymRoSUyWpeFQGcjyfJvnKKLqgUgXBcVaURTCCoSsQ6j1AgEEQBkjhCPoSXNVkrW\n\nRQqABqTJWJonImuURHQtYJWQGVLXhRNCJKiqdVCvZ61jeFHHCFqOpfAdo2heFzRGgtZqQo1h3XekQHAaB4HcFBT1Xa1b1ZM+r7So9pW/eFck4Yh5QoatTUpRt6QmaQcEpWwFCvLgHaoJRl3w0d6QDhSsGo+jIRYyCJMjXjL36MTsIUJe8C1R5VPla9boICdKo441zDYLCXIABrcOMC7aHcC5/jsPBbI8ja8/zKL4AAmtwCTptowyJOMjxbDsKw7P\n\nZRhsAY3DmZA9AEPxXzaAWKyJg8Om42z+gndl4b2hALP2aSJCA2+PAg5AvvELyCBwGrPs0cQACybDEAghO4JowRY3uB4lCHVLeWg5sQM5KLk6QyiEgAFJsozULwSZVxXVfLAkACUrJcco3pMuUxdlzwwyQrwve1wPqAN83Ts/dTW0ILdmGcJGmn2a6oGc5kCc0Rwyhm7KmTJ6n3B8apAHYEQEdoPvwIcEve+kPxBpsUJvHXwfJT6EyCKkGWl+n4/w\n\nIv7ZTBJynHcX9+JjxKHYAAVggbA2RuQXzgHHBOADd6dhUvZIkmFGCXhNvgTeAFOi1TCMEaBuZCJCGhAYRmXQKLz03GwbcadUGyldAYbkaRiGcGUvuJ+kB8ChDgsQzB2CNJclAZARwzAd7RSyL0GOmQhCcIzgSP0jh161ECGyJgmQqwSG3oA+M9lCDMGcsov0ygkFANQGfRqhiY4kDgGwP0T44FwFMeYrGViSh9kwKwohM8OAINqkRKIfoIDgG0vw\n\ndknJwhm10tpIAA==";
+
+/**
+ * 带图片元素的场景（**由 lz-string 官方实现生成**，不是手写的）。
+ *
+ * 真实样本（`EXCALIDRAW_COMPRESSED`）里没有内嵌图片，所以「fileId 能不能
+ * 匹配到库里的文件」这条路径它验不到。这一份专门补上：
+ * - `elements[0].fileId = "abc123def456"` → 库里应当有一个 `abc123def456.png`
+ * - `elements[1].text` 里写着 `![[images/from-text.png]]` → 文本节点也要扫
+ *
+ * 载荷短（220 字符）所以没有被折行 —— 折行那条由真实样本守着。
+ */
+export const EXCALIDRAW_WITH_IMAGE =
+    "N4IgLgngDgpiBcIYA8DGBDANgSwCYCd0B3EAGhADcZ8BnbAewDsEAmcmTGAWxkbBoQBtUJFgIQ2LugDmccgDNsnAJK5x6AEaoAjCwDMuGPIAsAVgBsZEMgQAGchDsBfUiOhxEYFGCtfkPxEBQxUAZXQACAEJBQUkZGBoAenl8ei4AWj8wADooRmkAXTyQJzzydCgoAGUwdC8EYBcQRU4BeHqnIA=";

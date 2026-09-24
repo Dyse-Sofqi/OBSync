@@ -38,6 +38,16 @@ import { SUPPORTED_HOSTS, type HostKind } from "../host/types";
 const SECRET_ID_PREFIX = "obsync-token-";
 const LOCAL_STORAGE_PREFIX = "obsync-token-";
 
+/**
+ * 密钥的标识。
+ *
+ * 从 `HostKind` 扩成「平台 + 其他需要保密的凭据」：图片同步用的 R2
+ * Secret Access Key 与平台的访问令牌是同一类东西（一旦泄漏就能读写用户的
+ * 云端数据），没有理由让它落到 `data.json` 里。共用同一个前缀还带来一个好处：
+ * `scripts/checks.mjs` 里「`obsync-token-` 不是 CSS 类」那条豁免不用再加一条。
+ */
+export type SecretKey = HostKind | "r2";
+
 export class SecretStore {
     constructor(private readonly app: App) {}
 
@@ -51,16 +61,16 @@ export class SecretStore {
         return requireApiVersion("1.11.4") && this.app.secretStorage !== undefined;
     }
 
-    private secretId(host: HostKind): string {
+    private secretId(key: SecretKey): string {
         // SecretStorage 要求 id 为「小写字母数字 + 可选连字符」。
-        return `${SECRET_ID_PREFIX}${host}`;
+        return `${SECRET_ID_PREFIX}${key}`;
     }
 
-    private localStorageKey(host: HostKind): string {
-        return `${LOCAL_STORAGE_PREFIX}${host}`;
+    private localStorageKey(key: SecretKey): string {
+        return `${LOCAL_STORAGE_PREFIX}${key}`;
     }
 
-    getToken(host: HostKind): string | undefined {
+    getSecretValue(key: SecretKey): string | undefined {
         // 两个条件缺一不可：
         // - `requireApiVersion` 是给审核看的（1.11.4 以下不许碰这个 API）；
         // - `this.app.secretStorage` 是**运行时兜底**：版本够新但对象缺失时
@@ -69,7 +79,7 @@ export class SecretStore {
         //   实测：去掉后半句，3 个测试文件（secretStore / hostRegistry / auth）
         //   共 4 条用例立刻变红，全是「令牌不见了」。
         if (requireApiVersion("1.11.4") && this.app.secretStorage) {
-            const value = this.app.secretStorage.getSecret(this.secretId(host));
+            const value = this.app.secretStorage.getSecret(this.secretId(key));
             // **空串算「没有」**，与下面 localStorage 那条分支的判据保持一致。
             // SecretStorage 没有 delete，`clearToken()` 只能写空串；若这里写成
             // `value ?? undefined`，清空之后本函数会返回 `""` —— 而
@@ -81,27 +91,39 @@ export class SecretStore {
 
         // `loadLocalStorage` 声明的返回类型是 `any`（Obsidian 的 d.ts 如此），
         // 所以先收进 unknown 再判类型 —— 直接比较会让这条 `any` 一路传出去。
-        const value: unknown = this.app.loadLocalStorage(this.localStorageKey(host));
+        const value: unknown = this.app.loadLocalStorage(this.localStorageKey(key));
         return typeof value === "string" && value.length > 0 ? value : undefined;
     }
 
-    setToken(host: HostKind, token: string): void {
-        const trimmed = token.trim();
+    setSecretValue(key: SecretKey, value: string): void {
+        const trimmed = value.trim();
 
         if (requireApiVersion("1.11.4") && this.app.secretStorage) {
-            // SecretStorage 没有 delete，用空串清除（`getToken` 会把空串当没有）。
-            this.app.secretStorage.setSecret(this.secretId(host), trimmed);
+            // SecretStorage 没有 delete，用空串清除（`getSecretValue` 会把空串当没有）。
+            this.app.secretStorage.setSecret(this.secretId(key), trimmed);
             return;
         }
 
         this.app.saveLocalStorage(
-            this.localStorageKey(host),
+            this.localStorageKey(key),
             trimmed.length > 0 ? trimmed : null
         );
     }
 
+    clearSecretValue(key: SecretKey): void {
+        this.setSecretValue(key, "");
+    }
+
+    getToken(host: HostKind): string | undefined {
+        return this.getSecretValue(host);
+    }
+
+    setToken(host: HostKind, token: string): void {
+        this.setSecretValue(host, token);
+    }
+
     clearToken(host: HostKind): void {
-        this.setToken(host, "");
+        this.clearSecretValue(host);
     }
 
     /** 一次性取出所有平台的令牌，供 host 层调用。 */

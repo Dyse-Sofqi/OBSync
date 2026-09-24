@@ -7,6 +7,7 @@ import {
     type TrackedItem,
     type TrackedKind,
 } from "../features/installer/types";
+import { normalizeFolders } from "../features/images/imageScan";
 import type { LanguageSetting } from "./i18n";
 import { isValidPluginId } from "./pluginId";
 import { isValidThemeName } from "./themeName";
@@ -19,7 +20,7 @@ import { isValidThemeName } from "./themeName";
  * 这样 `data.json` 可以安全地随仓库同步到多设备而令牌不跟着走。
  */
 
-export const SETTINGS_VERSION = 3;
+export const SETTINGS_VERSION = 6;
 
 export interface InstallerSettings {
     enabled: boolean;
@@ -132,6 +133,98 @@ export interface SyncSettings {
     gitPath: string;
 }
 
+/**
+ * 图片同步（Cloudflare R2）。
+ *
+ * ## 为什么类型定义在这里，而不是像 `TrackedItem` 那样放在功能模块里
+ *
+ * 惯例本来是「业务类型归 `features/`，这里只 type-only 引入」。这里反过来，
+ * 有一个具体的理由：`scripts/checks.mjs` 的「设置项无人读取」只扫
+ * `core/settings.ts` 里的接口声明。把这一组放到 `features/images/types.ts`，
+ * 那二十来个字段就会**整体落进那个检查的盲区** —— 而它拦的正是
+ * 「设置页能改、`data.json` 里存着、功能代码却从没读过」这种最坑的状态。
+ * 保住这个检查比守住目录惯例重要。
+ *
+ * ## 密钥不在这里
+ *
+ * `secretAccessKey` 走 `core/secretStore`（键 `r2`），与平台令牌同一条路径。
+ * `accessKeyId` 留在设置里：它是**标识**不是秘密（相当于用户名），
+ * 放在 `data.json` 里方便多设备同步配置，而泄漏它单独没有用。
+ */
+export interface ImageSyncSettings {
+    /**
+     * 总开关。**由装配层读走**（`features/images/index.ts`），关掉后
+     * 启动同步与定时同步都不跑，命令面板里的手动同步仍然可用
+     * （与 `sync.enabled` 同一个边界：只管后台自动动作）。
+     */
+    enabled: boolean;
+    /**
+     * 受管的图片文件夹（vault 相对路径，一行一个；`.` 表示整个库）。
+     *
+     * 这是**唯一的边界**：只有落在这里的文件会被同步，也只有它们会被删除传播。
+     * 默认 `["."]`（仓库根目录 = 整个库）—— 这个插件服务的场景就是「库本身是一个
+     * git 仓库，图片要有云端副本」，而仓库文件夹是那个场景里最自然的范围：
+     * 用户已经用 git 管着整个库，R2 这条链路没有理由只覆盖其中几个目录。
+     * 想要更窄的范围（比如只同步 `attachments/`）改这一格即可，设置页上也有
+     * 「恢复默认」一键回到这个值。
+     */
+    folders: string[];
+    /**
+     * R2 账号标识。允许三种写法（见 `normalizeEndpoint`）：
+     * 纯账号 ID、一个主机名、或完整 URL。少让用户去查文档。
+     */
+    accountId: string;
+    /** 桶名。 */
+    bucket: string;
+    /** R2 的 Access Key ID（相当于用户名，不是秘密）。 */
+    accessKeyId: string;
+    /** 云端对象键前缀（空 = 桶根）。改它不会让状态清单失效 —— 见 `syncState.ts`。 */
+    prefix: string;
+    /**
+     * 公网访问地址（自定义域名或 r2.dev 域名）。留空则「复制云端链接」不可用。
+     *
+     * 不能拿存储端点顶替：那个端点每次读都要签名，粘到笔记里必然 403。
+     * 所以这里**不猜**，留空就是明确地表示「还没配」。
+     */
+    publicBaseUrl: string;
+    /** 两边都被改过时以哪边为准。`newer` 比时间戳，依赖两台设备的时钟。 */
+    conflictPolicy: "newer" | "local" | "remote";
+    /**
+     * 在本机删掉一张受管图片时，**云端那份备份怎么处理**。
+     *
+     * 三档（2026-09-23 从开关 `askDeleteRemote` 改来）：
+     *
+     * - `ask`（默认）—— 弹一次窗问「要不要连云端一起删」；
+     * - `always` —— 不问，直接连云端一起删；
+     * - `never` —— 不问，云端永远不动。
+     *
+     * ## 为什么删除只剩这一条路
+     *
+     * 这里原本是两个开关（`deleteLocalWhenRemoteDeleted` /
+     * `deleteRemoteWhenLocalDeleted`），对应「双向删除同步」。那套东西在
+     * 2026-09-23 被去掉了：判断「一边少了文件 = 用户删的」本质上做不准
+     * （清单丢失、两台设备各删一边都会错），而错的代价是删掉用户没打算删的东西。
+     *
+     * 现在 `run()` 只复制、不删除，删除一律由用户拍板 —— 而用户拍板的时机
+     * 就是他删掉本地那张图的时候。
+     *
+     * ## `never` 的后果（写在这里，因为它反直觉）
+     *
+     * 选 `never` 时「删本地」完全不动云端，也不记墓碑 —— 于是下一轮同步会把
+     * 那一份从云端**下载回来**。这是符合逻辑的（镜像嘛），但会让人以为删除
+     * 没生效，所以设置页的描述里要写清楚。
+     */
+    deleteRemotePolicy: "ask" | "always" | "never";
+    /** 自动同步间隔（分钟）。0 = 关闭。 */
+    autoSyncMinutes: number;
+    /** 裁剪 / 压缩弹窗里的默认质量（10–100）。png 用不到，界面会灰掉它。 */
+    compressQuality: number;
+    /** 默认最长边（像素）。0 = 不缩放。**只缩不放**。 */
+    compressMaxEdge: number;
+    /** 默认输出格式。`keep` = 保持原扩展名（不是「不压缩」）。 */
+    compressFormat: "keep" | "jpeg" | "webp" | "png";
+}
+
 export interface ObsyncSettings {
     version: number;
     language: LanguageSetting;
@@ -156,6 +249,7 @@ export interface ObsyncSettings {
     statusBarFullWidth: boolean;
     installer: InstallerSettings;
     sync: SyncSettings;
+    images: ImageSyncSettings;
 }
 
 export const DEFAULT_SETTINGS: ObsyncSettings = {
@@ -194,6 +288,35 @@ export const DEFAULT_SETTINGS: ObsyncSettings = {
         syncStrategy: "merge",
         gitPath: "",
     },
+    images: {
+        // 默认开着：没配好之前它什么也不做（`isConfigured()` 为假），
+        // 而配好之后还要求用户再找一个开关才生效，是多余的一步。
+        enabled: true,
+        // 仓库根目录（= 整个库）。写成 `.` 而不是归一后的空串：这一份是给人看的
+        // 默认值，`normalizeSettings` 会把它归一成 `[""]`，界面显示时再由
+        // `formatFolderPath` 变回 `.`（见 imageScan.ts）。
+        // 曾经这里是 `[]`（一个都不预设），理由是「猜错的代价是动了不该动的文件」；
+        // 但删除早已不是同步流程的一部分（删本地时会问一句），而默认空值意味着
+        // 每个新用户都要先想清楚填什么才能用 —— 对「库即仓库」这个目标场景是白工。
+        folders: ["."],
+        accountId: "",
+        bucket: "",
+        accessKeyId: "",
+        prefix: "",
+        publicBaseUrl: "",
+        // merge 是 git 的默认行为，这里的对应物是「谁新听谁的」：两边都被改过时
+        // 它至少不会无条件用某一边覆盖另一边。
+        conflictPolicy: "newer",
+        // 默认问一句。删除是不可逆的（R2 没有回收站），而「不问」意味着用户的
+        // 云端备份会在他毫无察觉的情况下一直留着 —— 或者更糟：某天发现它又
+        // 回到本地了（见 ImageSyncSettings.deleteRemotePolicy 的说明）。
+        deleteRemotePolicy: "ask",
+        // 默认关闭：图片同步会真的读写文件与网络，不该在用户没要求时自己跑起来。
+        autoSyncMinutes: 0,
+        compressQuality: 82,
+        compressMaxEdge: 1600,
+        compressFormat: "keep",
+    },
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -210,6 +333,13 @@ function readVersion(loaded: unknown): number {
     if (!isPlainObject(loaded)) return 0;
     const version = loaded.version;
     return typeof version === "number" && Number.isFinite(version) ? version : 0;
+}
+
+/** 读磁盘数据里的 `images` 原文（迁移要读已经被删掉的字段）。 */
+function readRawImages(loaded: unknown): Record<string, unknown> | undefined {
+    if (!isPlainObject(loaded)) return undefined;
+    const images = loaded.images;
+    return isPlainObject(images) ? images : undefined;
 }
 
 /**
@@ -279,6 +409,9 @@ function mergeWithDefaults<T extends Record<string, unknown>>(
 export function normalizeSettings(loaded: unknown): ObsyncSettings {
     // 迁移判断要在覆盖 version 之前取原始值。
     const loadedVersion = readVersion(loaded);
+    // 迁移还要读**已经删掉的**字段（见 migrateV4ToV5），而 `mergeWithDefaults`
+    // 只保留默认值里存在的键 —— 所以原始那一份也要留着。
+    const loadedImages = readRawImages(loaded);
 
     const merged = mergeWithDefaults(
         DEFAULT_SETTINGS as unknown as Record<string, unknown>,
@@ -298,6 +431,16 @@ export function normalizeSettings(loaded: unknown): ObsyncSettings {
     // v2 → v3：启用主题支持。必须在 sanitize 之前 —— 见 migrateV2ToV3。
     if (loadedVersion < 3) {
         migrateV2ToV3(merged.installer);
+    }
+
+    // v4 → v5：取消双向删除，改成「删本地时问一句」。见 migrateV4ToV5。
+    if (loadedVersion < 5) {
+        migrateV4ToV5(merged.images, loadedImages);
+    }
+
+    // v5 → v6：问一句从开关变成三态下拉。见 migrateV5ToV6。
+    if (loadedVersion < 6) {
+        migrateV5ToV6(merged.images, loadedImages);
     }
 
     // 数值范围钳制 —— data.json 是用户可以手改的。
@@ -322,6 +465,48 @@ export function normalizeSettings(loaded: unknown): ObsyncSettings {
     if (!["merge", "rebase", "reset"].includes(merged.sync.syncStrategy)) {
         merged.sync.syncStrategy = "merge";
     }
+
+    // ── 图片同步 ──
+    //
+    // 这一组全是「字符串 / 数组 / 枚举」，`mergeWithDefaults` 只保证**类型**
+    // 大致对得上（数组是对象，所以任何数组形状都会被原样放行），内容一概不管。
+    // 而 `data.json` 可以被手改，也会随笔记仓库同步到别的设备 —— 所以逐项校验。
+    const images = merged.images;
+    images.accountId = asString(images.accountId);
+    images.bucket = asString(images.bucket);
+    images.accessKeyId = asString(images.accessKeyId);
+    images.prefix = asString(images.prefix);
+    images.publicBaseUrl = asString(images.publicBaseUrl);
+
+    // 文件夹是**唯一决定「插件能动哪些文件」**的字段，它的校验最要紧：
+    // 非字符串的条目会让 `isInsideFolders` 抛错（整轮同步挂掉），
+    // 而没归一化的路径（`/attachments/`、`a//b`）会让范围判断悄悄失准。
+    //
+    // 这里读**磁盘原文**而不是 `merged.images.folders`：`mergeWithDefaults` 对
+    // 「类型不匹配的旧值」的处置是回退默认值，而默认值现在是整个库 —— 于是一个
+    // 手改坏的 `folders`（字符串、数字、对象）会被悄悄变成「同步全部」。
+    // 坏形状只能退到空列表（设置页会提示「一个文件夹都没指定」），
+    // **缺失**才拿默认值：前者是「数据坏了，别猜」，后者是「还没配过」。
+    const rawFolders = loadedImages?.folders;
+    images.folders =
+        rawFolders === undefined
+            ? normalizeFolders(DEFAULT_SETTINGS.images.folders)
+            : normalizeFolders(Array.isArray(rawFolders) ? rawFolders.filter(isString) : []);
+
+    if (!["newer", "local", "remote"].includes(images.conflictPolicy)) {
+        images.conflictPolicy = "newer";
+    }
+    if (!["ask", "always", "never"].includes(images.deleteRemotePolicy)) {
+        images.deleteRemotePolicy = "ask";
+    }
+    if (!["keep", "jpeg", "webp", "png"].includes(images.compressFormat)) {
+        images.compressFormat = "keep";
+    }
+    images.autoSyncMinutes = clamp(images.autoSyncMinutes, 0, 24 * 60);
+    // 下限 10 而不是 1：质量 1 的 jpeg 基本不可看，而用户多半是手滑拖到底。
+    images.compressQuality = clamp(images.compressQuality, 10, 100);
+    // 上限 20000 像素：再大也不是「压缩」，且画布在部分设备上会直接失败。
+    images.compressMaxEdge = clamp(images.compressMaxEdge, 0, 20_000);
 
     // 数组不能靠递归合并校验 —— 它会被整体替换，条目内容没人检查过。
     merged.installer.tracked = sanitizeTrackedItems(merged.installer.tracked);
@@ -419,6 +604,54 @@ function migrateV2ToV3(installer: InstallerSettings): void {
         upgraded[alreadyKeyed ? key : availableUpdateKey({ kind: "plugin", id: key })] = value;
     }
     installer.availableUpdates = upgraded;
+}
+
+/**
+ * v4 → v5：取消双向删除，改成「删本地时问一句」。
+ *
+ * 两个老开关里只有**一个**有对应物，所以这不是机械改名：
+ *
+ * - `deleteRemoteWhenLocalDeleted`（本地删了 → 云端也删）问的正是「删本地时
+ *   要不要动云端」，与新字段同一个问题 —— 把它接过来。关掉过它的用户明确
+ *   表达过「别动云端」，那就别拿询问去打扰他。
+ * - `deleteLocalWhenRemoteDeleted`（云端删了 → 本地也删）**没有**对应物：
+ *   那个方向的行为被整个去掉了。它被静默丢弃是有意的 —— 留着它没有意义，
+ *   而把它翻译成 `deleteRemotePolicy` 会让「云端的变化影响本地」以另一种形式
+ *   复活（新字段管的是本地删除，方向正好相反）。
+ *
+ * 必须在 sanitize 之前做：`mergeWithDefaults` 只保留默认值里存在的键，
+ * 所以老字段在 `merged.images` 上已经看不到了，只能从原始数据里读。
+ */
+function migrateV4ToV5(
+    images: ImageSyncSettings,
+    loaded: Record<string, unknown> | undefined
+): void {
+    const previous = loaded?.deleteRemoteWhenLocalDeleted;
+    if (typeof previous === "boolean") images.deleteRemotePolicy = previous ? "ask" : "never";
+}
+
+/**
+ * v5 → v6：「删本地时问一句」从开关变成三态下拉。
+ *
+ * 老开关的两端各自有对应物，**没有 Default 丢失**：
+ *
+ * - `askDeleteRemote: true`（默认）→ `ask`；
+ * - `askDeleteRemote: false` → `never`（用户明确表达过「别动云端」，
+ *   不能悄悄改回「询问」—— 那会让他开始被弹窗追问自己拒绝过的行为）。
+ *
+ * 新字段已经写过值时不碰它：那是 v6 的数据（或手改过的），此时旧字段只是
+ * 残留。`data.json` 会随笔记仓库同步，两台设备版本不一致时就会这样。
+ *
+ * 与 v4 → v5 同一条理由：必须在 sanitize 之前、从**原始数据**里读旧字段。
+ */
+function migrateV5ToV6(
+    images: ImageSyncSettings,
+    loaded: Record<string, unknown> | undefined
+): void {
+    if (loaded?.deleteRemotePolicy !== undefined) return;
+
+    const previous = loaded?.askDeleteRemote;
+    if (typeof previous === "boolean") images.deleteRemotePolicy = previous ? "ask" : "never";
 }
 
 /**
@@ -610,4 +843,13 @@ function sanitizeMirrorSuggestions(
 function clamp(value: number, min: number, max: number): number {
     if (!Number.isFinite(value)) return min;
     return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+/** `data.json` 里读出来的字符串字段：非字符串一律当没写（空串）。 */
+function asString(value: unknown): string {
+    return typeof value === "string" ? value : "";
+}
+
+function isString(value: unknown): value is string {
+    return typeof value === "string";
 }

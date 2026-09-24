@@ -168,6 +168,102 @@ describe("状态与提交", () => {
     });
 });
 
+describe("差异", () => {
+    /**
+     * 这一组跑的是**真实 git**：三个选项（`--no-color` / `--no-ext-diff` /
+     * `-c core.quotePath=false`）各自防的是一种真实环境，而它们的效果只有
+     * 真的问一次 git 才知道。拼参数的那一半用 mock 是验不出来的 ——
+     * mock 只能证明「我们拼了我们以为对的东西」。
+     */
+    it("工作区差异：中文 + 含空格的路径不被转义成八进制", async () => {
+        const { manager, dir } = await makeReadyRepo("diff-cjk");
+        await write(dir, "中文 文件.md", "第一行\n");
+        await manager.stage([]);
+        await manager.commit("init");
+        await write(dir, "中文 文件.md", "第一行\n第二行\n");
+
+        const raw = await manager.diffFile("中文 文件.md");
+
+        // 不加 core.quotePath=false 时这里是 "a/\344\270\255..."，路径读不出来
+        expect(raw).toContain("a/中文 文件.md");
+        expect(raw).toContain("+第二行");
+        expect(raw).not.toContain("\\344");
+    });
+
+    it("已暂存与工作区是两份不同的差异", async () => {
+        const { manager, dir } = await makeReadyRepo("diff-staged");
+        await write(dir, "a.md", "v1\n");
+        await manager.stage([]);
+        await manager.commit("init");
+
+        // 先暂存一次改动，再在工作区继续改 —— 这时两侧内容不同
+        await write(dir, "a.md", "v2\n");
+        await manager.stage(["a.md"]);
+        await write(dir, "a.md", "v3\n");
+
+        const working = await manager.diffFile("a.md");
+        const staged = await manager.diffFile("a.md", { staged: true });
+
+        expect(working).toContain("+v3");
+        expect(working).not.toContain("+v2");
+        expect(staged).toContain("+v2");
+        expect(staged).not.toContain("+v3");
+    });
+
+    it("未跟踪文件没有任何差异输出（由 service 层兜底）", async () => {
+        const { manager, dir } = await makeReadyRepo("diff-untracked");
+        await write(dir, "seed.md", "seed");
+        await manager.stage([]);
+        await manager.commit("init");
+        await write(dir, "新笔记.md", "内容");
+
+        // git 的行为就是这样 —— 这里把它钉住，免得有人以为是自己写错了
+        await expect(manager.diffFile("新笔记.md")).resolves.toBe("");
+    });
+
+    it("commitPatch 给出该提交引入的改动，且不含提交头", async () => {
+        const { manager, dir } = await makeReadyRepo("diff-commit");
+        await write(dir, "a.md", "v1\n");
+        await manager.stage([]);
+        await manager.commit("first");
+        const [commit] = await manager.log(1);
+
+        const patch = await manager.commitPatch(commit!.hash);
+
+        expect(patch).toContain("+v1");
+        // `--format=` 抑制了提交头 —— 否则「作者 / 日期 / message」会混进补丁里
+        expect(patch).not.toContain("first");
+        expect(patch).not.toContain("SyncHub Test");
+    });
+
+    it("合并提交也给得出内容（默认 git 是空输出）", async () => {
+        // 这是真实会遇到的：拉取产生的合并提交在历史里点开，默认一片空白。
+        const { manager, dir } = await makeReadyRepo("diff-merge");
+        const git = simpleGit(dir);
+        await write(dir, "base.md", "base");
+        await manager.stage([]);
+        await manager.commit("base");
+
+        await manager.createBranch("feature");
+        await write(dir, "feature.md", "只在 feature 上");
+        await manager.stage([]);
+        await manager.commit("feature work");
+
+        await manager.checkout("main");
+        await write(dir, "main.md", "只在 main 上");
+        await manager.stage([]);
+        await manager.commit("main work");
+
+        await git.raw(["merge", "--no-ff", "-m", "merge feature", "feature"]);
+        const [mergeCommit] = await manager.log(1);
+
+        const patch = await manager.commitPatch(mergeCommit!.hash);
+
+        expect(patch).toContain("feature.md");
+        expect(patch).toContain("+只在 feature 上");
+    });
+});
+
 describe("分支", () => {
     it("创建、切换、列出、删除", async () => {
         const { manager, dir } = await makeReadyRepo("branches");

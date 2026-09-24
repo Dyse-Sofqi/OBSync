@@ -1,6 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import type { App } from "obsidian";
+import { TFolder } from "../stubs/obsidian";
 
 /**
  * 假的 Obsidian app —— 用内存 Map 充当 vault 文件系统。
@@ -65,11 +66,24 @@ export interface FakeApp {
     /** 已注册的工作区事件监听器（如 file-menu），供断言与手动触发。 */
     workspaceEvents: Array<{ event: string; callback: (...args: never[]) => void }>;
     /**
-     * 右侧边栏叶子的替身 —— 记录「有没有真的去打开那个视图」。
+     * 已注册的 **vault** 事件监听器（`vault.on("delete")` 等）。
      *
-     * `openSyncView()` 这条路（侧栏图标 / 状态栏 / 命令面板）只有**请求**
-     * Obsidian 打开视图这一步是可观察的，而这一步此前完全没被测过：
-     * 图标点开的是安装器、状态栏压根不可点，用户找不到同步面板。
+     * 图片同步靠它知道「用户删了一张图」—— 那是删除的**唯一**入口，
+     * 所以「装配时到底挂上了没有」必须能验。
+     */
+    vaultEvents: Array<{ event: string; callback: (...args: never[]) => void }>;
+    /** 触发一个 vault 事件（模拟 Obsidian 的文件变化）。 */
+    fireVaultEvent(event: string, ...args: unknown[]): void;
+    /**
+     * 工作区叶子的替身 —— 记录「有没有真的去打开那个视图」。
+     *
+     * `openSyncView()` / `openImageManager()` 这条路（侧栏图标 / 状态栏 /
+     * 命令面板 / 设置页按钮）只有**请求** Obsidian 打开视图这一步是可观察的，
+     * 而这一步此前完全没被测过：图标点开的是安装器、状态栏压根不可点，
+     * 用户找不到同步面板。
+     *
+     * 两个叶子分开：`getRightLeaf`（右侧边栏，同步视图）与 `getLeaf`
+     * （主工作区新标签页，图片管理）是两条不同的路，混成一个会看不出走错了。
      */
     workspaceLeaves: {
         /** 收到的 setViewState 调用（打开视图）。 */
@@ -94,13 +108,24 @@ export function createFakeApp(initialFiles: Record<string, string> = {}): FakeAp
 
     const layoutReadyCallbacks: Array<() => void> = [];
     const workspaceEvents: Array<{ event: string; callback: (...args: never[]) => void }> = [];
+    const vaultEvents: Array<{ event: string; callback: (...args: never[]) => void }> = [];
     const workspaceLeaves: FakeApp["workspaceLeaves"] = { viewStates: [], revealed: [] };
-    /** 右侧边栏叶子的替身：只实现 `openSyncView()` 用到的那一个方法。 */
-    const rightLeaf = {
-        async setViewState(state: { type: string }): Promise<void> {
-            workspaceLeaves.viewStates.push(state);
-        },
+    /** 视图类型 → 占用它的叶子。`getLeavesOfType` 靠它返回「已经开着的那个」。 */
+    const leavesByType = new Map<string, unknown>();
+    /** 叶子的替身：只实现 `setViewState`，并记住自己占了哪个视图类型。 */
+    const createLeaf = (): { setViewState(state: { type: string }): Promise<void> } => {
+        const leaf = {
+            async setViewState(state: { type: string }): Promise<void> {
+                workspaceLeaves.viewStates.push(state);
+                leavesByType.set(state.type, leaf);
+            },
+        };
+        return leaf;
     };
+    /** 右侧边栏的叶子（同步视图走这条）。 */
+    const rightLeaf = createLeaf();
+    /** 主工作区的叶子（图片管理标签页走这条）。 */
+    const mainLeaf = createLeaf();
 
     // 从初始文件反推目录结构。不做这一步的话 `exists(某目录)` 会返回 false，
     // 于是「目录是否已存在」的判断全部失真 —— 回滚逻辑会误判成"全新安装"，
@@ -134,9 +159,12 @@ export function createFakeApp(initialFiles: Record<string, string> = {}): FakeAp
             setThemeCalls: [],
             reloadRequests: 0,
         },
-        // 这两个在下面装配完 workspace 之后再赋真实实现（那时才有回调列表可触发）。
+        // 这几个在下面装配完 workspace / vault 之后再赋真实实现
+        // （那时才有回调列表可触发）。
         runLayoutReady: () => undefined,
         workspaceEvents: [],
+        vaultEvents: [],
+        fireVaultEvent: () => undefined,
         workspaceLeaves,
     };
 
@@ -223,7 +251,37 @@ export function createFakeApp(initialFiles: Record<string, string> = {}): FakeAp
     };
 
     state.app = {
-        vault: { configDir: CONFIG_DIR, adapter },
+        vault: {
+            configDir: CONFIG_DIR,
+            adapter,
+            /**
+             * 文件夹选择器（FolderSuggestModal）列目录用。
+             *
+             * 与真实 API 同形：返回库里所有文件夹，**不含根目录**（根由调用方
+             * 自己补，见那个弹窗的 buildOptions）。替身必须真的返回内容 ——
+             * 一个恒返回空数组的替身会让「选了一个文件夹」这条路径在测试里
+             *  silently 什么都不做。
+             */
+            getAllFolders(): TFolder[] {
+                return [...folders].sort().map((folder) => new TFolder(folder));
+            },
+            /**
+             * `vault.on("delete", ...)` —— 图片同步靠它知道用户删了一张图。
+             *
+             * 返回一个带 `off` 的句柄（真实 API 如此，`registerEvent` 拿它去注销）。
+             */
+            on(event: string, callback: (...args: never[]) => void) {
+                vaultEvents.push({ event, callback });
+                return {
+                    event,
+                    callback,
+                    off: () => {
+                        const index = vaultEvents.findIndex((entry) => entry.callback === callback);
+                        if (index >= 0) vaultEvents.splice(index, 1);
+                    },
+                };
+            },
+        },
         plugins: state.plugins,
         /**
          * 主题的非公开 API。形状照着真实实现收窄（见 themeFolder.ts 的
@@ -254,15 +312,16 @@ export function createFakeApp(initialFiles: Record<string, string> = {}): FakeAp
                 layoutReadyCallbacks.push(callback);
             },
             getActiveFile: () => null,
-            // 右侧叶子的替身做成有状态的：`setViewState` 之后再查
-            // `getLeavesOfType` 就能查到它 —— `openSyncView()` 是「先查、
-            // 没有就建、建完再 reveal」，一个恒返回空的替身会让这条路径
-            // 看起来"什么都没发生"。
-            getLeavesOfType: (type: string) =>
-                workspaceLeaves.viewStates.some((state) => state.type === type)
-                    ? [rightLeaf]
-                    : [],
+            // 叶子替身做成有状态的：`setViewState` 之后再查 `getLeavesOfType`
+            // 就能查到它 —— 「先查、没有就建、建完再 reveal」这条路径，
+            // 一个恒返回空的替身会让它看起来"什么都没发生"。
+            getLeavesOfType: (type: string) => {
+                const leaf = leavesByType.get(type);
+                return leaf ? [leaf] : [];
+            },
             getRightLeaf: () => rightLeaf,
+            // 主工作区的新标签页（图片管理走这条）。
+            getLeaf: () => mainLeaf,
             revealLeaf: (leaf: unknown) => {
                 workspaceLeaves.revealed.push(leaf);
             },
@@ -286,8 +345,14 @@ export function createFakeApp(initialFiles: Record<string, string> = {}): FakeAp
     } as unknown as App;
 
     state.workspaceEvents = workspaceEvents;
+    state.vaultEvents = vaultEvents;
     state.runLayoutReady = () => {
         for (const callback of layoutReadyCallbacks) callback();
+    };
+    state.fireVaultEvent = (event, ...args) => {
+        for (const entry of [...vaultEvents]) {
+            if (entry.event === event) entry.callback(...(args as never[]));
+        }
     };
 
     return state;

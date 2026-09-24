@@ -56,7 +56,31 @@ if (typeof globalThis.document === "undefined") {
                     children: [] as unknown[],
                 });
             },
-            addEventListener() {},
+            /**
+             * 监听器**要真的记下来**，并给一个 `trigger(name)` 手动触发。
+             *
+             * 裸 DOM 上的交互（点提交 hash、点「查看差异」那个图标）此前
+             * 完全测不到 —— 空实现下「点了有没有反应」只能靠肉眼。
+             * 记下来之后，那些入口才验得了「点下去真的走到了服务」。
+             */
+            listeners: {} as Record<string, Array<(...args: unknown[]) => void>>,
+            addEventListener(name: string, handler: (...args: unknown[]) => void) {
+                const bucket = (element.listeners as Record<string, Array<(...a: unknown[]) => void>>)[
+                    name
+                ] ?? [];
+                bucket.push(handler);
+                (element.listeners as Record<string, Array<(...a: unknown[]) => void>>)[name] =
+                    bucket;
+            },
+            /** 触发某个监听器（模拟用户点击）。 */
+            trigger(name: string, ...args: unknown[]) {
+                for (const handler of (element.listeners as Record<
+                    string,
+                    Array<(...a: unknown[]) => void>
+                >)[name] ?? []) {
+                    handler(...args);
+                }
+            },
             removeEventListener() {},
             setAttribute(name: string, value: string) {
                 (element.attrs as Record<string, string>)[name] = value;
