@@ -325,5 +325,7 @@ SyncHub 把两件事合在一起：**用 git 同步笔记仓库** + **安装社�
 | `git push` 卡 97 秒 | 系统级 `credential.helper=helper-selector` 干等 | 见第三节的绕过姿势 |
 | `gh auth status` 报未登录 | 已知不一致 | 以 `gh auth token` 为准 |
 | `github.com:443` 连不上 | **时段性**阻断（沙箱内外表现一致） | 等窗口，或用 `api.github.com` 走 API |
-| 代理返回 502 | `127.0.0.1:54305` 间歇性故障 | 重试，或 `env -u http_proxy -u https_proxy ...` 直连 |
+| 代理返回 502 | 环境代理（`https_proxy`）间歇性故障 | 重试，或 `env -u http_proxy -u https_proxy ...` 直连 |
+| `git push` 报 `CONNECT tunnel failed, response 502` / `schannel: failed to receive handshake` | **是环境代理坏了，不是 github 被墙** | 去掉代理直连即通（实测 `ls-remote` 与 `push` 都成）：`env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY git -c credential.helper= … push origin main` |
+| 预推钩子报「`verify:head` 中止：这里不是可用的 git 仓库」 | `verify-head.mjs` 要 spawn `git`，而**本工具的会话环境里 Node spawn git 一律 `EBUSY`**（bash 里 git 正常，绕过沙箱也一样）—— `api-push.mjs` 同此 | 推送加 `--no-verify`，并**另外**在工作区跑一次 `npx vitest run` 顶替它（工作区干净时，验的就是 HEAD 的内容） |
 | `gh api --hostname uploads.github.com` 返回 Bad Gateway | `gh api` 会多拼一个 `api.` | 改用 `gh release upload` |
