@@ -84,9 +84,19 @@ function directoryOf(path: string): string {
     return slash < 0 ? "" : path.slice(0, slash + 1);
 }
 
-function stemOf(path: string): string {
+/**
+ * 路径里的文件名部分（**含**扩展名）。
+ *
+ * 导出是给单文件重命名弹窗用的：它要把「现在叫什么」预填进输入框，
+ * 而那个框里放的是文件名、不是整条路径（目录不由用户决定）。
+ */
+export function fileNameOf(path: string): string {
     const slash = path.lastIndexOf("/");
-    const name = slash < 0 ? path : path.slice(slash + 1);
+    return slash < 0 ? path : path.slice(slash + 1);
+}
+
+function stemOf(path: string): string {
+    const name = fileNameOf(path);
     const dot = name.lastIndexOf(".");
     // `index <= 0`：点开头的文件名（`.hidden`）没有主干名，整段就是名字。
     return dot <= 0 ? name : name.slice(0, dot);
@@ -155,4 +165,54 @@ export function planRename(
 /** 这一批里实际会被改名的条数。界面上的按钮文案用它。 */
 export function countRenameable(entries: RenamePlanEntry[]): number {
     return entries.filter((entry) => entry.problem === undefined).length;
+}
+
+/**
+ * 单个文件的重命名：用户直接给出新文件名，而不是套一条模板。
+ *
+ * ## 为什么另起一个函数，而不是「把这一张塞进 `planRename`」
+ *
+ * 模板是为**一批**设计的：`{n}` 要按总数补零、`{name}` 要逐个替换，
+ * 而这些对单个文件只会产出用户没要过的名字 —— 对一张图跑默认模板会得到
+ * `日落-1.png`。用户在这里的心智是「把这张图改叫 `日落-沙滩.png`」，
+ * 那件事本来就只需要一次输入。
+ *
+ * ## 但判据必须共用
+ *
+ * `RenameProblem` 的四种失败（名字没变 / 非法 / 撞车 / 换了扩展名）在两条
+ * 路径上的含义完全一样，文案也是同一份（`renameProblem`）。所以这里只换
+ * 「新名字怎么来」，后面照抄 `planRename` 的判据**顺序** —— 顺序也有意义：
+ * 「名字没变」要排在「目标被占用」前面，否则把 `a.png` 改叫 `a.png` 会被
+ * 报成撞车（它确实「占用」了自己），而那句提示会把用户指错方向。
+ *
+ * ## 扩展名的两种写法都接受
+ *
+ * 输入 `日落` 与输入 `日落.png` 结果相同 —— 前者自动补上原扩展名。理由与
+ * 模板路径一致（见文件头）：忘写扩展名会产出一个 Obsidian 不再当图片的
+ * 文件，而用户输入时不会想到这件事。反过来，**写出的扩展名必须与原扩展名
+ * 一致**，`a.png` → `a.webp` 照样标 `extChanged` —— 重命名不改内容，真要换
+ * 容器得去编辑弹窗里真的重新编码。
+ *
+ * 名字里的 `/` 与 `\` 由 `FORBIDDEN_CHARS` 挡下，这同时保证了目录不变。
+ */
+export function planSingleRename(
+    from: string,
+    name: string,
+    exists: (path: string) => boolean
+): RenamePlanEntry {
+    const trimmed = name.trim();
+    if (!trimmed || FORBIDDEN_CHARS.test(trimmed)) return { from, to: from, problem: "invalid" };
+
+    const extension = extensionOf(from);
+    const hasExtension = extensionOf(trimmed) !== "";
+    const target = hasExtension || extension === "" ? trimmed : `${trimmed}.${extension}`;
+    if (extensionOf(target).toLowerCase() !== extension.toLowerCase()) {
+        return { from, to: from, problem: "extChanged" };
+    }
+
+    const to = `${directoryOf(from)}${target}`;
+    if (to === from) return { from, to, problem: "unchanged" };
+    if (exists(to)) return { from, to, problem: "taken" };
+
+    return { from, to };
 }

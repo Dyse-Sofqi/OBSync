@@ -3,6 +3,7 @@ import {
     countRenameable,
     DEFAULT_RENAME_RULE,
     planRename,
+    planSingleRename,
     type RenameRule,
 } from "../../../src/features/images/batchRename";
 
@@ -140,5 +141,72 @@ describe("planRename", () => {
 
     it("空列表得到空结果", () => {
         expect(planRename([], DEFAULT_RENAME_RULE, none, now)).toEqual([]);
+    });
+});
+
+/**
+ * 单个文件的重命名（面板上每一行那颗铅笔按钮）。
+ *
+ * 判据与 `planRename` 是同一套（`RenameProblem` 的四种失败含义相同、文案同一份），
+ * 所以这里**不重复验「什么是非法字符」**，而是钉住两者不同的那一半：
+ * 新名字是用户直接给的，不是模板算的。
+ */
+describe("planSingleRename", () => {
+    it("不写扩展名就沿用原扩展名", () => {
+        const entry = planSingleRename("photos/日落.png", "海边", none);
+        expect(entry.to).toBe("photos/海边.png");
+        expect(entry.problem).toBeUndefined();
+    });
+
+    it("写了扩展名就照用（与原扩展名一致时）", () => {
+        expect(planSingleRename("photos/日落.png", "海边.png", none).to).toBe("photos/海边.png");
+    });
+
+    it("目录不变 —— 用户输入的是文件名，不是路径", () => {
+        expect(planSingleRename("a/b/c.png", "d", none).to).toBe("a/b/d.png");
+    });
+
+    it("前后的空白被去掉（从别处粘过来的名字常带一个换行）", () => {
+        expect(planSingleRename("photos/a.png", "  海边  ", none).to).toBe("photos/海边.png");
+    });
+
+    it("名字没变 → unchanged，而不是「目标已存在」", () => {
+        // 判据顺序的意义：`exists` 对原路径当然为真，若先判占用，一次
+        // 「什么都没改」的确认会被报成「目标已存在」—— 用户会以为撞车了。
+        const entry = planSingleRename("photos/a.png", "a.png", () => true);
+        expect(entry.problem).toBe("unchanged");
+    });
+
+    it("空名字 / 只有空白 → invalid", () => {
+        expect(planSingleRename("photos/a.png", "", none).problem).toBe("invalid");
+        expect(planSingleRename("photos/a.png", "   ", none).problem).toBe("invalid");
+    });
+
+    it("含非法字符 → invalid（含反斜杠，它同时挡下「想挪目录」的输入）", () => {
+        for (const name of ["a/b", "a\\b", "a:b", "a?b", 'a"b', "a|b"]) {
+            expect(planSingleRename("photos/a.png", name, none).problem, name).toBe("invalid");
+        }
+    });
+
+    it("目标已被占用 → taken（**绝不覆盖**）", () => {
+        const entry = planSingleRename("photos/a.png", "b", (path) => path === "photos/b.png");
+        expect(entry.to).toBe("photos/b.png");
+        expect(entry.problem).toBe("taken");
+    });
+
+    it("改了扩展名 → extChanged（改名不改内容，换容器要在编辑弹窗里做）", () => {
+        expect(planSingleRename("photos/a.png", "a.webp", none).problem).toBe("extChanged");
+    });
+
+    it("只是扩展名大小写不同不算改扩展名（与批量同一判据）", () => {
+        const entry = planSingleRename("photos/a.png", "b.PNG", none);
+        expect(entry.problem).toBeUndefined();
+        expect(entry.to).toBe("photos/b.PNG");
+    });
+
+    it("点开头的文件名（没有扩展名）也能处理，且不会补出一个以点结尾的名字", () => {
+        const entry = planSingleRename(".hidden", "visible", none);
+        expect(entry.to).toBe("visible");
+        expect(entry.problem).toBeUndefined();
     });
 });

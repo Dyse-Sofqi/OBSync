@@ -114,6 +114,9 @@ if (typeof globalThis.document === "undefined") {
             // 弹窗会在 setTimeout 里对输入框调 focus()，缺失会变成未捕获异常
             focus() {},
             blur() {},
+            // 真实 input 元素的原生方法：单文件重命名弹窗用它把预填的文件名
+            // 整段选中。缺了它，「打开那个弹窗」这一步就直接 TypeError。
+            select() {},
         };
         return element;
     };

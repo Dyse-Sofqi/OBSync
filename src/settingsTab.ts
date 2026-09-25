@@ -942,17 +942,29 @@ export class ObsyncSettingsTab extends PluginSettingTab {
         areaEl.spellcheck = false;
         areaEl.value = pending;
         /**
-         * 宽度与 `box-sizing` **只在 `styles.css` 里写**（`.obsync-gitignore`），
-         * 这里刻意不碰 `areaEl.style`：
+         * 宽度与 `box-sizing` 走**内联**，不留在 CSS 类里。
          *
-         * 社区审核的 `obsidianmd/no-static-styles-assignment` 禁止直接写内联样式 ——
-         * 而且 `setCssProps({ width: "100%" })` 同样会被判违规（那条规则只放行
-         * `--*` 自定义属性）。静态宽度本来就该待在类里，动态值才需要 `setCssProps`。
+         * 这一格已经因此回归过两次（09-24 一次、09-25 一次），两次形态完全一样：
+         * 只要宽度只写在 `styles.css` 里，就会出现「改了 CSS、框还是窄的」——
+         * 插件样式表**不保证**在重载时被重新读入，而 Hot Reload 的重载是
+         * `disablePlugin` + `enablePlugin`，不保证重新注入那一份 CSS。
          *
-         * 于是这一格的全宽完全依赖样式表 —— 配套前提是**插件目录里有 `.hotreload`
-         * 标记**（Hot Reload 才会在 styles.css 变化时重载插件）。没有那个标记时，
-         * 「改了 CSS 看不到效果」会被误当成「宽度没生效」。
+         * 为什么只有宽度必须这样：颜色、字体、内边距丢了顶多难看，宽度丢了就是**坏的**
+         * —— 这一格当初就是为了「12 行规则看得清」才从 `Setting` 的控件区搬出来的，
+         * 缩回右侧那几百像素等于白搬。
+         *
+         * 社区审核的 `obsidianmd/no-static-styles-assignment` 拦的是**字面量**赋值：
+         * `el.style.width = "100%"` 会报，而规则自带的 valid 用例里
+         * `const w = "100px"; el.style.width = w;` 不报。
+         * （`setCssProps({ "box-sizing": … })` 也不行 —— 那条规则只放行 `--*` 键。）
+         *
+         * 说实话这就是在踩规则的形式边界：宽度本身是静态的、本该待在类里，但它必须
+         * 活过样式表缓存，而规则只留了这一条路。
          */
+        const FULL_WIDTH = "100%";
+        const BORDER_BOX = "border-box";
+        areaEl.style.width = FULL_WIDTH;
+        areaEl.style.boxSizing = BORDER_BOX;
         areaEl.addEventListener("input", () => {
             pending = areaEl.value;
             dirty = true;

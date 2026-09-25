@@ -596,15 +596,11 @@
    而这不是要读的段落，是要核对的清单。 */
 
 .obsync-settings .obsync-gitignore {
-    /* 全宽的**唯一**来源。刻意不写内联样式：社区审核的
-       `obsidianmd/no-static-styles-assignment` 禁止直接写样式，而
-       `setCssProps({ width })` 同样会被判违规（那条规则只放行 `--*` 自定义属性）。
-       代价是宽度依赖样式表被重新读入 —— 所以插件目录里放了 `.hotreload` 标记，
-       Hot Reload 才会在 styles.css 变化时重载插件。 */
-    width: 100%;
-    /* `width: 100%` 再加内边距与边框，在 content-box 下会比容器宽出
-       `2 × (padding + border)` —— 设置页会因此多出一条横向滚动条。 */
-    box-sizing: border-box;
+    /* 宽度与 `box-sizing` **不在这里** —— 由 `settingsTab.renderGitignore` 内联给。
+       这一格已经因为「宽度只写在样式表里」回归过两次（09-24、09-25 各一次）：
+       插件样式表**不保证**在重载时被重新读入，而 Hot Reload 的重载是 disable +
+       enable，不保证重新注入那一份 CSS。这里只管外观 —— 颜色 / 字体 / 内边距
+       丢了顶多难看，宽度丢了就是坏的。 */
     min-height: 12em;
     margin: 0.5em 0 0.75em;
     padding: 0.5em 0.6em;
@@ -1168,6 +1164,25 @@ body.obsync-status-bar-full-width .status-bar:has(.obsync-status-bar-item) {
     display: block;
 }
 
+/* 缩略图外面套了一层按钮（点它放大看，见 ImageManagerView 的 renderRow）。
+   按钮的默认样式要全清掉 —— 留一圈边框或内边距就会把 2.2em 的图挤出这一格。 */
+.obsync-image-thumb-button {
+    display: block;
+    margin: 0 auto;
+    padding: 0;
+    border: none;
+    background: none;
+    box-shadow: none;
+    line-height: 0;
+    cursor: pointer;
+}
+
+/* 悬停给个描边，说明这一格是能点的。用 outline 而不是 border：不参与布局，
+   所以出现与消失都不会让表格抖一下。 */
+.obsync-image-thumb-button:hover .obsync-image-thumb {
+    outline: 1px solid var(--interactive-accent);
+}
+
 /* 路径列：占满剩余宽度，过长时省略而不是换行（换行会把行高撑成两倍，
    几十行之后表格就没法扫了）。`title` 属性给出完整路径。 */
 .obsync-image-path {
@@ -1216,6 +1231,37 @@ body.obsync-status-bar-full-width .status-bar:has(.obsync-status-bar-item) {
 .obsync-image-badge-orphan {
     color: var(--text-warning, var(--color-orange, #d68b00));
     border-color: currentColor;
+}
+
+/* 操作列：每行一个图标按钮（目前只有「重命名」）。 */
+.obsync-image-cell-actions {
+    width: 2em;
+    text-align: center;
+}
+
+/* 行内的单文件动作。
+   **刻意不做「悬停才显现」**：这颗按钮是「单文件重命名」的唯一入口，
+   藏起来等于把功能藏起来（用户此前正是找不到它）。所以它常驻可见，
+   只用 --text-muted 让它比路径轻；鼠标落到那一行或按钮上时提亮。 */
+.obsync-image-row-action {
+    background: none;
+    border: none;
+    box-shadow: none;
+    padding: 0.15em;
+    color: var(--text-muted);
+    cursor: pointer;
+    line-height: 1;
+    vertical-align: middle;
+}
+
+.obsync-image-row:hover .obsync-image-row-action,
+.obsync-image-row-action:hover {
+    color: var(--text-normal);
+}
+
+.obsync-image-row-action:hover {
+    background: var(--background-modifier-hover);
+    border-radius: var(--radius-s, 3px);
 }
 
 .obsync-image-empty {
@@ -1274,4 +1320,149 @@ body.obsync-status-bar-full-width .status-bar:has(.obsync-status-bar-item) {
 .obsync-image-rename-problem {
     margin-left: 0.5em;
     color: var(--text-warning, var(--color-orange, #d68b00));
+}
+
+/* ── 图片预览弹窗（点行内缩略图打开） ── */
+
+/* 弹窗宽度跟着舞台走（`fit-content`）—— 这就是「弹窗整体跟着图片变大」。
+   `max-width` 里的数字与 ImagePreviewModal 的 MAX_MODAL_WIDTH /
+   VIEWPORT_WIDTH_RATIO 是同一套，改一个要改另一个。 */
+.obsync-image-preview-modal {
+    width: fit-content;
+    /* 太窄会让工具条挤成一团；上限则是「窗口的最大值」。 */
+    min-width: min(420px, 92vw);
+    max-width: min(1400px, 92vw);
+}
+
+/* 长文件名不能把 `fit-content` 的弹窗撑开 —— 宽度该由**图片**决定。
+   用 `overflow-wrap: anywhere` 而不是 `word-break`：前者会参与固有尺寸计算，
+   于是标题的 max-content 会缩到「最长不可断片段」。 */
+.obsync-image-preview-modal .modal-title {
+    overflow-wrap: anywhere;
+    min-width: 0;
+}
+
+/* 工具条：缩小 / 倍率 / 重置 / 放大。居中一行，紧贴图的上方。 */
+.obsync-image-preview-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4em;
+    margin-bottom: 0.6em;
+}
+
+.obsync-image-preview-button {
+    background: none;
+    border: none;
+    box-shadow: none;
+    padding: 0.2em;
+    color: var(--text-muted);
+    cursor: pointer;
+    line-height: 1;
+    border-radius: var(--radius-s, 3px);
+}
+
+.obsync-image-preview-button:hover:not(:disabled) {
+    color: var(--text-normal);
+    background: var(--background-modifier-hover);
+}
+
+/* 到头了就灰掉（已经最小 / 最大档，或没什么可重置）—— 而不是让用户点了没反应。 */
+.obsync-image-preview-button:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+/* 倍率读数：定宽 + 等宽数字，切换档位时它不会左右跳。 */
+.obsync-image-preview-zoom {
+    min-width: 3.5em;
+    text-align: center;
+    font-size: var(--font-ui-smaller, 0.85em);
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+/* 舞台：尺寸由 JS 按倍率设置（见 applyZoom），而弹窗宽度是 `fit-content`，
+   所以舞台长大 = 弹窗长大。图片比舞台大时**被裁掉**，靠拖动看 ——
+   `hidden` 是刻意的：用户不要滚动条。
+   （顺带：`overflow: auto` + flex 居中会让溢出方向的左边**滚不到**，这也是不用
+   滚动条的一个附带好处 —— `hidden` 下 flex 居中是两侧对称裁剪，正是想要的。）
+   高度上限与 JS 的 CHROME_HEIGHT 是同一套数字，改一个要改另一个。 */
+.obsync-image-preview-stage {
+    --obsync-preview-viewport: calc(100vh - 220px);
+    /* 居中：弹窗宽度是 `fit-content`，但 `min-width` 会把它撑到比小图更宽 ——
+       那时舞台（宽度跟着图片走）会贴在左边。 */
+    margin: 0 auto;
+    max-width: 100%;
+    max-height: var(--obsync-preview-viewport);
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--background-secondary);
+    border-radius: var(--radius-s, 4px);
+}
+
+.obsync-image-preview-img {
+    display: block;
+    /* 尺寸由 JS 按倍率写在行内样式上（见 applyZoom）；这两条只在**量不到自然尺寸**
+       时兜底（图片还在解码、或环境里量不到），那时图片按自然尺寸显示但被舞台约束。 */
+    max-width: 100%;
+    max-height: var(--obsync-preview-viewport);
+    object-fit: contain;
+    /* 拖的时候不要选中图片，也不要触发浏览器自己的图片拖拽。 */
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+/* 尺寸量到之后解除上面那两条兜底：图片**可以**比舞台大 ——
+   那正是「拖到看全貌」的前提（见 applyZoom）。 */
+.obsync-image-preview-measured {
+    max-width: none;
+    max-height: none;
+}
+
+/* 只有放大之后才真的拖得动 —— 抓手的提示跟着它走。 */
+.obsync-image-preview-pannable .obsync-image-preview-img {
+    cursor: grab;
+}
+
+.obsync-image-preview-pannable .obsync-image-preview-img:active {
+    cursor: grabbing;
+}
+
+/* 「图片比窗口大」的提示 —— 只在真有看不见的部分时出现。
+   光靠光标形状不够：用户不会去悬停一个「看起来正常」的图片。 */
+.obsync-image-preview-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3em;
+    margin-left: 0.6em;
+    font-size: var(--font-ui-smaller, 0.85em);
+    color: var(--text-warning, var(--color-orange, #d68b00));
+}
+
+.obsync-image-preview-hint-off {
+    display: none;
+}
+
+/* 元信息：路径 / 体积 / 状态徽标。用 flex-wrap 而不是固定三栏 —— 路径可能很长，
+   窄窗口里它该占满一行，而不是把徽标挤成两行高。 */
+.obsync-image-preview-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5em;
+    margin-top: 0.8em;
+    font-size: var(--font-ui-smaller, 0.85em);
+}
+
+.obsync-image-preview-path {
+    color: var(--text-muted);
+    overflow-wrap: anywhere;
+}
+
+.obsync-image-preview-size {
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
 }

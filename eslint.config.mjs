@@ -5,7 +5,7 @@ import obsidianmd from "eslint-plugin-obsidianmd";
  * 完整 lint —— **信息性**，不是闸门。
  *
  * 用的是官方审核的同一套规则（`eslint-plugin-obsidianmd`）。这里**不做**任何
- * 规则裁剪，所以它会报出仓库里既有的历史告警（`pnpm lint` 目前约 48 条，
+ * 规则裁剪，所以它会报出仓库里既有的历史告警（`pnpm lint` 目前约 49 条，
  * 绝大多数是测试替身与旧代码的风格问题）。要的是「随时能看到全景」，
  * 而不是「假装全绿」。
  *

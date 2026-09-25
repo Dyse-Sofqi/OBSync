@@ -1045,7 +1045,18 @@ export const en = {
 
             actionSync: "Sync selected",
             actionCompress: "Compress & sync",
-            actionRename: "Rename…",
+            /** The bottom one — it acts on the whole selection; the row pencil renames one file. */
+            actionRename: "Bulk rename",
+            /** Label of the pencil button on each row (icon only — this is its meaning). */
+            renameThis: "Rename this file",
+            /** Label of the row thumbnail — it is the entry point for the full-size preview. */
+            previewOpen: "View full size",
+            previewZoomIn: "Zoom in",
+            previewZoomOut: "Zoom out",
+            previewZoomReset: "Reset zoom",
+            /** Shown when the image is bigger than the window (drag is the only way to see the rest). */
+            previewPannable: "Drag to pan",
+            previewPannableHint: "The image is larger than the window — drag to see the rest",
             actionDeleteLocal: "Delete local",
             actionDeleteBoth: "Delete local + cloud",
             noSelection: "Select the images you want to act on first.",
@@ -1091,6 +1102,14 @@ export const en = {
             renameFailedMany: (count: number, sample: string) =>
                 `${count} image(s) could not be renamed, e.g. ${sample}.`,
             renameMissing: "the file is no longer in the vault",
+
+            renameFileTitle: "Rename file",
+            renameFileDesc:
+                "Only the file name changes; the folder stays the same. Omit the extension to keep the " +
+                "current one — links pointing at it in your notes are updated for you.",
+            renameFileName: "File name",
+            renameFileConfirm: "Rename",
+            renameFileDone: (name: string) => `Renamed to ${name}.`,
 
             deleting: "Deleting…",
             deleteDone: (local: number, remote: number, failed: number) =>

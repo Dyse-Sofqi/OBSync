@@ -1,4 +1,4 @@
-import { ItemView, TFile, type App } from "obsidian";
+import { ItemView, setIcon, TFile, type App } from "obsidian";
 import type { WorkspaceLeaf } from "obsidian";
 import type { LocaleStrings } from "../../../core/i18n";
 import type { Notifier } from "../../../core/notice";
@@ -23,6 +23,8 @@ import type { DeleteImagesResult } from "../types";
 import { BatchRenameModal } from "./BatchRenameModal";
 import { compressImageBuffer } from "./batchCompress";
 import { ConfirmBatchDeleteModal } from "./ConfirmBatchDeleteModal";
+import { ImagePreviewModal } from "./ImagePreviewModal";
+import { RenameFileModal } from "./RenameFileModal";
 
 /**
  * 图片管理面板（主工作区标签页）。
@@ -352,6 +354,9 @@ export class ImageManagerView extends ItemView {
         head.createEl("th", { text: t.columnPath });
         head.createEl("th", { text: t.columnSize });
         head.createEl("th", { text: t.columnState });
+        // 操作列**不给标题**：里面只有一个图标，标题会白占一格宽度，
+        // 而窄标签页里每一格都要省着用。
+        head.createEl("th", { cls: "obsync-image-cell-actions" });
 
         const body = table.createEl("tbody");
         for (const record of records.slice(0, MAX_ROWS)) {
@@ -380,9 +385,18 @@ export class ImageManagerView extends ItemView {
         const thumbCell = row.createEl("td", { cls: "obsync-image-cell-thumb" });
         const file = this.deps.app.vault.getAbstractFileByPath(record.path);
         if (file instanceof TFile) {
-            const image = thumbCell.createEl("img", { cls: "obsync-image-thumb" });
+            // 缩略图是**按钮**：30px 的方框里什么都看不清，点它放大是这一格
+            // 唯一有意义的动作。用 `button` 而不是给 `img` 挂监听，是因为行本身
+            // 也在监听 click（点行 = 勾选），而行的判据排除的正是 `button` ——
+            // 这样「点缩略图」不会顺带把这一行勾上，也不必再往判据里塞类名。
+            const preview = thumbCell.createEl("button", { cls: "obsync-image-thumb-button" });
+            preview.setAttribute("title", t.previewOpen);
+            preview.addEventListener("click", () => this.openPreview(record));
+
+            const image = preview.createEl("img", { cls: "obsync-image-thumb" });
             image.setAttribute("src", this.deps.app.vault.getResourcePath(file));
-            image.setAttribute("alt", "");
+            // 图片现在处在按钮里，它的 `alt` 就是那个按钮的可访问名。
+            image.setAttribute("alt", t.previewOpen);
             // 尺寸必须写成 **HTML 属性**，不能只靠 CSS —— Obsidian 的 app.css 里有
             // 一条 `.workspace-leaf-content img:not([width]) { max-width: 100% }`。
             // 弹窗不在 leaf 里，从来不中招；标签页在。表格是自动布局，路径那一列
@@ -414,6 +428,17 @@ export class ImageManagerView extends ItemView {
             badges.createSpan({ cls: "obsync-image-badge obsync-image-badge-orphan", text: t.badgeOrphan });
         }
 
+        // 单文件重命名的入口挂在**行上**，不靠勾选：改一张图的名字是个
+        // 「就地」动作，要求用户先勾上它再去点底部那一排批量按钮，会把
+        // 一个单文件操作伪装成批量操作。底部那颗「批量重命名」保持原样，
+        // 它管的是「一批」。
+        const actions = row.createEl("td", { cls: "obsync-image-cell-actions" });
+        const renameButton = actions.createEl("button", { cls: "obsync-image-row-action" });
+        setIcon(renameButton, "pencil");
+        // 只有图标，含义全靠这个标签 —— 悬停能看到，读屏也读得到。
+        renameButton.setAttribute("aria-label", t.renameThis);
+        renameButton.addEventListener("click", () => this.openRenameFile(record.path));
+
         const toggle = (): void => {
             if (this.selected.has(record.path)) this.selected.delete(record.path);
             else this.selected.add(record.path);
@@ -422,9 +447,11 @@ export class ImageManagerView extends ItemView {
             this.refresh();
         };
         checkbox.addEventListener("change", toggle);
-        // 点行任意处也能勾选（勾选框自己不重复触发）。
+        // 点行任意处也能勾选（勾选框自己不重复触发）。**按钮要排除** —— 这一行里
+        // 现在有两颗：缩略图（放大看）与铅笔（改名）。点它们顺带把这一行勾上，
+        // 而用户根本没打算选中它。
         row.addEventListener("click", (event) => {
-            if ((event.target as HTMLElement).closest("input")) return;
+            if ((event.target as HTMLElement).closest("input, button")) return;
             toggle();
         });
     }
@@ -554,7 +581,7 @@ export class ImageManagerView extends ItemView {
 
         try {
             for (let index = 0; index < paths.length; index++) {
-                const path = paths[index]!;
+                const path = paths[index];
                 progress.update(t.compressingOf(index + 1, paths.length));
 
                 const file = this.deps.app.vault.getAbstractFileByPath(path);
@@ -601,9 +628,19 @@ export class ImageManagerView extends ItemView {
             this.deps.notifier.success(t.compressDone(compressed, formatBytes(savedBytes), skipped));
         }
         if (errors.length > 0) {
-            this.deps.notifier.warn(t.compressFailed(errors.length, errors[0]!.path));
+            this.deps.notifier.warn(t.compressFailed(errors.length, errors[0].path));
         }
         await this.reload();
+    }
+
+    /**
+     * 放大看一张图。
+     *
+     * 入口在**行内的缩略图**上，不走勾选 —— 「这一张长什么样」是个就地问题，
+     * 与「选中了哪些」无关。弹窗本身的取舍见 `ImagePreviewModal` 的文件头。
+     */
+    private openPreview(record: ImageRecord): void {
+        new ImagePreviewModal(this.deps.app, this.t, record).open();
     }
 
     private openRename(): void {
@@ -611,13 +648,71 @@ export class ImageManagerView extends ItemView {
         if (!paths) return;
 
         new BatchRenameModal(this.deps.app, this.t, paths, {
-            exists: (path) => this.deps.app.vault.getAbstractFileByPath(path) !== null,
+            exists: (path) => this.pathExists(path),
             onConfirm: (entries) => this.runRename(entries),
         }).open();
     }
 
+    /** 单文件重命名。入口在**每一行**上，所以不需要先勾选。 */
+    private openRenameFile(path: string): void {
+        new RenameFileModal(this.deps.app, this.t, path, {
+            exists: (target) => this.pathExists(target),
+            onConfirm: (entry) => this.runSingleRename(entry),
+        }).open();
+    }
+
+    /** 「这个路径被占了吗」—— 两个重命名弹窗共用同一份判据。 */
+    private pathExists(path: string): boolean {
+        return this.deps.app.vault.getAbstractFileByPath(path) !== null;
+    }
+
     private async runRename(entries: RenamePlanEntry[]): Promise<void> {
-        if (this.busy || entries.length === 0) return;
+        const t = this.t.images.manager;
+        const result = await this.applyRename(entries);
+        // 正忙或空列表时什么都没发生 —— 这时不该动选择集，也不该重扫。
+        if (!result) return;
+
+        this.deps.notifier.success(t.renameDone(result.renamed, countRenameable(entries)));
+        if (result.errors.length > 0) {
+            this.deps.notifier.warn(t.renameFailedMany(result.errors.length, result.errors[0].path));
+        }
+        // 批量改完之后选中集里的路径已经全部失效，留着只会让按钮上的计数
+        // 指向幽灵条目。
+        this.selected.clear();
+        await this.reload();
+    }
+
+    /**
+     * 单个文件重命名。
+     *
+     * 与批量**共用执行路径**，只有两处不同：提示说的是新名字（批量那条报的
+     * 是「3 / 5」这种部分成功的计数，对一个文件没有意义），以及**不清空
+     * 选中集** —— 用户可能勾了几张准备做别的，顺手改一张名字不该把那一堆
+     * 选择弄丢。
+     */
+    private async runSingleRename(entry: RenamePlanEntry): Promise<void> {
+        const t = this.t.images.manager;
+        const result = await this.applyRename([entry]);
+        if (!result) return;
+
+        if (result.renamed > 0) {
+            this.deps.notifier.success(t.renameFileDone(entry.to));
+        } else {
+            this.deps.notifier.warn(t.renameFailedMany(result.errors.length, entry.from));
+        }
+        await this.reload();
+    }
+
+    /**
+     * 真正执行改名（含云端搬迁）。
+     *
+     * 成功提示留给调用方：批量与单个的文案不同。返回 `undefined` 表示这次
+     * 根本没跑（正忙 / 空列表）—— 调用方据此决定要不要弹提示、要不要重扫。
+     */
+    private async applyRename(
+        entries: RenamePlanEntry[]
+    ): Promise<{ renamed: number; errors: Array<{ path: string; message: string }> } | undefined> {
+        if (this.busy || entries.length === 0) return undefined;
         const t = this.t.images.manager;
 
         this.busy = true;
@@ -650,12 +745,7 @@ export class ImageManagerView extends ItemView {
             this.busy = false;
         }
 
-        this.deps.notifier.success(t.renameDone(renamed, countRenameable(entries)));
-        if (errors.length > 0) {
-            this.deps.notifier.warn(t.renameFailedMany(errors.length, errors[0]!.path));
-        }
-        this.selected.clear();
-        await this.reload();
+        return { renamed, errors };
     }
 
     private confirmDelete(remote: boolean): void {
@@ -695,7 +785,7 @@ export class ImageManagerView extends ItemView {
                 // 逐条原因在服务里报过了，这里给一句总数与第一条 —— 用户据此
                 // 知道是「全都失败」还是「个别失败」。
                 this.deps.notifier.warn(
-                    t.deleteFailedMany(result.errors.length, result.errors[0]!.path)
+                    t.deleteFailedMany(result.errors.length, result.errors[0].path)
                 );
             }
         }

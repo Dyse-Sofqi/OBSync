@@ -459,21 +459,30 @@ describe("设置页 · 仓库同步页", () => {
         });
 
         /**
-         * 宽度**只能来自 CSS 类**，不能是内联样式。
+         * 宽度必须**内联**给，不能只留在 CSS 类里。
          *
-         * 社区审核的 `obsidianmd/no-static-styles-assignment` 会拦下
-         * `el.style.width = "100%"`（以及 `setCssProps({ width })` —— 那条规则只放行
-         * `--*` 自定义属性）。用户实测反馈过两次「全宽并没有实现」，最后一次的原因
-         * 正是内联宽度；现在改成类 + 样式表，并由 `.hotreload` 标记保证样式表会重载。
+         * 这一格回归过两次（09-24、09-25 各一次），两次形态一模一样：只要宽度只写在
+         * `styles.css` 里，用户那边就会出现「改了 CSS、框还是窄的」—— 插件样式表
+         * **不保证**在 Hot Reload 重载时被重新读入，而 `.hotreload` 标记只保证
+         * 「插件会被重载」，不保证那一份 CSS 被重新注入。
+         *
+         * （这里曾经钉的是反面 ——「宽度来自 CSS 类、不写内联样式」，理由是审核会拦。
+         * 那条测试挡住的正是唯一的修复路径，所以它被换成了这一条。）
+         *
+         * 审核的 `obsidianmd/no-static-styles-assignment` 拦的是**字面量**赋值；
+         * `const w = "100%"; el.style.width = w;` 是规则自带的 valid 形态。
+         * 所以这里钉的是「宽度写在 style 上」，而不是「写法必须是字面量」。
          */
-        it("宽度来自 CSS 类，**不写内联样式**（审核会拦）", () => {
+        it("宽度**内联**给足（不能只依赖样式表）", () => {
             const tab = createTab(createFakeApp(), {}, createSyncStub("# 规则\n"));
 
             renderSyncPage(tab);
 
             const area = gitignoreArea(tab);
             expect(area.cls).toBe("obsync-gitignore");
-            expect(Object.keys(area.style ?? {})).toHaveLength(0);
+            expect(area.style?.["width"]).toBe("100%");
+            // `width: 100%` 再加内边距与边框，content-box 下会超出容器 → 横向滚动条。
+            expect(area.style?.["boxSizing"]).toBe("border-box");
         });
 
         it("文件已经存在时：内容显示在框里，徽标是「已保存」", async () => {

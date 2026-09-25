@@ -1249,7 +1249,18 @@ export const zhCN = {
 
             actionSync: "同步选中",
             actionCompress: "压缩并同步",
-            actionRename: "重命名…",
+            /** 底部那颗 —— 它管的是「勾选了一批」，与行内的单文件重命名是两条路。 */
+            actionRename: "批量重命名",
+            /** 列表里每一行那个铅笔按钮的标签（只有图标，含义全靠它）。 */
+            renameThis: "重命名这个文件",
+            /** 行内缩略图的标签 —— 它就是那个「点开看大图」的入口。 */
+            previewOpen: "查看大图",
+            previewZoomIn: "放大",
+            previewZoomOut: "缩小",
+            previewZoomReset: "重置缩放",
+            /** 图片比窗口大时的提示（此时只能靠拖动看其余部分）。 */
+            previewPannable: "可拖动",
+            previewPannableHint: "图片比窗口大，按住拖动查看其余部分",
             actionDeleteLocal: "删除本地",
             actionDeleteBoth: "删除本地 + 云端",
             noSelection: "先在上面的列表里勾选要处理的图片。",
@@ -1293,6 +1304,12 @@ export const zhCN = {
             renameFailedMany: (count: number, sample: string) =>
                 `有 ${count} 张没能重命名，例如 ${sample}。`,
             renameMissing: "文件已经不在库里了",
+
+            renameFileTitle: "重命名文件",
+            renameFileDesc: "只改文件名，目录不变。不写扩展名就沿用原来的；笔记里指向它的链接会跟着更新。",
+            renameFileName: "文件名",
+            renameFileConfirm: "重命名",
+            renameFileDone: (name: string) => `已重命名为 ${name}。`,
 
             deleting: "正在删除…",
             deleteDone: (local: number, remote: number, failed: number) =>

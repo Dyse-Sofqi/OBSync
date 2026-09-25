@@ -4,7 +4,7 @@
 
 用 git 同步你的笔记仓库，同时安装社区插件与主题 —— GitHub / Gitee 双平台。
 
-[![GitHub Release](https://img.shields.io/github/v/release/Dyse-Sofqi/SyncHub?style=flat-square&logo=github&color=%2342b883)](https://github.com/Dyse-Sofqi/SyncHub/releases) [![License](https://img.shields.io/github/license/Dyse-Sofqi/SyncHub?style=flat-square&color=%2342b883)](LICENSE) [![Obsidian Min App](https://img.shields.io/badge/Obsidian-%5E1.8.7-%234a7ec1?style=flat-square&logo=obsidian&logoColor=%234a7ec1)](https://obsidian.md) [![GitHub Stars](https://img.shields.io/github/stars/Dyse-Sofqi/SyncHub?style=flat-square&logo=github&color=%23e4b341)](https://github.com/Dyse-Sofqi/SyncHub)
+[![GitHub Release](https://img.shields.io/github/v/release/Dyse-Sofqi/SyncHub?style=flat-square&logo=github&color=%2342b883)](https://github.com/Dyse-Sofqi/SyncHub/releases) [![License](https://img.shields.io/github/license/Dyse-Sofqi/SyncHub?style=flat-square&color=%2342b883)](LICENSE) [![Obsidian Min App](https://img.shields.io/badge/Obsidian-%5E1.8.7-%234a7ec1?style=flat-square&logo=obsidian&logoColor=%234a7ec1)](https://obsidian.md) [![GitHub Stars](https://img.shields.io/github/stars/Dyse-Sofqi/SyncHub?style=flat-square&logo=github&color=%23e4b341)](https://github.com/Dyse-Sofqi/SyncHub) [![Sponsor](https://img.shields.io/badge/%E8%B5%9E%E5%8A%A9-Sponsor-%23e4b341?style=flat-square)](https://paypal.me/Sofqi)
 
 </div>
 
@@ -52,7 +52,8 @@ Chinese-first UI with an equal English one.
   （设置页里可直接编辑）· **差异视图**（逐文件 / 逐提交 / 当前文件）·
   在远端打开文件/历史/提交 · 编辑远端 · 连接测试
 - **图片同步** — Cloudflare R2 双副本（只复制不删除）· 删本地时问一句（三档）· 受管文件夹 ·
-  图片管理面板（本地 / 云端 / 已链接三条轴筛选、缩略图、批量同步 / 压缩 / 重命名 / 删除）·
+  图片管理面板（本地 / 云端 / 已链接三条轴筛选、缩略图、**点缩略图看大图（滚轮缩放 / 放大后拖动）**、
+  **单张重命名**、批量同步 / 压缩 / 重命名 / 删除）·
   笔记内裁剪压缩（保持原格式、只在变小时写回）· Excalidraw 压缩画布的引用也认得出 ·
   公网外链 · 密钥进系统密钥库
 - **插件与主题** — 地址识别（GitHub / Gitee）· release 资产与仓库源码双通道 · 版本选择（含预发布回退）·
@@ -70,9 +71,10 @@ Chinese-first UI with an equal English one.
   open file/history/commit on the remote · edit remote · connection test
 - **Image sync** — Cloudflare R2 mirror (copy only, never delete) · one prompt before deleting a cloud
   copy (three modes) · managed folders · image manager (filter on local / cloud / linked, thumbnails,
-  batch sync / compress / rename / delete) · crop and compress inside the note (keeps the original
-  format, writes back only when smaller) · understands Excalidraw's compressed canvas references ·
-  public URLs · secret key in the OS keychain
+  **click a thumbnail for the full-size view — the wheel zooms, drag when it is larger than the
+  window**, **rename a single image**, batch sync / compress / rename / delete) · crop and compress
+  inside the note (keeps the original format, writes back only when smaller) · understands Excalidraw's
+  compressed canvas references · public URLs · secret key in the OS keychain
 - **Plugins & themes** — address recognition (GitHub / Gitee) · release assets **and** repository source fallback ·
   version picker (with prerelease fallback) · backup before write + rollback on failure · update checks
   (single / all / on startup / on opening settings) · persistent update badges · freeze ·
@@ -168,9 +170,16 @@ Chinese-first UI with an equal English one.
   三条轴任意组合筛选（有 / 无），于是「把没传上去的补上」「清理没人引用的图」
   「处理只留在云端的」都变成一次筛选的事。每行有缩略图、体积与三个状态徽标，
   「已链接」那个悬停能看到**是谁在引用它** —— 判断一张图能不能删时这是决定性信息
+- **点缩略图看大图** —— 30px 的方框里看不清「这到底是张什么图」，而它恰恰是判断一张图
+  能不能删之前要看的东西。点缩略图就地弹出预览（**不离开面板**）：**滚轮直接缩放**
+  （25% – 400%，也可以按工具条上的按钮），放大时**弹窗整体跟着变大**直到窗口上限，
+  再大就按住图片拖动看其余部分；图下面一行给出路径、体积与状态徽标
+- **改一张图的名字** —— 每行右侧那颗铅笔按钮，点开只有一个输入框、预填当前文件名。
+  它与底部的**批量重命名**是两条路：一个管「就这一张」，一个管「勾选了一批」。
+  两者都走 Obsidian 官方改名入口，所以**笔记里的链接会跟着更新**
 - **批量操作** —— 同步选中（缺哪边补哪边）、**压缩并同步**（保持原格式，而且
-  **只在变小时才写回**：已经压过的图再压一次往往更大）、**重命名**（模板式，带实时预览，
-  走 Obsidian 官方改名入口所以**笔记里的链接会跟着更新**）、删除本地 / 删除本地 + 云端
+  **只在变小时才写回**：已经压过的图再压一次往往更大）、**批量重命名**（模板式，
+  带实时预览）、删除本地 / 删除本地 + 云端
 - **笔记内裁剪与压缩** —— 阅读视图里每张库内图片都有悬浮工具条；裁剪框可直接拖拽，
   质量 / 最长边 / 输出格式可调（PNG 是无损的，质量那一格会灰掉）
 - **Excalidraw 画布里的引用也认得出** —— 画布数据是 LZString 压缩后写进 `.excalidraw.md` 的，
@@ -373,7 +382,7 @@ pnpm verify:head # 在 **HEAD** 上跑测试（提交后跑一次，见下）
 - **`pnpm lint:review` 是审核闸门**（已接进 `pnpm build`）：直接跑社区审核用的
   `eslint-plugin-obsidianmd`，但只把**审核打回过的两条**设成 error
   （`obsidianmd/no-unsupported-api`、`eslint-comments/require-description`），
-  其余显式关闭 —— 因为完整那套在本仓库有约 48 条既有告警，全开会让闸门从第一天
+  其余显式关闭 —— 因为完整那套在本仓库有约 49 条既有告警，全开会让闸门从第一天
   起就是红的，等于没有。0.1.4 就是这两条被审核打回，而 `pnpm check` 看不见它们
   （它按成员名扫，`SecretStorage.*` 恰好在它的豁免表里）。
 - 改了 git 相关代码后注意：`simpleGitManager.test.ts` 会起真实 git 进程，
@@ -517,10 +526,19 @@ storage**.
   missing", "clean up orphans" and "deal with cloud-only files" are each a single filter. Every row
   has a thumbnail, a size and three status badges; hovering "linked" shows **who references it** —
   decisive information when deciding whether an image can go
+- **Click a thumbnail for the full-size view** — a 30px box cannot show you "which image is this",
+  and that is exactly what you need before deciding whether an image can go. Clicking a thumbnail
+  opens an in-place preview (**without leaving the panel**): **the wheel zooms directly** (25%–400%,
+  or use the toolbar buttons), the **window grows with the image** up to the window limit, and beyond
+  that you drag the image to see the rest; a line below gives the path, size and status badges
+- **Rename a single image** — the pencil button on each row opens a single field pre-filled with the
+  current file name. It is a different path from **bulk rename** at the bottom: one acts on "just this
+  one", the other on "the selection". Both go through Obsidian's own rename so **links in your notes
+  follow along**
 - **Batch actions** — sync selected (fill whichever side is missing), **compress and sync** (keeps the
   original format and **only writes back when smaller** — re-compressing an already-compressed image
-  usually makes it bigger), **rename** (templated with a live preview, going through Obsidian's own
-  rename so **links in your notes follow along**), delete local / delete local + cloud
+  usually makes it bigger), **bulk rename** (templated with a live preview), delete local /
+  delete local + cloud
 - **Crop and compress inside the note** — every in-vault image gets a floating toolbar in reading
   view; the crop box is draggable and quality / max edge / output format are adjustable (PNG is
   lossless, so the quality control is greyed out for it)
