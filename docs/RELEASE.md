@@ -253,8 +253,15 @@ done
 ```bash
 git -c credential.helper= \
     -c 'credential.helper=!f() { echo username=sofqi; echo password="$GITEE_TOKEN"; }; f' \
-    push gitee main
+    push --no-verify gitee main
 ```
+
+⚠ **两个远端的 push 都要 `--no-verify`**（2026-09-25 实测）。`pre-push` 钩子里的
+`verify-head.mjs` 要 spawn `git`，而本环境 Node spawn git 一律 `EBUSY` —— 于是钩子
+**永远**报「HEAD 上的测试没有全过」，而真实原因是它自己跑不起来。推 GitHub 时容易
+记得加，推 Gitee 时容易漏；漏了的症状就是「GitHub 推上去了、Gitee 卡住」。
+（替代做法：`git push --no-verify` + **另外**在工作区跑一次全量测试；工作区干净时，
+验的就是 HEAD 的内容。发 0.1.8 时就是这么做的。）
 
 ---
 
